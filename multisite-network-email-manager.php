@@ -66,6 +66,23 @@ function mnem_deactivate() {
 register_deactivation_hook( MNEM_PLUGIN_FILE, 'mnem_deactivate' );
 
 /**
+ * Register custom WP-Cron intervals needed by the plugin.
+ *
+ * @param array $schedules Existing cron schedules.
+ * @return array
+ */
+function mnem_cron_schedules( array $schedules ) {
+	if ( ! isset( $schedules['every_five_minutes'] ) ) {
+		$schedules['every_five_minutes'] = array(
+			'interval' => 300,
+			'display'  => __( 'Every 5 Minutes', 'mnem' ),
+		);
+	}
+	return $schedules;
+}
+add_filter( 'cron_schedules', 'mnem_cron_schedules' );
+
+/**
  * Bootstrap the plugin on plugins_loaded.
  */
 function mnem_init() {
@@ -75,6 +92,7 @@ function mnem_init() {
 	// Initialize core services.
 	MNEM_Logger::init();
 	MNEM_Settings::init();
+	MNEM_SMTP_Service::init();
 	MNEM_REST_API::init();
 	MNEM_Queue::init();
 

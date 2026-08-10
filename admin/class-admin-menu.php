@@ -122,7 +122,10 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
-		$campaigns = MNEM_Campaigns::get_campaigns();
+		$campaigns     = MNEM_Campaigns::get_campaigns();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$edit_id       = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+		$edit_campaign = $edit_id ? MNEM_Campaigns::get_campaign( $edit_id ) : null;
 		include MNEM_PLUGIN_DIR . 'admin/views/campaigns.php';
 	}
 

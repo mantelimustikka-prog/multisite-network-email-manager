@@ -20,10 +20,21 @@ class MNEM_Admin {
 		add_action( 'network_admin_notices', array( __CLASS__, 'display_notices' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_scripts' ) );
 
-		// Handle settings save and SMTP test actions.
+		// SMTP form handlers.
 		add_action( 'network_admin_edit_mnem_save_smtp_settings', array( __CLASS__, 'handle_save_smtp_settings' ) );
 		add_action( 'network_admin_edit_mnem_send_test_email', array( __CLASS__, 'handle_send_test_email' ) );
 		add_action( 'network_admin_edit_mnem_test_connection', array( __CLASS__, 'handle_test_connection' ) );
+
+		// Campaign form handlers.
+		add_action( 'network_admin_edit_mnem_save_campaign', array( __CLASS__, 'handle_save_campaign' ) );
+		add_action( 'network_admin_edit_mnem_campaign_status', array( __CLASS__, 'handle_campaign_status' ) );
+
+		// Suppression form handlers.
+		add_action( 'network_admin_edit_mnem_add_suppression', array( __CLASS__, 'handle_add_suppression' ) );
+		add_action( 'network_admin_edit_mnem_remove_suppression', array( __CLASS__, 'handle_remove_suppression' ) );
+
+		// Queue bulk actions.
+		add_action( 'network_admin_edit_mnem_retry_failed_queue', array( __CLASS__, 'handle_retry_failed_queue' ) );
 	}
 
 	/**
@@ -100,7 +111,7 @@ class MNEM_Admin {
 			'encryption'     => isset( $_POST['mnem_smtp_encryption'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_encryption'] ) ) : 'tls',
 			'auth_enabled'   => isset( $_POST['mnem_smtp_auth_enabled'] ),
 			'username'       => isset( $_POST['mnem_smtp_username'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_username'] ) ) : '',
-			'password'       => isset( $_POST['mnem_smtp_password'] ) ? wp_unslash( $_POST['mnem_smtp_password'] ) : '',
+			'password'       => isset( $_POST['mnem_smtp_password'] ) ? wp_unslash( $_POST['mnem_smtp_password'] ) : MNEM_SMTP_Settings::PASSWORD_PLACEHOLDER,
 			'from_email'     => isset( $_POST['mnem_smtp_from_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_from_email'] ) ) : '',
 			'from_name'      => isset( $_POST['mnem_smtp_from_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_from_name'] ) ) : '',
 			'reply_to_email' => isset( $_POST['mnem_smtp_reply_to_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_reply_to_email'] ) ) : '',
@@ -164,6 +175,187 @@ class MNEM_Admin {
 		wp_safe_redirect(
 			add_query_arg(
 				array( 'page' => 'mnem-smtp-settings' ),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	// -------------------------------------------------------------------------
+	// Campaign handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Handle campaign create/update form submission.
+	 */
+	public static function handle_save_campaign() {
+		check_admin_referer( 'mnem_save_campaign', 'mnem_nonce' );
+
+		if ( ! current_user_can( 'manage_network' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$campaign_id = isset( $_POST['mnem_campaign_id'] ) ? absint( $_POST['mnem_campaign_id'] ) : 0;
+		$data        = array(
+			'name'    => isset( $_POST['mnem_campaign_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_campaign_name'] ) ) : '',
+			'subject' => isset( $_POST['mnem_campaign_subject'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_campaign_subject'] ) ) : '',
+			'body'    => isset( $_POST['mnem_campaign_body'] ) ? wp_kses_post( wp_unslash( $_POST['mnem_campaign_body'] ) ) : '',
+		);
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( $campaign_id > 0 ) {
+			MNEM_Campaigns::update( $campaign_id, $data );
+			self::add_notice( __( 'Campaign updated.', 'mnem' ), 'success' );
+		} else {
+			$campaign_id = MNEM_Campaigns::create( $data );
+			if ( $campaign_id ) {
+				self::add_notice( __( 'Campaign created.', 'mnem' ), 'success' );
+			} else {
+				self::add_notice( __( 'Failed to create campaign.', 'mnem' ), 'error' );
+				$campaign_id = 0;
+			}
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page' => 'mnem-campaigns',
+					'id'   => $campaign_id,
+				),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Handle campaign status transition.
+	 */
+	public static function handle_campaign_status() {
+		check_admin_referer( 'mnem_campaign_status', 'mnem_nonce' );
+
+		if ( ! current_user_can( 'manage_network' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$id         = isset( $_POST['mnem_campaign_id'] ) ? absint( $_POST['mnem_campaign_id'] ) : 0;
+		$new_status = isset( $_POST['mnem_new_status'] ) ? sanitize_key( $_POST['mnem_new_status'] ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$result = MNEM_Campaigns::transition_status( $id, $new_status );
+		if ( is_wp_error( $result ) ) {
+			self::add_notice( $result->get_error_message(), 'error' );
+		} else {
+			self::add_notice( __( 'Campaign status updated.', 'mnem' ), 'success' );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => 'mnem-campaigns' ),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	// -------------------------------------------------------------------------
+	// Suppression handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Handle adding an email to the suppression list.
+	 */
+	public static function handle_add_suppression() {
+		check_admin_referer( 'mnem_add_suppression', 'mnem_nonce' );
+
+		if ( ! current_user_can( 'manage_network' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$email  = isset( $_POST['mnem_suppression_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_suppression_email'] ) ) : '';
+		$reason = isset( $_POST['mnem_suppression_reason'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_suppression_reason'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( MNEM_Suppression::add( $email, $reason ) ) {
+			self::add_notice( __( 'Email added to suppression list.', 'mnem' ), 'success' );
+		} else {
+			self::add_notice( __( 'Failed to add email. Make sure it is a valid address.', 'mnem' ), 'error' );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => 'mnem-suppression' ),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Handle removing an email from the suppression list.
+	 */
+	public static function handle_remove_suppression() {
+		check_admin_referer( 'mnem_remove_suppression', 'mnem_nonce' );
+
+		if ( ! current_user_can( 'manage_network' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$email = isset( $_POST['mnem_suppression_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_suppression_email'] ) ) : '';
+
+		if ( MNEM_Suppression::remove( $email ) ) {
+			self::add_notice( __( 'Email removed from suppression list.', 'mnem' ), 'success' );
+		} else {
+			self::add_notice( __( 'Failed to remove email.', 'mnem' ), 'error' );
+		}
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => 'mnem-suppression' ),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	// -------------------------------------------------------------------------
+	// Queue handlers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Handle retrying all failed queue items.
+	 */
+	public static function handle_retry_failed_queue() {
+		check_admin_referer( 'mnem_retry_queue', 'mnem_nonce' );
+
+		if ( ! current_user_can( 'manage_network' ) ) {
+			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
+		}
+
+		global $wpdb;
+		$table   = $wpdb->base_prefix . 'mnem_queue';
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'status'       => 'pending',
+				'attempts'     => 0,
+				'scheduled_at' => current_time( 'mysql', true ),
+			),
+			array( 'status' => 'failed' ),
+			array( '%s', '%d', '%s' ),
+			array( '%s' )
+		);
+
+		/* translators: %d: number of jobs requeued */
+		self::add_notice( sprintf( __( '%d failed job(s) re-queued.', 'mnem' ), (int) $updated ), 'success' );
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => 'mnem-queue' ),
 				network_admin_url( 'admin.php' )
 			)
 		);

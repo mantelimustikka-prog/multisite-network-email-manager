@@ -1,0 +1,37 @@
+# WordPress
+wp-config.php
+wp-content/uploads/
+*.log
+
+# Composer
+vendor/
+composer.lock
+
+# Node / npm
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build artifacts
+dist/
+*.min.js
+*.min.css
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PHPUnit
+.phpunit.result.cache
+tests/.phpunit.result.cache
+
+# Misc
+*.bak
+*.orig
+*.tmp
+/tmp/

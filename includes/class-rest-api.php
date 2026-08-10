@@ -51,6 +51,7 @@ class MNEM_REST_API {
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( __CLASS__, 'update_smtp_settings' ),
 					'permission_callback' => array( __CLASS__, 'check_network_admin' ),
+					'args'                => self::smtp_settings_schema(),
 				),
 			)
 		);
@@ -103,6 +104,88 @@ class MNEM_REST_API {
 			);
 		}
 		return true;
+	}
+
+	// -------------------------------------------------------------------------
+	// Argument schemas
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Return the JSON Schema args array for the SMTP settings update endpoint.
+	 *
+	 * WordPress REST API uses this for automatic sanitization and validation
+	 * before the callback is invoked.
+	 *
+	 * @return array
+	 */
+	private static function smtp_settings_schema() {
+		return array(
+			'enabled'        => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+			'host'           => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'port'           => array(
+				'type'              => 'integer',
+				'required'          => false,
+				'minimum'           => 1,
+				'maximum'           => 65535,
+				'sanitize_callback' => 'absint',
+			),
+			'encryption'     => array(
+				'type'              => 'string',
+				'required'          => false,
+				'enum'              => array( '', 'ssl', 'tls' ),
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'auth_enabled'   => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+			'username'       => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'password'       => array(
+				'type'     => 'string',
+				'required' => false,
+				// No sanitize_callback — password chars must not be stripped.
+			),
+			'from_email'     => array(
+				'type'              => 'string',
+				'format'            => 'email',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_email',
+			),
+			'from_name'      => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'reply_to_email' => array(
+				'type'              => 'string',
+				'format'            => 'email',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_email',
+			),
+			'reply_to_name'  => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_text_field',
+			),
+			'debug_mode'     => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => 'rest_sanitize_boolean',
+			),
+		);
 	}
 
 	// -------------------------------------------------------------------------

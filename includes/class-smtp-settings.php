@@ -31,10 +31,13 @@ class MNEM_SMTP_Settings {
 		'debug_mode'     => false,
 	);
 
+	/** Sentinel value used in UI to indicate "keep existing password". */
+	const PASSWORD_PLACEHOLDER = '********';
+
 	/**
 	 * Retrieve all SMTP settings.
 	 *
-	 * @param bool $include_password Whether to include the password in the result.
+	 * @param bool $include_password Whether to return the real plaintext password.
 	 * @return array
 	 */
 	public static function get_all( $include_password = false ) {
@@ -42,8 +45,12 @@ class MNEM_SMTP_Settings {
 		foreach ( self::DEFAULTS as $key => $default ) {
 			$settings[ $key ] = MNEM_Settings::get( 'smtp_' . $key, $default );
 		}
+
+		// Decrypt the stored password before use.
+		$settings['password'] = self::decrypt_password( (string) $settings['password'] );
+
 		if ( ! $include_password ) {
-			$settings['password'] = '' !== $settings['password'] ? '********' : '';
+			$settings['password'] = '' !== $settings['password'] ? self::PASSWORD_PLACEHOLDER : '';
 		}
 		return $settings;
 	}
@@ -60,7 +67,14 @@ class MNEM_SMTP_Settings {
 			return $default;
 		}
 		$stored_default = null !== $default ? $default : self::DEFAULTS[ $key ];
-		return MNEM_Settings::get( 'smtp_' . $key, $stored_default );
+		$value          = MNEM_Settings::get( 'smtp_' . $key, $stored_default );
+
+		// Transparently decrypt password on retrieval.
+		if ( 'password' === $key ) {
+			$value = self::decrypt_password( (string) $value );
+		}
+
+		return $value;
 	}
 
 	/**
@@ -76,13 +90,66 @@ class MNEM_SMTP_Settings {
 
 			$value = self::sanitize_field( $key, $data[ $key ] );
 
-			// Special case: do not overwrite password if the masked value is submitted.
-			if ( 'password' === $key && '********' === $value ) {
-				continue;
+			// Do not overwrite password when the placeholder sentinel is submitted.
+			if ( 'password' === $key ) {
+				if ( self::PASSWORD_PLACEHOLDER === $value || '' === $value ) {
+					continue;
+				}
+				$value = self::encrypt_password( $value );
 			}
 
 			MNEM_Settings::set( 'smtp_' . $key, $value );
 		}
+	}
+
+	/**
+	 * Encrypt a password before storing it.
+	 *
+	 * Uses base64 by default. Site owners can replace this with a stronger
+	 * scheme by filtering `mnem_encrypt_smtp_password`.
+	 *
+	 * @param string $plaintext Plaintext password.
+	 * @return string Encrypted value.
+	 */
+	private static function encrypt_password( $plaintext ) {
+		/**
+		 * Filter to replace the default base64 password obfuscation.
+		 *
+		 * @param string|null $encrypted  Return a non-null string to short-circuit the default.
+		 * @param string      $plaintext  The plaintext password.
+		 */
+		$custom = apply_filters( 'mnem_encrypt_smtp_password', null, $plaintext );
+		if ( null !== $custom ) {
+			return (string) $custom;
+		}
+		return 'b64:' . base64_encode( $plaintext ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+	}
+
+	/**
+	 * Decrypt a stored password.
+	 *
+	 * Handles the `b64:` prefix added by `encrypt_password()` and legacy
+	 * plain-text values that pre-date this feature.
+	 *
+	 * @param string $stored Stored value.
+	 * @return string Plaintext password.
+	 */
+	private static function decrypt_password( $stored ) {
+		/**
+		 * Filter to replace the default base64 password decryption.
+		 *
+		 * @param string|null $decrypted  Return a non-null string to short-circuit the default.
+		 * @param string      $stored     The stored value.
+		 */
+		$custom = apply_filters( 'mnem_decrypt_smtp_password', null, $stored );
+		if ( null !== $custom ) {
+			return (string) $custom;
+		}
+		if ( str_starts_with( $stored, 'b64:' ) ) {
+			return base64_decode( substr( $stored, 4 ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+		}
+		// Legacy plain-text — return as-is.
+		return $stored;
 	}
 
 	/**
@@ -119,7 +186,7 @@ class MNEM_SMTP_Settings {
 				return sanitize_text_field( $value );
 
 			case 'password':
-				// Store as-is; never sanitize with strip functions that could corrupt special chars.
+				// Return as-is; strip_tags/sanitize_text_field would corrupt special chars.
 				return (string) $value;
 
 			default:
