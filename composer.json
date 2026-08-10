@@ -1,0 +1,21 @@
+{
+    "name": "mantelimustikka-prog/multisite-network-email-manager",
+    "description": "Centralized email management for WordPress multisite networks.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload-dev": {
+        "classmap": [
+            "tests/"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit --configuration phpunit.xml.dist",
+        "lint": "php -l multisite-network-email-manager.php && find includes admin -name '*.php' | xargs php -l"
+    }
+}
