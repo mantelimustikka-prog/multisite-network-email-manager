@@ -24,10 +24,15 @@ if ( ! defined( 'MNEM_PLUGIN_DIR' ) ) {
 }
 
 require_once MNEM_PLUGIN_DIR . 'includes/class-logger.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-crypto.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-log-store.php';
 require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-settings.php';
 require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-service.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-mailer-adapter.php';
 require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-diagnostics.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-mailer-adapter.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-mail-queue.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-site-settings.php';
+require_once MNEM_PLUGIN_DIR . 'includes/class-cli-command.php';
 
 class MNEM_Plugin {
 	/**
@@ -73,6 +78,27 @@ class MNEM_Plugin {
 	private $diagnostics;
 
 	/**
+	 * Log store instance.
+	 *
+	 * @var MNEM_Log_Store
+	 */
+	private $log_store;
+
+	/**
+	 * Mail queue instance.
+	 *
+	 * @var MNEM_Mail_Queue
+	 */
+	private $mail_queue;
+
+	/**
+	 * Per-site settings instance.
+	 *
+	 * @var MNEM_Site_Settings
+	 */
+	private $site_settings;
+
+	/**
 	 * Get the plugin instance.
 	 *
 	 * @return MNEM_Plugin
@@ -104,17 +130,17 @@ class MNEM_Plugin {
 	public static function deactivate() {
 		$disable_on_deactivate = (bool) apply_filters( 'mnem_smtp_disable_on_deactivate', false );
 
-		if ( ! $disable_on_deactivate ) {
-			return;
+		if ( $disable_on_deactivate ) {
+			$settings = get_site_option( MNEM_SMTP_Settings::OPTION_KEY, MNEM_SMTP_Settings::defaults() );
+			if ( ! is_array( $settings ) ) {
+				$settings = MNEM_SMTP_Settings::defaults();
+			}
+
+			$settings['enabled'] = false;
+			update_site_option( MNEM_SMTP_Settings::OPTION_KEY, $settings );
 		}
 
-		$settings = get_site_option( MNEM_SMTP_Settings::OPTION_KEY, MNEM_SMTP_Settings::defaults() );
-		if ( ! is_array( $settings ) ) {
-			$settings = MNEM_SMTP_Settings::defaults();
-		}
-
-		$settings['enabled'] = false;
-		update_site_option( MNEM_SMTP_Settings::OPTION_KEY, $settings );
+		wp_clear_scheduled_hook( MNEM_Mail_Queue::CRON_HOOK );
 	}
 
 	/**
@@ -122,14 +148,31 @@ class MNEM_Plugin {
 	 */
 	private function __construct() {
 		$this->logger         = new MNEM_Logger();
+		$this->log_store      = new MNEM_Log_Store();
 		$this->settings       = new MNEM_SMTP_Settings( $this->logger );
 		$this->smtp_service   = new MNEM_SMTP_Service( $this->settings, $this->logger );
 		$this->mailer_adapter = new MNEM_Mailer_Adapter( $this->logger );
 		$this->diagnostics    = new MNEM_SMTP_Diagnostics( $this->settings, $this->smtp_service, $this->mailer_adapter, $this->logger );
+		$this->mail_queue     = new MNEM_Mail_Queue( $this->logger );
+		$this->site_settings  = new MNEM_Site_Settings( $this->logger );
 
 		$this->settings->set_diagnostics( $this->diagnostics );
+		$this->settings->set_log_store( $this->log_store );
+		$this->smtp_service->set_site_settings( $this->site_settings );
+		$this->smtp_service->set_mail_queue( $this->mail_queue );
+
+		$this->log_store->register_hooks();
 		$this->settings->register_hooks();
 		$this->smtp_service->register_hooks();
+		$this->mail_queue->register_hooks();
+		$this->site_settings->register_hooks();
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			WP_CLI::add_command(
+				'mnem smtp',
+				new MNEM_CLI_Command( $this->settings, $this->diagnostics )
+			);
+		}
 	}
 }
 

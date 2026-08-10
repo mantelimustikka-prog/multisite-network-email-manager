@@ -18,6 +18,20 @@ class MNEM_SMTP_Service {
 	private $logger;
 
 	/**
+	 * Site settings instance.
+	 *
+	 * @var MNEM_Site_Settings|null
+	 */
+	private $site_settings;
+
+	/**
+	 * Mail queue instance.
+	 *
+	 * @var MNEM_Mail_Queue|null
+	 */
+	private $mail_queue;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param MNEM_SMTP_Settings $settings Settings instance.
@@ -26,6 +40,26 @@ class MNEM_SMTP_Service {
 	public function __construct( MNEM_SMTP_Settings $settings, MNEM_Logger $logger ) {
 		$this->settings = $settings;
 		$this->logger   = $logger;
+	}
+
+	/**
+	 * Attach site settings dependency.
+	 *
+	 * @param MNEM_Site_Settings $site_settings Site settings instance.
+	 * @return void
+	 */
+	public function set_site_settings( MNEM_Site_Settings $site_settings ) {
+		$this->site_settings = $site_settings;
+	}
+
+	/**
+	 * Attach mail queue dependency.
+	 *
+	 * @param MNEM_Mail_Queue $mail_queue Mail queue instance.
+	 * @return void
+	 */
+	public function set_mail_queue( MNEM_Mail_Queue $mail_queue ) {
+		$this->mail_queue = $mail_queue;
 	}
 
 	/**
@@ -106,6 +140,9 @@ class MNEM_SMTP_Service {
 			$phpmailer->addReplyTo( $settings['reply_to_email'], $settings['reply_to_name'] );
 		}
 
+		// Apply per-site overrides when enabled.
+		$this->maybe_apply_site_overrides( $phpmailer );
+
 		if ( ! empty( $settings['debug_mode'] ) ) {
 			$this->logger->log(
 				'debug',
@@ -185,6 +222,17 @@ class MNEM_SMTP_Service {
 				'subject'   => is_array( $data ) && isset( $data['subject'] ) ? $data['subject'] : '',
 			)
 		);
+
+		// Queue for retry when a mail queue is available.
+		if ( $this->mail_queue && is_array( $data ) ) {
+			$this->mail_queue->enqueue(
+				$data['to'] ?? '',
+				$data['subject'] ?? '',
+				$data['message'] ?? '',
+				$data['headers'] ?? array(),
+				$data['attachments'] ?? array()
+			);
+		}
 	}
 
 	/**
@@ -257,5 +305,32 @@ class MNEM_SMTP_Service {
 		}
 
 		return 'UTF-8';
+	}
+
+	/**
+	 * Apply per-site sender/reply-to overrides to a PHPMailer instance.
+	 *
+	 * @param PHPMailer\PHPMailer\PHPMailer $phpmailer PHPMailer instance.
+	 * @return void
+	 */
+	private function maybe_apply_site_overrides( $phpmailer ) {
+		if ( ! $this->site_settings ) {
+			return;
+		}
+
+		$site = $this->site_settings->get();
+
+		if ( empty( $site['override_enabled'] ) ) {
+			return;
+		}
+
+		if ( ! empty( $site['from_email'] ) && is_email( $site['from_email'] ) ) {
+			$phpmailer->setFrom( $site['from_email'], $site['from_name'] ?? '', false );
+		}
+
+		if ( ! empty( $site['reply_to_email'] ) && is_email( $site['reply_to_email'] ) ) {
+			$phpmailer->clearReplyTos();
+			$phpmailer->addReplyTo( $site['reply_to_email'], $site['reply_to_name'] ?? '' );
+		}
 	}
 }

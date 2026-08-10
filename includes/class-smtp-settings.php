@@ -20,6 +20,13 @@ class MNEM_SMTP_Settings {
 	private $diagnostics;
 
 	/**
+	 * Log store instance.
+	 *
+	 * @var MNEM_Log_Store|null
+	 */
+	private $log_store;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param MNEM_Logger $logger Logger instance.
@@ -36,6 +43,16 @@ class MNEM_SMTP_Settings {
 	 */
 	public function set_diagnostics( MNEM_SMTP_Diagnostics $diagnostics ) {
 		$this->diagnostics = $diagnostics;
+	}
+
+	/**
+	 * Attach log store dependency.
+	 *
+	 * @param MNEM_Log_Store $log_store Log store instance.
+	 * @return void
+	 */
+	public function set_log_store( MNEM_Log_Store $log_store ) {
+		$this->log_store = $log_store;
 	}
 
 	/**
@@ -85,7 +102,14 @@ class MNEM_SMTP_Settings {
 			$saved = array();
 		}
 
-		return wp_parse_args( $saved, self::defaults() );
+		$settings = wp_parse_args( $saved, self::defaults() );
+
+		// Transparently decrypt the stored password.
+		if ( '' !== $settings['password'] && class_exists( 'MNEM_Crypto' ) ) {
+			$settings['password'] = MNEM_Crypto::decrypt( $settings['password'] );
+		}
+
+		return $settings;
 	}
 
 	/**
@@ -96,6 +120,12 @@ class MNEM_SMTP_Settings {
 	 */
 	public function update( array $input ) {
 		$sanitized = $this->sanitize_settings( $input, $this->get() );
+
+		// Encrypt the password before persisting.
+		if ( '' !== $sanitized['password'] && class_exists( 'MNEM_Crypto' ) ) {
+			$sanitized['password'] = MNEM_Crypto::encrypt( $sanitized['password'] );
+		}
+
 		update_site_option( self::OPTION_KEY, $sanitized );
 
 		return $sanitized;
@@ -209,7 +239,47 @@ class MNEM_SMTP_Settings {
 				<?php wp_nonce_field( 'mnem_smtp_send_test_email' ); ?>
 				<?php submit_button( __( 'Send test email', 'multisite-network-email-manager' ), 'secondary', 'submit', false ); ?>
 			</form>
+			<?php $this->render_log_panel(); ?>
 		</div>
+		<?php
+	}
+
+	/**
+	 * Render the recent log entries panel.
+	 *
+	 * @return void
+	 */
+	private function render_log_panel() {
+		if ( ! $this->log_store ) {
+			return;
+		}
+
+		$entries = $this->log_store->get_entries();
+		?>
+		<hr />
+		<h2><?php esc_html_e( 'Recent errors and warnings', 'multisite-network-email-manager' ); ?></h2>
+		<?php if ( empty( $entries ) ) : ?>
+			<p><?php esc_html_e( 'No errors or warnings recorded.', 'multisite-network-email-manager' ); ?></p>
+		<?php else : ?>
+			<table class="widefat striped" style="max-width:900px;">
+				<thead>
+					<tr>
+						<th style="width:140px;"><?php esc_html_e( 'Time', 'multisite-network-email-manager' ); ?></th>
+						<th style="width:80px;"><?php esc_html_e( 'Level', 'multisite-network-email-manager' ); ?></th>
+						<th><?php esc_html_e( 'Message', 'multisite-network-email-manager' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( array_reverse( $entries ) as $entry ) : ?>
+						<tr>
+							<td><?php echo esc_html( wp_date( 'Y-m-d H:i:s', (int) $entry['time'] ) ); ?></td>
+							<td><?php echo esc_html( strtoupper( (string) $entry['level'] ) ); ?></td>
+							<td><?php echo esc_html( (string) $entry['message'] ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
 		<?php
 	}
 

@@ -109,6 +109,92 @@ if ( ! function_exists( 'add_filter' ) ) {
 	function add_filter() {}
 }
 
+// --- Site/blog option stubs ------------------------------------------------
+
+if ( ! function_exists( 'get_site_option' ) ) {
+	$_mnem_site_options = array();
+
+	function get_site_option( $key, $default = false ) {
+		global $_mnem_site_options;
+		return array_key_exists( $key, $_mnem_site_options ) ? $_mnem_site_options[ $key ] : $default;
+	}
+}
+
+if ( ! function_exists( 'update_site_option' ) ) {
+	function update_site_option( $key, $value ) {
+		global $_mnem_site_options;
+		$_mnem_site_options[ $key ] = $value;
+	}
+}
+
+if ( ! function_exists( 'delete_site_option' ) ) {
+	function delete_site_option( $key ) {
+		global $_mnem_site_options;
+		unset( $_mnem_site_options[ $key ] );
+	}
+}
+
+if ( ! function_exists( 'get_option' ) ) {
+	$_mnem_options = array();
+
+	function get_option( $key, $default = false ) {
+		global $_mnem_options;
+		return array_key_exists( $key, $_mnem_options ) ? $_mnem_options[ $key ] : $default;
+	}
+}
+
+if ( ! function_exists( 'update_option' ) ) {
+	function update_option( $key, $value ) {
+		global $_mnem_options;
+		$_mnem_options[ $key ] = $value;
+	}
+}
+
+// --- Transient stubs -------------------------------------------------------
+
+if ( ! function_exists( 'get_transient' ) ) {
+	$_mnem_transients = array();
+
+	function get_transient( $key ) {
+		global $_mnem_transients;
+		return isset( $_mnem_transients[ $key ] ) ? $_mnem_transients[ $key ] : false;
+	}
+}
+
+if ( ! function_exists( 'set_transient' ) ) {
+	function set_transient( $key, $value, $expiration = 0 ) {
+		global $_mnem_transients;
+		$_mnem_transients[ $key ] = $value;
+	}
+}
+
+if ( ! function_exists( 'delete_transient' ) ) {
+	function delete_transient( $key ) {
+		global $_mnem_transients;
+		unset( $_mnem_transients[ $key ] );
+	}
+}
+
+// --- Cron stubs ------------------------------------------------------------
+
+if ( ! function_exists( 'wp_schedule_single_event' ) ) {
+	function wp_schedule_single_event() {}
+}
+
+if ( ! function_exists( 'wp_next_scheduled' ) ) {
+	function wp_next_scheduled() {
+		return false;
+	}
+}
+
+if ( ! function_exists( 'wp_clear_scheduled_hook' ) ) {
+	function wp_clear_scheduled_hook() {}
+}
+
+if ( ! defined( 'DAY_IN_SECONDS' ) ) {
+	define( 'DAY_IN_SECONDS', 86400 );
+}
+
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
 		private $code;
@@ -136,7 +222,11 @@ if ( ! function_exists( 'is_wp_error' ) ) {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-logger.php';
+require_once dirname( __DIR__ ) . '/includes/class-crypto.php';
+require_once dirname( __DIR__ ) . '/includes/class-log-store.php';
 require_once dirname( __DIR__ ) . '/includes/class-smtp-settings.php';
 require_once dirname( __DIR__ ) . '/includes/class-smtp-service.php';
 require_once dirname( __DIR__ ) . '/includes/class-mailer-adapter.php';
 require_once dirname( __DIR__ ) . '/includes/class-smtp-diagnostics.php';
+require_once dirname( __DIR__ ) . '/includes/class-mail-queue.php';
+require_once dirname( __DIR__ ) . '/includes/class-site-settings.php';

@@ -11,4 +11,6 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 if ( function_exists( 'delete_site_option' ) ) {
 	delete_site_option( 'mnem_smtp_settings' );
+	delete_site_option( 'mnem_enc_key' );
+	delete_site_option( 'mnem_mail_queue' );
 }
