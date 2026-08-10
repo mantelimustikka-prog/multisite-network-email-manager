@@ -222,6 +222,19 @@ class MNEM_SMTP_Settings {
 		$this->assert_permissions();
 		check_admin_referer( 'mnem_smtp_save' );
 
+		$existing = $this->get();
+		$valid    = $this->validate_input( $_POST, $existing ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Verified above.
+		if ( is_wp_error( $valid ) ) {
+			$this->logger->log(
+				'warning',
+				'SMTP settings update rejected.',
+				array(
+					'reason' => $valid->get_error_code(),
+				)
+			);
+			$this->redirect_with_notice( 'error', $valid->get_error_message() );
+		}
+
 		$this->update( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Verified above.
 		$this->logger->log( 'info', 'SMTP settings updated.' );
 
@@ -238,7 +251,7 @@ class MNEM_SMTP_Settings {
 		check_admin_referer( 'mnem_smtp_test_connection' );
 
 		if ( ! $this->diagnostics ) {
-			$this->redirect_with_notice( 'error', __( 'SMTP diagnostics are not available.', 'multisite-network-email-manager' ) );
+			$this->redirect_with_notice( 'error', __( 'SMTP diagnostics are not available. Please reload the page and try again.', 'multisite-network-email-manager' ) );
 		}
 
 		$result = $this->diagnostics->test_connection();
@@ -256,7 +269,7 @@ class MNEM_SMTP_Settings {
 		check_admin_referer( 'mnem_smtp_send_test_email' );
 
 		if ( ! $this->diagnostics ) {
-			$this->redirect_with_notice( 'error', __( 'SMTP diagnostics are not available.', 'multisite-network-email-manager' ) );
+			$this->redirect_with_notice( 'error', __( 'SMTP diagnostics are not available. Please reload the page and try again.', 'multisite-network-email-manager' ) );
 		}
 
 		$result = $this->diagnostics->send_test_email();
@@ -406,6 +419,63 @@ class MNEM_SMTP_Settings {
 		if ( ! current_user_can( 'manage_network_options' ) ) {
 			wp_die( esc_html__( 'You are not allowed to manage these settings.', 'multisite-network-email-manager' ) );
 		}
+	}
+
+	/**
+	 * Validate settings form input before saving.
+	 *
+	 * @param array $input    Raw input.
+	 * @param array $existing Existing settings.
+	 * @return true|WP_Error
+	 */
+	private function validate_input( array $input, array $existing ) {
+		$enabled      = ! empty( $input['enabled'] );
+		$host         = trim( (string) wp_unslash( $input['host'] ?? '' ) );
+		$port         = isset( $input['port'] ) ? absint( $input['port'] ) : 0;
+		$encryption   = isset( $input['encryption'] ) ? strtolower( sanitize_text_field( wp_unslash( $input['encryption'] ) ) ) : '';
+		$auth_enabled = ! empty( $input['auth_enabled'] );
+		$username     = trim( (string) wp_unslash( $input['username'] ?? '' ) );
+		$password     = trim( (string) wp_unslash( $input['password'] ?? '' ) );
+
+		if ( '' === $password ) {
+			$password = (string) ( $existing['password'] ?? '' );
+		}
+
+		if ( ! in_array( $encryption, array( '', 'tls', 'ssl' ), true ) ) {
+			return new WP_Error( 'mnem_smtp_invalid_encryption', __( 'Encryption must be one of: none, TLS, or SSL.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( $enabled && '' === $host ) {
+			return new WP_Error( 'mnem_smtp_missing_host', __( 'SMTP is enabled, so SMTP host is required.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( $enabled && ( $port < 1 || $port > 65535 ) ) {
+			return new WP_Error( 'mnem_smtp_invalid_port', __( 'SMTP is enabled, so port must be between 1 and 65535.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( $auth_enabled && '' === $username ) {
+			return new WP_Error( 'mnem_smtp_missing_username', __( 'SMTP authentication is enabled, so username is required.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( $auth_enabled && '' === $password ) {
+			return new WP_Error( 'mnem_smtp_missing_password', __( 'SMTP authentication is enabled, so password is required.', 'multisite-network-email-manager' ) );
+		}
+
+		foreach ( array( 'from_email', 'reply_to_email', 'test_recipient' ) as $field ) {
+			$value = trim( (string) wp_unslash( $input[ $field ] ?? '' ) );
+			if ( '' !== $value && ! is_email( $value ) ) {
+				return new WP_Error(
+					'mnem_smtp_invalid_email',
+					sprintf(
+						/* translators: %s: field label */
+						__( 'Please provide a valid value for %s.', 'multisite-network-email-manager' ),
+						str_replace( '_', ' ', $field )
+					)
+				);
+			}
+		}
+
+		return true;
 	}
 
 	/**

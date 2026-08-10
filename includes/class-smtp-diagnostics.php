@@ -87,7 +87,12 @@ class MNEM_SMTP_Diagnostics {
 					)
 				);
 
-				return $this->error_result( sprintf( __( 'SMTP connection failed: %s', 'multisite-network-email-manager' ), $message ) );
+				return $this->error_result(
+					sprintf(
+						__( 'SMTP connection failed: %1$s. Verify host, port, encryption, and credentials.', 'multisite-network-email-manager' ),
+						$message
+					)
+				);
 			}
 
 			$mailer->smtpClose();
@@ -101,7 +106,12 @@ class MNEM_SMTP_Diagnostics {
 					'message' => $exception->getMessage(),
 				)
 			);
-			return $this->error_result( sprintf( __( 'SMTP connection failed: %s', 'multisite-network-email-manager' ), $exception->getMessage() ) );
+			return $this->error_result(
+				sprintf(
+					__( 'SMTP connection failed: %1$s. Verify host, port, encryption, and credentials.', 'multisite-network-email-manager' ),
+					$exception->getMessage()
+				)
+			);
 		}
 
 		$this->logger->log(
@@ -142,7 +152,12 @@ class MNEM_SMTP_Diagnostics {
 
 		$result = $this->mailer->send( $settings['test_recipient'], $subject, $body );
 		if ( ! $result ) {
-			return $this->error_result( __( 'The test email could not be sent. Check the SMTP logs for details.', 'multisite-network-email-manager' ) );
+			return $this->error_result(
+				sprintf(
+					__( 'The test email could not be sent to %s. Check the SMTP logs for details.', 'multisite-network-email-manager' ),
+					$settings['test_recipient']
+				)
+			);
 		}
 
 		$this->logger->log(

@@ -97,6 +97,27 @@ class MNEM_Plugin {
 	}
 
 	/**
+	 * Deactivation hook callback.
+	 *
+	 * @return void
+	 */
+	public static function deactivate() {
+		$disable_on_deactivate = (bool) apply_filters( 'mnem_smtp_disable_on_deactivate', false );
+
+		if ( ! $disable_on_deactivate ) {
+			return;
+		}
+
+		$settings = get_site_option( MNEM_SMTP_Settings::OPTION_KEY, MNEM_SMTP_Settings::defaults() );
+		if ( ! is_array( $settings ) ) {
+			$settings = MNEM_SMTP_Settings::defaults();
+		}
+
+		$settings['enabled'] = false;
+		update_site_option( MNEM_SMTP_Settings::OPTION_KEY, $settings );
+	}
+
+	/**
 	 * Constructor.
 	 */
 	private function __construct() {
@@ -113,4 +134,5 @@ class MNEM_Plugin {
 }
 
 register_activation_hook( __FILE__, array( 'MNEM_Plugin', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'MNEM_Plugin', 'deactivate' ) );
 MNEM_Plugin::instance();
