@@ -89,15 +89,14 @@ class MNEM_SMTP_Service {
 		$phpmailer->Timeout    = 15;
 		$phpmailer->SMTPDebug  = 0;
 		$phpmailer->SMTPAutoTLS = 'tls' === $settings['encryption'];
+		$phpmailer->CharSet    = $this->get_charset();
 
 		if ( ! empty( $settings['auth_enabled'] ) ) {
 			$phpmailer->Username = $settings['username'];
 			$phpmailer->Password = $settings['password'];
 		}
 
-		if ( ! empty( $settings['encryption'] ) ) {
-			$phpmailer->SMTPSecure = $settings['encryption'];
-		}
+		$phpmailer->SMTPSecure = ! empty( $settings['encryption'] ) ? $settings['encryption'] : '';
 
 		if ( ! empty( $settings['from_email'] ) && is_email( $settings['from_email'] ) ) {
 			$phpmailer->setFrom( $settings['from_email'], $settings['from_name'], false );
@@ -241,5 +240,22 @@ class MNEM_SMTP_Service {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Get the preferred mail charset.
+	 *
+	 * @return string
+	 */
+	private function get_charset() {
+		if ( function_exists( 'get_bloginfo' ) ) {
+			$charset = (string) get_bloginfo( 'charset' );
+
+			if ( '' !== $charset ) {
+				return $charset;
+			}
+		}
+
+		return 'UTF-8';
 	}
 }

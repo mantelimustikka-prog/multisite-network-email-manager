@@ -66,8 +66,30 @@ class MNEM_SMTP_Diagnostics {
 
 		try {
 			$mailer = new PHPMailer\PHPMailer\PHPMailer( true );
-			$this->service->apply_settings_to_phpmailer( $mailer );
-			$mailer->smtpConnect();
+			$applied = $this->service->apply_settings_to_phpmailer( $mailer );
+
+			if ( ! $applied ) {
+				return $this->error_result( __( 'SMTP settings are incomplete.', 'multisite-network-email-manager' ) );
+			}
+
+			$connected = $mailer->smtpConnect();
+
+			if ( true !== $connected ) {
+				$message = ! empty( $mailer->ErrorInfo ) ? $mailer->ErrorInfo : __( 'The SMTP server rejected the connection.', 'multisite-network-email-manager' );
+
+				$this->logger->log(
+					'error',
+					'SMTP connection test failed.',
+					array(
+						'host'    => $settings['host'],
+						'port'    => $settings['port'],
+						'message' => $message,
+					)
+				);
+
+				return $this->error_result( sprintf( __( 'SMTP connection failed: %s', 'multisite-network-email-manager' ), $message ) );
+			}
+
 			$mailer->smtpClose();
 		} catch ( Exception $exception ) {
 			$this->logger->log(
@@ -155,6 +177,14 @@ class MNEM_SMTP_Diagnostics {
 
 		if ( empty( $settings['port'] ) ) {
 			return new WP_Error( 'mnem_smtp_missing_port', __( 'Please set an SMTP port first.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( $settings['port'] < 1 || $settings['port'] > 65535 ) {
+			return new WP_Error( 'mnem_smtp_invalid_port', __( 'The SMTP port must be between 1 and 65535.', 'multisite-network-email-manager' ) );
+		}
+
+		if ( ! in_array( $settings['encryption'], array( '', 'tls', 'ssl' ), true ) ) {
+			return new WP_Error( 'mnem_smtp_invalid_encryption', __( 'The SMTP encryption setting is invalid.', 'multisite-network-email-manager' ) );
 		}
 
 		if ( ! empty( $settings['auth_enabled'] ) && ( empty( $settings['username'] ) || empty( $settings['password'] ) ) ) {

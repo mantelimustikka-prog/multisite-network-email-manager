@@ -111,9 +111,14 @@ class MNEM_SMTP_Settings {
 	public function sanitize_settings( array $input, array $existing = array() ) {
 		$existing   = wp_parse_args( $existing, self::defaults() );
 		$encryption = isset( $input['encryption'] ) ? strtolower( sanitize_text_field( wp_unslash( $input['encryption'] ) ) ) : '';
+		$port       = isset( $input['port'] ) ? absint( $input['port'] ) : 0;
 
 		if ( ! in_array( $encryption, array( '', 'tls', 'ssl' ), true ) ) {
 			$encryption = '';
+		}
+
+		if ( $port < 1 || $port > 65535 ) {
+			$port = 0;
 		}
 
 		$password = isset( $input['password'] ) ? (string) wp_unslash( $input['password'] ) : '';
@@ -124,11 +129,11 @@ class MNEM_SMTP_Settings {
 
 		return array(
 			'enabled'        => ! empty( $input['enabled'] ),
-			'host'           => sanitize_text_field( wp_unslash( $input['host'] ?? '' ) ),
-			'port'           => max( 0, absint( $input['port'] ?? 0 ) ),
+			'host'           => trim( sanitize_text_field( wp_unslash( $input['host'] ?? '' ) ) ),
+			'port'           => $port,
 			'encryption'     => $encryption,
 			'auth_enabled'   => ! empty( $input['auth_enabled'] ),
-			'username'       => sanitize_text_field( wp_unslash( $input['username'] ?? '' ) ),
+			'username'       => trim( sanitize_text_field( wp_unslash( $input['username'] ?? '' ) ) ),
 			'password'       => $password,
 			'from_email'     => sanitize_email( wp_unslash( $input['from_email'] ?? '' ) ),
 			'from_name'      => sanitize_text_field( wp_unslash( $input['from_name'] ?? '' ) ),
