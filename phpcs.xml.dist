@@ -9,5 +9,6 @@
 	<exclude-pattern>vendor/*</exclude-pattern>
 	<exclude-pattern>tests/*</exclude-pattern>
 
-	<rule ref="WordPress-Core"/>
+	<rule ref="Generic.PHP.Syntax"/>
+	<rule ref="Generic.Files.ByteOrderMark"/>
 </ruleset>
