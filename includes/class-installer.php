@@ -21,7 +21,13 @@ class MNEM_Installer {
 	public static function install() {
 		global $wpdb;
 
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		$upgrade_file = ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( file_exists( $upgrade_file ) ) {
+			require_once $upgrade_file;
+		}
+		if ( ! function_exists( 'dbDelta' ) ) {
+			return;
+		}
 
 		$charset_collate = $wpdb->get_charset_collate();
 		$prefix          = $wpdb->base_prefix . 'mnem_';
@@ -71,7 +77,7 @@ class MNEM_Installer {
 			subject      VARCHAR(255)        NOT NULL DEFAULT '',
 			body         LONGTEXT            NOT NULL,
 			status       VARCHAR(32)         NOT NULL DEFAULT 'pending',
-			attempts     SMALLINT UNSIGNED   NOT NULL DEFAULT 0,
+			attempts     SMALLINT(5) UNSIGNED NOT NULL DEFAULT 0,
 			scheduled_at DATETIME            NOT NULL,
 			sent_at      DATETIME            NULL,
 			PRIMARY KEY (id),

@@ -4,6 +4,8 @@
  *
  * Settings are stored as network options using MNEM_Settings.
  * Passwords are stored with basic obfuscation; never in plain text in logs.
+ * The default `b64:` format is intentionally backward-compatible obfuscation,
+ * not strong encryption.
  *
  * @package MNEM
  */
@@ -105,7 +107,8 @@ class MNEM_SMTP_Settings {
 	/**
 	 * Encrypt a password before storing it.
 	 *
-	 * Uses base64 by default. Site owners can replace this with a stronger
+	 * Uses base64-style obfuscation by default (not cryptographic encryption).
+	 * Site owners can replace this with a stronger
 	 * scheme by filtering `mnem_encrypt_smtp_password`.
 	 *
 	 * @param string $plaintext Plaintext password.
@@ -145,8 +148,9 @@ class MNEM_SMTP_Settings {
 		if ( null !== $custom ) {
 			return (string) $custom;
 		}
-		if ( str_starts_with( $stored, 'b64:' ) ) {
-			return base64_decode( substr( $stored, 4 ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+		if ( 0 === strpos( $stored, 'b64:' ) ) {
+			$decoded = base64_decode( substr( $stored, 4 ), true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+			return false !== $decoded ? $decoded : '';
 		}
 		// Legacy plain-text — return as-is.
 		return $stored;

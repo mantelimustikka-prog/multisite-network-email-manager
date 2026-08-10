@@ -103,6 +103,10 @@ class MNEM_Admin {
 			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
 		}
 
+		if ( ! self::ensure_class_available( 'MNEM_SMTP_Settings', 'mnem-smtp-settings' ) ) {
+			return;
+		}
+
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- nonce verified above.
 		$data = array(
 			'enabled'        => isset( $_POST['mnem_smtp_enabled'] ),
@@ -120,16 +124,14 @@ class MNEM_Admin {
 		);
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		MNEM_SMTP_Settings::save( $data );
-		self::add_notice( __( 'SMTP settings saved.', 'mnem' ), 'success' );
+		try {
+			MNEM_SMTP_Settings::save( $data );
+			self::add_notice( __( 'SMTP settings saved.', 'mnem' ), 'success' );
+		} catch ( Throwable $e ) {
+			self::add_notice( __( 'Failed to save SMTP settings.', 'mnem' ), 'error' );
+		}
 
-		wp_safe_redirect(
-			add_query_arg(
-				array( 'page' => 'mnem-smtp-settings' ),
-				network_admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		self::redirect_to_page( 'mnem-smtp-settings' );
 	}
 
 	/**
@@ -142,17 +144,20 @@ class MNEM_Admin {
 			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
 		}
 
-		$result = MNEM_SMTP_Diagnostics::test_connection();
-		$type   = $result['success'] ? 'success' : 'error';
-		self::add_notice( $result['message'], $type );
+		if ( ! self::ensure_class_available( 'MNEM_SMTP_Diagnostics', 'mnem-smtp-settings' ) ) {
+			return;
+		}
 
-		wp_safe_redirect(
-			add_query_arg(
-				array( 'page' => 'mnem-smtp-settings' ),
-				network_admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		try {
+			$result  = MNEM_SMTP_Diagnostics::test_connection();
+			$success = ! empty( $result['success'] );
+			$message = isset( $result['message'] ) ? (string) $result['message'] : __( 'SMTP connection test completed.', 'mnem' );
+			self::add_notice( $message, $success ? 'success' : 'error' );
+		} catch ( Throwable $e ) {
+			self::add_notice( __( 'SMTP connection test failed unexpectedly.', 'mnem' ), 'error' );
+		}
+
+		self::redirect_to_page( 'mnem-smtp-settings' );
 	}
 
 	/**
@@ -165,20 +170,23 @@ class MNEM_Admin {
 			wp_die( esc_html__( 'You do not have permission to do this.', 'mnem' ) );
 		}
 
+		if ( ! self::ensure_class_available( 'MNEM_SMTP_Diagnostics', 'mnem-smtp-settings' ) ) {
+			return;
+		}
+
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce verified above.
 		$recipient = isset( $_POST['mnem_test_recipient'] ) ? sanitize_email( wp_unslash( $_POST['mnem_test_recipient'] ) ) : '';
 
-		$result = MNEM_SMTP_Diagnostics::send_test_email( $recipient );
-		$type   = $result['success'] ? 'success' : 'error';
-		self::add_notice( $result['message'], $type );
+		try {
+			$result  = MNEM_SMTP_Diagnostics::send_test_email( $recipient );
+			$success = ! empty( $result['success'] );
+			$message = isset( $result['message'] ) ? (string) $result['message'] : __( 'SMTP test email request completed.', 'mnem' );
+			self::add_notice( $message, $success ? 'success' : 'error' );
+		} catch ( Throwable $e ) {
+			self::add_notice( __( 'SMTP test email failed unexpectedly.', 'mnem' ), 'error' );
+		}
 
-		wp_safe_redirect(
-			add_query_arg(
-				array( 'page' => 'mnem-smtp-settings' ),
-				network_admin_url( 'admin.php' )
-			)
-		);
-		exit;
+		self::redirect_to_page( 'mnem-smtp-settings' );
 	}
 
 	// -------------------------------------------------------------------------
@@ -360,5 +368,36 @@ class MNEM_Admin {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Redirect to a network admin page.
+	 *
+	 * @param string $page Menu slug page.
+	 */
+	private static function redirect_to_page( $page ) {
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'page' => $page ),
+				network_admin_url( 'admin.php' )
+			)
+		);
+		exit;
+	}
+
+	/**
+	 * Ensure required class exists before handling an action.
+	 *
+	 * @param string $class_name Class name.
+	 * @param string $page       Redirect page slug.
+	 * @return bool
+	 */
+	private static function ensure_class_available( $class_name, $page = 'mnem-dashboard' ) {
+		if ( class_exists( $class_name ) ) {
+			return true;
+		}
+		self::add_notice( __( 'Required plugin module is unavailable.', 'mnem' ), 'error' );
+		self::redirect_to_page( $page );
+		return false;
 	}
 }

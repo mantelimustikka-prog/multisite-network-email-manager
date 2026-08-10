@@ -92,4 +92,9 @@ class MNEM_SMTP_Settings_Test extends TestCase {
 		// But should start with the b64: prefix.
 		$this->assertStringStartsWith( 'b64:', $raw );
 	}
+
+	public function test_invalid_base64_password_returns_empty_string() {
+		update_site_option( 'mnem_smtp_password', 'b64:not-valid-base64%%' );
+		$this->assertSame( '', MNEM_SMTP_Settings::get( 'password' ) );
+	}
 }

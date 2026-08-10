@@ -14,6 +14,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MNEM_Queue {
 
+	const MAX_ATTEMPTS = 3;
+	const RETRY_BASE_SECONDS = 300;
+	const RETRY_MAX_SECONDS  = 3600;
+
 	/**
 	 * Register cron hooks.
 	 */
@@ -21,7 +25,9 @@ class MNEM_Queue {
 		add_action( 'mnem_process_queue', array( __CLASS__, 'process' ) );
 
 		if ( ! wp_next_scheduled( 'mnem_process_queue' ) ) {
-			wp_schedule_event( time(), 'every_five_minutes', 'mnem_process_queue' );
+			$schedules = wp_get_schedules();
+			$interval  = isset( $schedules['every_five_minutes'] ) ? 'every_five_minutes' : 'hourly';
+			wp_schedule_event( time(), $interval, 'mnem_process_queue' );
 		}
 	}
 
@@ -39,7 +45,12 @@ class MNEM_Queue {
 	public static function enqueue( array $job ) {
 		global $wpdb;
 
-		if ( MNEM_Suppression::is_suppressed( $job['recipient'] ?? '' ) ) {
+		$recipient = sanitize_email( $job['recipient'] ?? '' );
+		if ( ! is_email( $recipient ) ) {
+			return false;
+		}
+
+		if ( MNEM_Suppression::is_suppressed( $recipient ) ) {
 			MNEM_Logger::info( 'queue', 'Skipped suppressed recipient', array( 'recipient' => $job['recipient'] ) );
 			return false;
 		}
@@ -50,7 +61,7 @@ class MNEM_Queue {
 			$table,
 			array(
 				'campaign_id'  => absint( $job['campaign_id'] ?? 0 ),
-				'recipient'    => sanitize_email( $job['recipient'] ?? '' ),
+				'recipient'    => $recipient,
 				'subject'      => sanitize_text_field( $job['subject'] ?? '' ),
 				'body'         => wp_kses_post( $job['body'] ?? '' ),
 				'status'       => 'pending',
@@ -102,22 +113,38 @@ class MNEM_Queue {
 		global $wpdb;
 
 		$table = $wpdb->base_prefix . 'mnem_queue';
+		$job_id = absint( $job['id'] );
 
-		// Mark as processing to prevent duplicate sends.
-		$wpdb->update(
+		// Atomically claim only pending, due jobs to reduce duplicate sends.
+		$claimed = $wpdb->update(
 			$table,
 			array( 'status' => 'processing' ),
-			array( 'id' => absint( $job['id'] ) ),
+			array(
+				'id'     => $job_id,
+				'status' => 'pending',
+			),
 			array( '%s' ),
-			array( '%d' )
+			array( '%d', '%s' )
 		);
+		if ( 1 !== (int) $claimed ) {
+			return;
+		}
 
-		$sent = wp_mail(
-			$job['recipient'],
-			$job['subject'],
-			$job['body'],
-			array( 'Content-Type: text/html; charset=UTF-8' )
-		);
+		if ( ! is_email( $job['recipient'] ) ) {
+			self::mark_failed( $job_id, (int) $job['attempts'] + 1, __( 'Invalid recipient address.', 'mnem' ) );
+			return;
+		}
+
+		try {
+			$sent = wp_mail(
+				$job['recipient'],
+				$job['subject'],
+				$job['body'],
+				array( 'Content-Type: text/html; charset=UTF-8' )
+			);
+		} catch ( Throwable $e ) {
+			$sent = false;
+		}
 
 		$attempts = (int) $job['attempts'] + 1;
 
@@ -129,25 +156,61 @@ class MNEM_Queue {
 					'attempts' => $attempts,
 					'sent_at'  => current_time( 'mysql', true ),
 				),
-				array( 'id' => absint( $job['id'] ) ),
+				array( 'id' => $job_id ),
 				array( '%s', '%d', '%s' ),
 				array( '%d' )
 			);
-			MNEM_Logger::info( 'queue', 'Email sent', array( 'job_id' => $job['id'], 'recipient' => $job['recipient'] ) );
+			MNEM_Logger::info( 'queue', 'Email sent', array( 'job_id' => $job_id, 'recipient' => $job['recipient'] ) );
 		} else {
-			$status = $attempts >= 3 ? 'failed' : 'pending';
+			$delay = self::calculate_retry_delay( $attempts );
+			$status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
 			$wpdb->update(
 				$table,
 				array(
 					'status'       => $status,
 					'attempts'     => $attempts,
-					'scheduled_at' => gmdate( 'Y-m-d H:i:s', time() + ( $attempts * 300 ) ),
+					'scheduled_at' => gmdate( 'Y-m-d H:i:s', time() + $delay ),
 				),
-				array( 'id' => absint( $job['id'] ) ),
+				array( 'id' => $job_id ),
 				array( '%s', '%d', '%s' ),
 				array( '%d' )
 			);
-			MNEM_Logger::error( 'queue', 'Email failed', array( 'job_id' => $job['id'], 'attempt' => $attempts ) );
+			MNEM_Logger::error( 'queue', 'Email failed', array( 'job_id' => $job_id, 'attempt' => $attempts, 'retry_delay' => $delay ) );
 		}
+	}
+
+	/**
+	 * Mark queue job failed immediately.
+	 *
+	 * @param int    $job_id    Queue ID.
+	 * @param int    $attempts  Attempts count.
+	 * @param string $reason    Failure reason.
+	 */
+	private static function mark_failed( $job_id, $attempts, $reason ) {
+		global $wpdb;
+		$table = $wpdb->base_prefix . 'mnem_queue';
+		$wpdb->update(
+			$table,
+			array(
+				'status'   => 'failed',
+				'attempts' => absint( $attempts ),
+			),
+			array( 'id' => absint( $job_id ) ),
+			array( '%s', '%d' ),
+			array( '%d' )
+		);
+		MNEM_Logger::error( 'queue', 'Queue job failed', array( 'job_id' => absint( $job_id ), 'reason' => $reason ) );
+	}
+
+	/**
+	 * Calculate retry backoff delay in seconds.
+	 *
+	 * @param int $attempts Attempt number (1-indexed).
+	 * @return int
+	 */
+	private static function calculate_retry_delay( $attempts ) {
+		$attempts = max( 1, absint( $attempts ) );
+		$delay    = self::RETRY_BASE_SECONDS * ( 1 << ( $attempts - 1 ) );
+		return min( self::RETRY_MAX_SECONDS, $delay );
 	}
 }

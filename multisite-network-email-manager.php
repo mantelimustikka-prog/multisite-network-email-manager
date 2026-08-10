@@ -26,30 +26,48 @@ define( 'MNEM_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'MNEM_OPTION_PREFIX', 'mnem_' );
 define( 'MNEM_DB_VERSION', '1' );
 
-// Core includes.
-require_once MNEM_PLUGIN_DIR . 'includes/class-logger.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-installer.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-settings.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-rest-api.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-settings.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-service.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-smtp-diagnostics.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-campaigns.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-queue.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-suppression.php';
-require_once MNEM_PLUGIN_DIR . 'includes/class-user-management.php';
+/**
+ * Safely include a plugin module file.
+ *
+ * @param string $relative_path Relative path from plugin root.
+ * @return bool True when included (or already loaded), false when missing.
+ */
+function mnem_safe_include( $relative_path ) {
+	$path = MNEM_PLUGIN_DIR . ltrim( $relative_path, '/' );
+	if ( ! file_exists( $path ) ) {
+		error_log( sprintf( 'MNEM bootstrap warning: missing file %s', $relative_path ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		return false;
+	}
+	require_once $path;
+	return true;
+}
+
+// Core includes (defensive load-order hardening).
+mnem_safe_include( 'includes/class-logger.php' );
+mnem_safe_include( 'includes/class-installer.php' );
+mnem_safe_include( 'includes/class-settings.php' );
+mnem_safe_include( 'includes/class-rest-api.php' );
+mnem_safe_include( 'includes/class-smtp-settings.php' );
+mnem_safe_include( 'includes/class-smtp-service.php' );
+mnem_safe_include( 'includes/class-smtp-diagnostics.php' );
+mnem_safe_include( 'includes/class-campaigns.php' );
+mnem_safe_include( 'includes/class-queue.php' );
+mnem_safe_include( 'includes/class-suppression.php' );
+mnem_safe_include( 'includes/class-user-management.php' );
 
 // Admin includes (only in admin context).
 if ( is_admin() ) {
-	require_once MNEM_PLUGIN_DIR . 'admin/class-admin.php';
-	require_once MNEM_PLUGIN_DIR . 'admin/class-admin-menu.php';
+	mnem_safe_include( 'admin/class-admin.php' );
+	mnem_safe_include( 'admin/class-admin-menu.php' );
 }
 
 /**
  * Activation hook — runs on network activation.
  */
 function mnem_activate() {
-	MNEM_Installer::install();
+	if ( class_exists( 'MNEM_Installer' ) ) {
+		MNEM_Installer::install();
+	}
 	// Store the plugin version on activation.
 	update_site_option( 'mnem_version', MNEM_VERSION );
 	update_site_option( 'mnem_db_version', MNEM_DB_VERSION );
@@ -90,15 +108,29 @@ function mnem_init() {
 	load_plugin_textdomain( 'mnem', false, dirname( plugin_basename( MNEM_PLUGIN_FILE ) ) . '/languages' );
 
 	// Initialize core services.
-	MNEM_Logger::init();
-	MNEM_Settings::init();
-	MNEM_SMTP_Service::init();
-	MNEM_REST_API::init();
-	MNEM_Queue::init();
+	if ( class_exists( 'MNEM_Logger' ) ) {
+		MNEM_Logger::init();
+	}
+	if ( class_exists( 'MNEM_Settings' ) ) {
+		MNEM_Settings::init();
+	}
+	if ( class_exists( 'MNEM_SMTP_Service' ) ) {
+		MNEM_SMTP_Service::init();
+	}
+	if ( class_exists( 'MNEM_REST_API' ) ) {
+		MNEM_REST_API::init();
+	}
+	if ( class_exists( 'MNEM_Queue' ) ) {
+		MNEM_Queue::init();
+	}
 
 	if ( is_admin() ) {
-		MNEM_Admin::init();
-		MNEM_Admin_Menu::init();
+		if ( class_exists( 'MNEM_Admin' ) ) {
+			MNEM_Admin::init();
+		}
+		if ( class_exists( 'MNEM_Admin_Menu' ) ) {
+			MNEM_Admin_Menu::init();
+		}
 	}
 }
 add_action( 'plugins_loaded', 'mnem_init' );
@@ -108,7 +140,7 @@ add_action( 'plugins_loaded', 'mnem_init' );
  */
 function mnem_maybe_upgrade() {
 	$installed_db_version = get_site_option( 'mnem_db_version', '0' );
-	if ( version_compare( $installed_db_version, MNEM_DB_VERSION, '<' ) ) {
+	if ( class_exists( 'MNEM_Installer' ) && version_compare( $installed_db_version, MNEM_DB_VERSION, '<' ) ) {
 		MNEM_Installer::install();
 		update_site_option( 'mnem_db_version', MNEM_DB_VERSION );
 	}

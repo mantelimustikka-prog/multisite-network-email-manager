@@ -105,7 +105,7 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
-		include MNEM_PLUGIN_DIR . 'admin/views/dashboard.php';
+		self::include_view( 'dashboard.php' );
 	}
 
 	/** Render SMTP settings page. */
@@ -113,8 +113,12 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
+		if ( ! class_exists( 'MNEM_SMTP_Settings' ) ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'SMTP module is unavailable.', 'mnem' ) . '</p></div>';
+			return;
+		}
 		$settings = MNEM_SMTP_Settings::get_all();
-		include MNEM_PLUGIN_DIR . 'admin/views/smtp-settings.php';
+		self::include_view( 'smtp-settings.php' );
 	}
 
 	/** Render campaigns page. */
@@ -122,11 +126,15 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
+		if ( ! class_exists( 'MNEM_Campaigns' ) ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Campaigns module is unavailable.', 'mnem' ) . '</p></div>';
+			return;
+		}
 		$campaigns     = MNEM_Campaigns::get_campaigns();
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$edit_id       = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
 		$edit_campaign = $edit_id ? MNEM_Campaigns::get_campaign( $edit_id ) : null;
-		include MNEM_PLUGIN_DIR . 'admin/views/campaigns.php';
+		self::include_view( 'campaigns.php' );
 	}
 
 	/** Render queue page. */
@@ -134,7 +142,7 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
-		include MNEM_PLUGIN_DIR . 'admin/views/queue.php';
+		self::include_view( 'queue.php' );
 	}
 
 	/** Render suppression list page. */
@@ -142,8 +150,12 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
+		if ( ! class_exists( 'MNEM_Suppression' ) ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Suppression module is unavailable.', 'mnem' ) . '</p></div>';
+			return;
+		}
 		$suppression_list = MNEM_Suppression::get_list();
-		include MNEM_PLUGIN_DIR . 'admin/views/suppression.php';
+		self::include_view( 'suppression.php' );
 	}
 
 	/** Render logs page. */
@@ -151,6 +163,20 @@ class MNEM_Admin_Menu {
 		if ( ! current_user_can( 'manage_network' ) ) {
 			wp_die( esc_html__( 'You do not have permission to access this page.', 'mnem' ) );
 		}
-		include MNEM_PLUGIN_DIR . 'admin/views/logs.php';
+		self::include_view( 'logs.php' );
+	}
+
+	/**
+	 * Include a view file safely.
+	 *
+	 * @param string $view Relative path under admin/views.
+	 */
+	private static function include_view( $view ) {
+		$path = MNEM_PLUGIN_DIR . 'admin/views/' . ltrim( $view, '/' );
+		if ( file_exists( $path ) ) {
+			include $path;
+			return;
+		}
+		echo '<div class="notice notice-error"><p>' . esc_html__( 'Required admin view is missing.', 'mnem' ) . '</p></div>';
 	}
 }

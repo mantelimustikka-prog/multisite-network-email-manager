@@ -13,22 +13,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MNEM_REST_API {
 
-	const NAMESPACE = 'mnem/v1';
+	const ROUTE_NAMESPACE = 'mnem/v1';
 
 	/**
 	 * Register REST hooks.
 	 */
 	public static function init() {
-		add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
+		if ( function_exists( 'add_action' ) ) {
+			add_action( 'rest_api_init', array( __CLASS__, 'register_routes' ) );
+		}
 	}
 
 	/**
 	 * Register all REST routes.
 	 */
 	public static function register_routes() {
+		if ( ! function_exists( 'register_rest_route' ) || ! class_exists( 'WP_REST_Server' ) ) {
+			return;
+		}
+
 		// --- Status endpoint (public health-check) ----------------------
 		register_rest_route(
-			self::NAMESPACE,
+			self::ROUTE_NAMESPACE,
 			'/status',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -39,7 +45,7 @@ class MNEM_REST_API {
 
 		// --- SMTP settings (network admin only) -------------------------
 		register_rest_route(
-			self::NAMESPACE,
+			self::ROUTE_NAMESPACE,
 			'/smtp/settings',
 			array(
 				array(
@@ -58,7 +64,7 @@ class MNEM_REST_API {
 
 		// --- Queue (network admin only) ---------------------------------
 		register_rest_route(
-			self::NAMESPACE,
+			self::ROUTE_NAMESPACE,
 			'/queue',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -69,7 +75,7 @@ class MNEM_REST_API {
 
 		// --- Suppression (network admin only) ---------------------------
 		register_rest_route(
-			self::NAMESPACE,
+			self::ROUTE_NAMESPACE,
 			'/suppression',
 			array(
 				array(
@@ -123,7 +129,7 @@ class MNEM_REST_API {
 			'enabled'        => array(
 				'type'              => 'boolean',
 				'required'          => false,
-				'sanitize_callback' => 'rest_sanitize_boolean',
+				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
 			),
 			'host'           => array(
 				'type'              => 'string',
@@ -146,7 +152,7 @@ class MNEM_REST_API {
 			'auth_enabled'   => array(
 				'type'              => 'boolean',
 				'required'          => false,
-				'sanitize_callback' => 'rest_sanitize_boolean',
+				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
 			),
 			'username'       => array(
 				'type'              => 'string',
@@ -183,9 +189,22 @@ class MNEM_REST_API {
 			'debug_mode'     => array(
 				'type'              => 'boolean',
 				'required'          => false,
-				'sanitize_callback' => 'rest_sanitize_boolean',
+				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
 			),
 		);
+	}
+
+	/**
+	 * Sanitize booleans with a fallback for older WordPress versions.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return bool
+	 */
+	public static function sanitize_boolean( $value ) {
+		if ( function_exists( 'rest_sanitize_boolean' ) ) {
+			return rest_sanitize_boolean( $value );
+		}
+		return filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 	}
 
 	// -------------------------------------------------------------------------
@@ -223,8 +242,14 @@ class MNEM_REST_API {
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */
-	public static function update_smtp_settings( WP_REST_Request $request ) {
-		$params = $request->get_json_params();
+	public static function update_smtp_settings( $request ) {
+		$params = array();
+		if ( class_exists( 'WP_REST_Request' ) && $request instanceof WP_REST_Request ) {
+			$params = (array) $request->get_json_params();
+			if ( empty( $params ) ) {
+				$params = (array) $request->get_params();
+			}
+		}
 		MNEM_SMTP_Settings::save( $params );
 		return rest_ensure_response( array( 'updated' => true ) );
 	}
@@ -253,9 +278,13 @@ class MNEM_REST_API {
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
 	 */
-	public static function add_suppression( WP_REST_Request $request ) {
-		$email  = sanitize_email( $request->get_param( 'email' ) );
-		$reason = sanitize_text_field( $request->get_param( 'reason' ) );
+	public static function add_suppression( $request ) {
+		$email  = '';
+		$reason = '';
+		if ( class_exists( 'WP_REST_Request' ) && $request instanceof WP_REST_Request ) {
+			$email  = sanitize_email( $request->get_param( 'email' ) );
+			$reason = sanitize_text_field( $request->get_param( 'reason' ) );
+		}
 		$result = MNEM_Suppression::add( $email, $reason );
 		return rest_ensure_response( array( 'added' => (bool) $result ) );
 	}
