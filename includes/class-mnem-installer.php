@@ -18,7 +18,7 @@ class MNEM_Installer {
             wp_unschedule_event( $timestamp, MNEM_Queue::CRON_HOOK );
         }
 
-        update_site_option( 'mnem_network_activated', (bool) $network_wide );
+        update_site_option( 'mnem_network_activated', false );
     }
 
     public static function install(): void {

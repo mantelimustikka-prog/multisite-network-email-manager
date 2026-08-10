@@ -55,6 +55,10 @@ class MNEM_Queue {
             return 0;
         }
 
+        if ( $this->suppression->is_suppressed( $recipient ) ) {
+            return 0;
+        }
+
         $table = $wpdb->base_prefix . 'mnem_queue';
         $wpdb->insert(
             $table,
