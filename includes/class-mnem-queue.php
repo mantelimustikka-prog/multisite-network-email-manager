@@ -19,14 +19,11 @@ class MNEM_Queue {
 
     public function hooks(): void {
         add_action( self::CRON_HOOK, array( $this, 'process' ) );
+        self::register_schedule();
         self::schedule();
     }
 
-    public static function schedule(): void {
-        if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
-            wp_schedule_event( time() + MINUTE_IN_SECONDS, 'minute', self::CRON_HOOK );
-        }
-
+    public static function register_schedule(): void {
         add_filter(
             'cron_schedules',
             static function ( array $schedules ): array {
@@ -40,6 +37,14 @@ class MNEM_Queue {
                 return $schedules;
             }
         );
+    }
+
+    public static function schedule(): void {
+        self::register_schedule();
+
+        if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+            wp_schedule_event( time() + MINUTE_IN_SECONDS, 'minute', self::CRON_HOOK );
+        }
     }
 
     public function enqueue( string $recipient, string $subject, string $body, array $headers = array(), array $attachments = array(), ?string $available_at = null ): int {

@@ -76,35 +76,35 @@ class MNEM_Admin {
     }
 
     public function render_dashboard(): void {
-        $this->render_view( 'dashboard', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'dashboard', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_SETTINGS );
     }
 
     public function render_settings(): void {
-        $this->render_view( 'settings', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'settings', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_SETTINGS );
     }
 
     public function render_queue(): void {
-        $this->render_view( 'queue', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'queue', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_QUEUE );
     }
 
     public function render_campaigns(): void {
-        $this->render_view( 'campaigns', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'campaigns', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_SETTINGS );
     }
 
     public function render_suppressions(): void {
-        $this->render_view( 'suppressions', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'suppressions', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_SETTINGS );
     }
 
     public function render_user_management(): void {
-        $this->render_view( 'user-management', array( 'settings' => $this->settings->all() ) );
+        $this->render_view( 'user-management', array( 'settings' => $this->settings->all() ), MNEM_Capabilities::MANAGE_USERS );
     }
 
     public function render_logs(): void {
-        $this->render_view( 'logs', array( 'logs' => $this->logger->latest() ) );
+        $this->render_view( 'logs', array( 'logs' => $this->logger->latest() ), MNEM_Capabilities::VIEW_LOGS );
     }
 
-    private function render_view( string $view, array $args = array() ): void {
-        if ( ! MNEM_Capabilities::can( MNEM_Capabilities::MANAGE_SETTINGS ) ) {
+    private function render_view( string $view, array $args = array(), string $capability = MNEM_Capabilities::MANAGE_SETTINGS ): void {
+        if ( ! MNEM_Capabilities::can( $capability ) ) {
             wp_die( esc_html__( 'You do not have permission to view this page.', 'multisite-network-email-manager' ) );
         }
 
