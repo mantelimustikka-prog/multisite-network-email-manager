@@ -51,7 +51,8 @@ spl_autoload_register(
 
         $relative = substr($class, 5);
         $relative = str_replace('\\', '/', $relative);
-        $relative = str_replace('_', '/', $relative);
+        // Do NOT replace underscores with slashes: class names use underscores
+        // as word separators that become hyphens, not sub-directories.
         $parts    = array_values(array_filter(explode('/', $relative)));
 
         if (empty($parts)) {

@@ -161,6 +161,8 @@ class Queue
 
     private static function current_time_mysql()
     {
+        // All queue timestamps are stored in UTC to ensure consistent scheduling
+        // regardless of the WordPress blog timezone setting.
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
     }
 }

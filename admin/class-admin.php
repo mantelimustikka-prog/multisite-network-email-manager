@@ -34,6 +34,7 @@ class Admin
             $email = isset($_POST['test_email']) ? sanitize_email(wp_unslash($_POST['test_email'])) : '';
             $result = \MNEM\SmtpDiagnostics::send_test_email($email);
             $this->redirect_with_notice('mnem-smtp-settings', $result['success'] ? 'test_sent' : 'test_failed');
+            return;
         }
 
         $data = array(

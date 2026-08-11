@@ -90,11 +90,6 @@ class RestApi
 
     public function get_status()
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         return array(
             'plugin_version' => defined('MNEM_VERSION') ? MNEM_VERSION : '1.0.0',
             'db_version' => get_site_option('mnem_db_version', ''),
@@ -104,11 +99,6 @@ class RestApi
 
     public function get_smtp_settings()
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         $settings = SmtpSettings::get_all();
         $settings['password'] = '';
 
@@ -117,11 +107,6 @@ class RestApi
 
     public function save_smtp_settings($request)
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
         SmtpSettings::save($params);
 
@@ -133,11 +118,6 @@ class RestApi
 
     public function get_queue_items()
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         global $wpdb;
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
         $table = $wpdb->prefix . 'mnem_queue';
@@ -155,11 +135,6 @@ class RestApi
 
     public function get_suppression_list()
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
 
         return array('items' => Suppression::get_list($site_id));
@@ -167,11 +142,6 @@ class RestApi
 
     public function add_suppression_entry($request)
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
         $result = Suppression::add(
@@ -185,11 +155,6 @@ class RestApi
 
     public function delete_suppression_entry($request)
     {
-        $permission = $this->permission_check();
-        if ($permission instanceof \WP_Error) {
-            return $permission;
-        }
-
         $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
         $result = Suppression::remove($site_id, isset($params['email']) ? (string) $params['email'] : '');
