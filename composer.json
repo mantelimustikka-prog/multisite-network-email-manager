@@ -1,0 +1,22 @@
+{
+  "name": "mnem/multisite-network-email-manager",
+  "description": "WordPress multisite plugin for managed email",
+  "type": "wordpress-plugin",
+  "require": {
+    "php": ">=7.4"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.0",
+    "brain/monkey": "^2.6",
+    "mockery/mockery": "^1.5"
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "MNEM\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit",
+    "lint": "find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l"
+  }
+}
