@@ -344,7 +344,7 @@ class MNEM_SMTP_Service {
 		$to = isset( $mail_data['to'] ) ? $mail_data['to'] : array();
 
 		if ( is_string( $to ) ) {
-			$to = preg_split( '/,/', $to );
+			$to = str_getcsv( $to );
 		}
 
 		if ( ! is_array( $to ) ) {

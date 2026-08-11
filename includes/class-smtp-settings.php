@@ -16,6 +16,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MNEM_SMTP_Settings {
 
+	/** @var array|null Cached resolved SMTP settings with decrypted password. */
+	private static $resolved_settings = null;
+
 	/** Setting keys and their defaults. */
 	const DEFAULTS = array(
 		'enabled'               => false,
@@ -50,15 +53,21 @@ class MNEM_SMTP_Settings {
 	 * @return array
 	 */
 	public static function get_all( $include_password = false ) {
-		$settings = array();
-		foreach ( self::DEFAULTS as $key => $default ) {
-			$settings[ $key ] = MNEM_Settings::get( 'smtp_' . $key, $default );
+		if ( null === self::$resolved_settings ) {
+			$settings = array();
+			foreach ( self::DEFAULTS as $key => $default ) {
+				$settings[ $key ] = MNEM_Settings::get( 'smtp_' . $key, $default );
+			}
+
+			$settings = self::apply_provider_defaults( $settings );
+
+			// Decrypt the stored password before use.
+			$settings['password'] = self::decrypt_password( (string) $settings['password'] );
+
+			self::$resolved_settings = $settings;
 		}
 
-		$settings = self::apply_provider_defaults( $settings );
-
-		// Decrypt the stored password before use.
-		$settings['password'] = self::decrypt_password( (string) $settings['password'] );
+		$settings = self::$resolved_settings;
 
 		if ( ! $include_password ) {
 			$settings['password'] = '' !== $settings['password'] ? self::PASSWORD_PLACEHOLDER : '';
@@ -78,21 +87,9 @@ class MNEM_SMTP_Settings {
 			return $default;
 		}
 		$stored_default = null !== $default ? $default : self::DEFAULTS[ $key ];
-		$value          = MNEM_Settings::get( 'smtp_' . $key, $stored_default );
+		$settings       = self::get_all( true );
 
-		// Transparently decrypt password on retrieval.
-		if ( 'password' === $key ) {
-			$value = self::decrypt_password( (string) $value );
-		}
-
-		if ( in_array( $key, array( 'provider', 'host', 'port', 'encryption', 'auth_enabled', 'username' ), true ) ) {
-			$all_settings = self::get_all( true );
-			if ( array_key_exists( $key, $all_settings ) ) {
-				$value = $all_settings[ $key ];
-			}
-		}
-
-		return $value;
+		return array_key_exists( $key, $settings ) ? $settings[ $key ] : $stored_default;
 	}
 
 	/**
@@ -118,6 +115,8 @@ class MNEM_SMTP_Settings {
 
 			MNEM_Settings::set( 'smtp_' . $key, $value );
 		}
+
+		self::$resolved_settings = null;
 	}
 
 	/**
@@ -133,10 +132,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'SMTP Password / Token', 'mnem' ),
-				'username_label'  => __( 'SMTP Username', 'mnem' ),
-				'help'            => __( 'Use this option for any SMTP provider not listed below or when you need to define custom connection details.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'SMTP Password / Token', 'mnem' ),
+				'username_label'   => __( 'SMTP Username', 'mnem' ),
+				'help'             => __( 'Use this option for any SMTP provider not listed below or when you need to define custom connection details.', 'mnem' ),
 			),
 			'brevo'    => array(
 				'label'           => __( 'Brevo', 'mnem' ),
@@ -144,10 +143,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'Brevo SMTP Key / Password', 'mnem' ),
-				'username_label'  => __( 'Brevo SMTP Login', 'mnem' ),
-				'help'            => __( 'Brevo commonly uses smtp-relay.brevo.com on port 587 with STARTTLS. Use your Brevo SMTP login and SMTP key.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'Brevo SMTP Key / Password', 'mnem' ),
+				'username_label'   => __( 'Brevo SMTP Login', 'mnem' ),
+				'help'             => __( 'Brevo commonly uses smtp-relay.brevo.com on port 587 with STARTTLS. Use your Brevo SMTP login and SMTP key.', 'mnem' ),
 			),
 			'sendgrid' => array(
 				'label'           => __( 'SendGrid', 'mnem' ),
@@ -155,10 +154,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> 'apikey',
-				'credential_label'=> __( 'SendGrid API Key', 'mnem' ),
-				'username_label'  => __( 'SendGrid Username', 'mnem' ),
-				'help'            => __( 'SendGrid SMTP typically uses smtp.sendgrid.net on port 587 with username "apikey" and your API key as the password.', 'mnem' ),
+				'default_username' => 'apikey',
+				'credential_label' => __( 'SendGrid API Key', 'mnem' ),
+				'username_label'   => __( 'SendGrid Username', 'mnem' ),
+				'help'             => __( 'SendGrid SMTP typically uses smtp.sendgrid.net on port 587 with username "apikey" and your API key as the password.', 'mnem' ),
 			),
 			'mailgun'  => array(
 				'label'           => __( 'Mailgun', 'mnem' ),
@@ -166,10 +165,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'Mailgun SMTP Password', 'mnem' ),
-				'username_label'  => __( 'Mailgun SMTP Username', 'mnem' ),
-				'help'            => __( 'Mailgun SMTP commonly uses smtp.mailgun.org on port 587 with STARTTLS. If your account uses an EU region endpoint, update the host accordingly.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'Mailgun SMTP Password', 'mnem' ),
+				'username_label'   => __( 'Mailgun SMTP Username', 'mnem' ),
+				'help'             => __( 'Mailgun SMTP commonly uses smtp.mailgun.org on port 587 with STARTTLS. If your account uses an EU region endpoint, update the host accordingly.', 'mnem' ),
 			),
 			'smtp2go'  => array(
 				'label'           => __( 'SMTP2GO', 'mnem' ),
@@ -177,10 +176,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'SMTP2GO Password / API Key', 'mnem' ),
-				'username_label'  => __( 'SMTP2GO Username', 'mnem' ),
-				'help'            => __( 'SMTP2GO typically uses mail.smtp2go.com on port 587 with STARTTLS. Use your SMTP username and password or API key if your account is configured for it.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'SMTP2GO Password / API Key', 'mnem' ),
+				'username_label'   => __( 'SMTP2GO Username', 'mnem' ),
+				'help'             => __( 'SMTP2GO typically uses mail.smtp2go.com on port 587 with STARTTLS. Use your SMTP username and password or API key if your account is configured for it.', 'mnem' ),
 			),
 			'postmark' => array(
 				'label'           => __( 'Postmark', 'mnem' ),
@@ -188,10 +187,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'Postmark Server Token / Password', 'mnem' ),
-				'username_label'  => __( 'Postmark SMTP Username', 'mnem' ),
-				'help'            => __( 'Postmark SMTP uses smtp.postmarkapp.com on port 587 with STARTTLS. Use the credentials provided for your Postmark server.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'Postmark Server Token / Password', 'mnem' ),
+				'username_label'   => __( 'Postmark SMTP Username', 'mnem' ),
+				'help'             => __( 'Postmark SMTP uses smtp.postmarkapp.com on port 587 with STARTTLS. Use the credentials provided for your Postmark server.', 'mnem' ),
 			),
 			'amazon_ses' => array(
 				'label'           => __( 'Amazon SES', 'mnem' ),
@@ -199,10 +198,10 @@ class MNEM_SMTP_Settings {
 				'port'            => 587,
 				'encryption'      => 'tls',
 				'auth_enabled'    => true,
-				'default_username'=> '',
-				'credential_label'=> __( 'Amazon SES SMTP Password', 'mnem' ),
-				'username_label'  => __( 'Amazon SES SMTP Username', 'mnem' ),
-				'help'            => __( 'Amazon SES SMTP endpoints are region-specific. Update the host to match your SES region if needed.', 'mnem' ),
+				'default_username' => '',
+				'credential_label' => __( 'Amazon SES SMTP Password', 'mnem' ),
+				'username_label'   => __( 'Amazon SES SMTP Username', 'mnem' ),
+				'help'             => __( 'Amazon SES SMTP endpoints are region-specific. Update the host to match your SES region if needed.', 'mnem' ),
 			),
 		);
 	}

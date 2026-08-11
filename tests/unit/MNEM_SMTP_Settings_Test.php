@@ -16,6 +16,11 @@ class MNEM_SMTP_Settings_Test extends TestCase {
 		$cache = $ref->getProperty( 'cache' );
 		$cache->setAccessible( true );
 		$cache->setValue( null, array() );
+
+		$smtp_ref          = new ReflectionClass( MNEM_SMTP_Settings::class );
+		$resolved_settings = $smtp_ref->getProperty( 'resolved_settings' );
+		$resolved_settings->setAccessible( true );
+		$resolved_settings->setValue( null, null );
 	}
 
 	public function test_get_all_returns_defaults_when_nothing_saved() {
@@ -92,7 +97,7 @@ class MNEM_SMTP_Settings_Test extends TestCase {
 		$this->assertSame( 'apikey', $settings['username'] );
 	}
 
-	public function test_rate_limits_are_sanitized_to_non_negative_integers() {
+	public function test_rate_limits_are_stored_as_absolute_integers() {
 		MNEM_SMTP_Settings::save(
 			array(
 				'rate_limit_per_minute' => '-5',

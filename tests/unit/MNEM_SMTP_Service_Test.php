@@ -19,6 +19,11 @@ class MNEM_SMTP_Service_Test extends TestCase {
 		$cache->setAccessible( true );
 		$cache->setValue( null, array() );
 
+		$smtp_ref          = new ReflectionClass( MNEM_SMTP_Settings::class );
+		$resolved_settings = $smtp_ref->getProperty( 'resolved_settings' );
+		$resolved_settings->setAccessible( true );
+		$resolved_settings->setValue( null, null );
+
 		$service_ref     = new ReflectionClass( MNEM_SMTP_Service::class );
 		$send_timestamps = $service_ref->getProperty( 'send_timestamps' );
 		$send_timestamps->setAccessible( true );
@@ -141,6 +146,14 @@ class MNEM_SMTP_Service_Test extends TestCase {
 				array( 'to' => 'two@example.com' )
 			)
 		);
+	}
+
+	public function test_rate_limit_recipient_count_handles_quoted_display_names() {
+		MNEM_SMTP_Service::record_successful_send( array( 'to' => '"Doe, Jane" <jane@example.com>' ) );
+
+		$timestamps = MNEM_Settings::get( 'mail_send_timestamps', array() );
+
+		$this->assertCount( 1, $timestamps );
 	}
 }
 
