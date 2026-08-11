@@ -117,7 +117,10 @@ class MNEM_Admin_Menu {
 			echo '<div class="notice notice-error"><p>' . esc_html__( 'SMTP module is unavailable.', 'mnem' ) . '</p></div>';
 			return;
 		}
-		$settings = MNEM_SMTP_Settings::get_all();
+		$settings         = MNEM_SMTP_Settings::get_all();
+		$provider_presets = MNEM_SMTP_Settings::get_provider_presets();
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$active_tab       = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'smtp';
 		self::include_view( 'smtp-settings.php' );
 	}
 

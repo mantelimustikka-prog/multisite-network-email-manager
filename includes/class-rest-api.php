@@ -126,70 +126,109 @@ class MNEM_REST_API {
 	 */
 	private static function smtp_settings_schema() {
 		return array(
-			'enabled'        => array(
+			'enabled'               => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
 			),
-			'host'           => array(
+			'provider'              => array(
+				'type'              => 'string',
+				'required'          => false,
+				'enum'              => array_keys( MNEM_SMTP_Settings::get_provider_presets() ),
+				'sanitize_callback' => 'sanitize_key',
+			),
+			'host'                  => array(
 				'type'              => 'string',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'port'           => array(
+			'port'                  => array(
 				'type'              => 'integer',
 				'required'          => false,
 				'minimum'           => 1,
 				'maximum'           => 65535,
 				'sanitize_callback' => 'absint',
 			),
-			'encryption'     => array(
+			'encryption'            => array(
 				'type'              => 'string',
 				'required'          => false,
 				'enum'              => array( '', 'ssl', 'tls' ),
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'auth_enabled'   => array(
+			'auth_enabled'          => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
 			),
-			'username'       => array(
+			'username'              => array(
 				'type'              => 'string',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'password'       => array(
+			'password'              => array(
 				'type'     => 'string',
 				'required' => false,
 				// No sanitize_callback — password chars must not be stripped.
 			),
-			'from_email'     => array(
+			'from_email'            => array(
 				'type'              => 'string',
 				'format'            => 'email',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_email',
 			),
-			'from_name'      => array(
+			'from_name'             => array(
 				'type'              => 'string',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'reply_to_email' => array(
+			'reply_to_email'        => array(
 				'type'              => 'string',
 				'format'            => 'email',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_email',
 			),
-			'reply_to_name'  => array(
+			'reply_to_name'         => array(
 				'type'              => 'string',
 				'required'          => false,
 				'sanitize_callback' => 'sanitize_text_field',
 			),
-			'debug_mode'     => array(
+			'debug_mode'            => array(
 				'type'              => 'boolean',
 				'required'          => false,
 				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
+			),
+			'rate_limit_per_minute' => array(
+				'type'              => 'integer',
+				'required'          => false,
+				'minimum'           => 0,
+				'sanitize_callback' => 'absint',
+			),
+			'rate_limit_per_hour'   => array(
+				'type'              => 'integer',
+				'required'          => false,
+				'minimum'           => 0,
+				'sanitize_callback' => 'absint',
+			),
+			'sender_mode'           => array(
+				'type'              => 'string',
+				'required'          => false,
+				'enum'              => array( 'master_site', 'child_site', 'network_global' ),
+				'sanitize_callback' => 'sanitize_key',
+			),
+			'force_sender'          => array(
+				'type'              => 'boolean',
+				'required'          => false,
+				'sanitize_callback' => array( __CLASS__, 'sanitize_boolean' ),
+			),
+			'global_header'         => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'wp_kses_post',
+			),
+			'global_footer'         => array(
+				'type'              => 'string',
+				'required'          => false,
+				'sanitize_callback' => 'wp_kses_post',
 			),
 		);
 	}

@@ -108,20 +108,32 @@ class MNEM_Admin {
 		}
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing -- nonce verified above.
-		$data = array(
-			'enabled'        => isset( $_POST['mnem_smtp_enabled'] ),
-			'host'           => isset( $_POST['mnem_smtp_host'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_host'] ) ) : '',
-			'port'           => isset( $_POST['mnem_smtp_port'] ) ? absint( $_POST['mnem_smtp_port'] ) : 587,
-			'encryption'     => isset( $_POST['mnem_smtp_encryption'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_encryption'] ) ) : 'tls',
-			'auth_enabled'   => isset( $_POST['mnem_smtp_auth_enabled'] ),
-			'username'       => isset( $_POST['mnem_smtp_username'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_username'] ) ) : '',
-			'password'       => isset( $_POST['mnem_smtp_password'] ) ? wp_unslash( $_POST['mnem_smtp_password'] ) : MNEM_SMTP_Settings::PASSWORD_PLACEHOLDER,
-			'from_email'     => isset( $_POST['mnem_smtp_from_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_from_email'] ) ) : '',
-			'from_name'      => isset( $_POST['mnem_smtp_from_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_from_name'] ) ) : '',
-			'reply_to_email' => isset( $_POST['mnem_smtp_reply_to_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_reply_to_email'] ) ) : '',
-			'reply_to_name'  => isset( $_POST['mnem_smtp_reply_to_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_reply_to_name'] ) ) : '',
-			'debug_mode'     => isset( $_POST['mnem_smtp_debug_mode'] ),
-		);
+		$active_tab = isset( $_POST['mnem_smtp_active_tab'] ) ? sanitize_key( wp_unslash( $_POST['mnem_smtp_active_tab'] ) ) : 'smtp';
+		$data       = MNEM_SMTP_Settings::get_all( true );
+
+		if ( 'sender' === $active_tab ) {
+			$data['sender_mode']  = isset( $_POST['mnem_smtp_sender_mode'] ) ? sanitize_key( wp_unslash( $_POST['mnem_smtp_sender_mode'] ) ) : 'network_global';
+			$data['force_sender'] = isset( $_POST['mnem_smtp_force_sender'] );
+		} elseif ( 'content' === $active_tab ) {
+			$data['global_header'] = isset( $_POST['mnem_smtp_global_header'] ) ? wp_kses_post( wp_unslash( $_POST['mnem_smtp_global_header'] ) ) : '';
+			$data['global_footer'] = isset( $_POST['mnem_smtp_global_footer'] ) ? wp_kses_post( wp_unslash( $_POST['mnem_smtp_global_footer'] ) ) : '';
+		} else {
+			$data['enabled']               = isset( $_POST['mnem_smtp_enabled'] );
+			$data['provider']              = isset( $_POST['mnem_smtp_provider'] ) ? sanitize_key( wp_unslash( $_POST['mnem_smtp_provider'] ) ) : 'custom';
+			$data['host']                  = isset( $_POST['mnem_smtp_host'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_host'] ) ) : '';
+			$data['port']                  = isset( $_POST['mnem_smtp_port'] ) ? absint( $_POST['mnem_smtp_port'] ) : 587;
+			$data['encryption']            = isset( $_POST['mnem_smtp_encryption'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_encryption'] ) ) : 'tls';
+			$data['auth_enabled']          = isset( $_POST['mnem_smtp_auth_enabled'] );
+			$data['username']              = isset( $_POST['mnem_smtp_username'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_username'] ) ) : '';
+			$data['password']              = isset( $_POST['mnem_smtp_password'] ) ? wp_unslash( $_POST['mnem_smtp_password'] ) : MNEM_SMTP_Settings::PASSWORD_PLACEHOLDER;
+			$data['from_email']            = isset( $_POST['mnem_smtp_from_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_from_email'] ) ) : '';
+			$data['from_name']             = isset( $_POST['mnem_smtp_from_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_from_name'] ) ) : '';
+			$data['reply_to_email']        = isset( $_POST['mnem_smtp_reply_to_email'] ) ? sanitize_email( wp_unslash( $_POST['mnem_smtp_reply_to_email'] ) ) : '';
+			$data['reply_to_name']         = isset( $_POST['mnem_smtp_reply_to_name'] ) ? sanitize_text_field( wp_unslash( $_POST['mnem_smtp_reply_to_name'] ) ) : '';
+			$data['debug_mode']            = isset( $_POST['mnem_smtp_debug_mode'] );
+			$data['rate_limit_per_minute'] = isset( $_POST['mnem_smtp_rate_limit_per_minute'] ) ? absint( $_POST['mnem_smtp_rate_limit_per_minute'] ) : 0;
+			$data['rate_limit_per_hour']   = isset( $_POST['mnem_smtp_rate_limit_per_hour'] ) ? absint( $_POST['mnem_smtp_rate_limit_per_hour'] ) : 0;
+		}
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		try {
@@ -131,7 +143,7 @@ class MNEM_Admin {
 			self::add_notice( __( 'Failed to save SMTP settings.', 'mnem' ), 'error' );
 		}
 
-		self::redirect_to_page( 'mnem-smtp-settings' );
+		self::redirect_to_page( 'mnem-smtp-settings', array( 'tab' => $active_tab ) );
 	}
 
 	/**
@@ -375,10 +387,13 @@ class MNEM_Admin {
 	 *
 	 * @param string $page Menu slug page.
 	 */
-	private static function redirect_to_page( $page ) {
+	private static function redirect_to_page( $page, $args = array() ) {
 		wp_safe_redirect(
 			add_query_arg(
-				array( 'page' => $page ),
+				array_merge(
+					array( 'page' => $page ),
+					$args
+				),
 				network_admin_url( 'admin.php' )
 			)
 		);

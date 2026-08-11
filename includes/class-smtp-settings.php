@@ -18,19 +18,26 @@ class MNEM_SMTP_Settings {
 
 	/** Setting keys and their defaults. */
 	const DEFAULTS = array(
-		'enabled'        => false,
-		'host'           => '',
-		'port'           => 587,
-		'encryption'     => 'tls',
-		'auth_enabled'   => true,
-		'username'       => '',
-		'password'       => '',
-		'from_email'     => '',
-		'from_name'      => '',
-		'reply_to_email' => '',
-		'reply_to_name'  => '',
-		'test_recipient' => '',
-		'debug_mode'     => false,
+		'enabled'               => false,
+		'provider'              => 'custom',
+		'host'                  => '',
+		'port'                  => 587,
+		'encryption'            => 'tls',
+		'auth_enabled'          => true,
+		'username'              => '',
+		'password'              => '',
+		'from_email'            => '',
+		'from_name'             => '',
+		'reply_to_email'        => '',
+		'reply_to_name'         => '',
+		'test_recipient'        => '',
+		'debug_mode'            => false,
+		'rate_limit_per_minute' => 0,
+		'rate_limit_per_hour'   => 0,
+		'sender_mode'           => 'network_global',
+		'force_sender'          => false,
+		'global_header'         => '',
+		'global_footer'         => '',
 	);
 
 	/** Sentinel value used in UI to indicate "keep existing password". */
@@ -47,6 +54,8 @@ class MNEM_SMTP_Settings {
 		foreach ( self::DEFAULTS as $key => $default ) {
 			$settings[ $key ] = MNEM_Settings::get( 'smtp_' . $key, $default );
 		}
+
+		$settings = self::apply_provider_defaults( $settings );
 
 		// Decrypt the stored password before use.
 		$settings['password'] = self::decrypt_password( (string) $settings['password'] );
@@ -76,6 +85,13 @@ class MNEM_SMTP_Settings {
 			$value = self::decrypt_password( (string) $value );
 		}
 
+		if ( in_array( $key, array( 'provider', 'host', 'port', 'encryption', 'auth_enabled', 'username' ), true ) ) {
+			$all_settings = self::get_all( true );
+			if ( array_key_exists( $key, $all_settings ) ) {
+				$value = $all_settings[ $key ];
+			}
+		}
+
 		return $value;
 	}
 
@@ -102,6 +118,93 @@ class MNEM_SMTP_Settings {
 
 			MNEM_Settings::set( 'smtp_' . $key, $value );
 		}
+	}
+
+	/**
+	 * Get built-in SMTP provider presets.
+	 *
+	 * @return array
+	 */
+	public static function get_provider_presets() {
+		return array(
+			'custom'   => array(
+				'label'           => __( 'Custom SMTP', 'mnem' ),
+				'host'            => '',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'SMTP Password / Token', 'mnem' ),
+				'username_label'  => __( 'SMTP Username', 'mnem' ),
+				'help'            => __( 'Use this option for any SMTP provider not listed below or when you need to define custom connection details.', 'mnem' ),
+			),
+			'brevo'    => array(
+				'label'           => __( 'Brevo', 'mnem' ),
+				'host'            => 'smtp-relay.brevo.com',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'Brevo SMTP Key / Password', 'mnem' ),
+				'username_label'  => __( 'Brevo SMTP Login', 'mnem' ),
+				'help'            => __( 'Brevo commonly uses smtp-relay.brevo.com on port 587 with STARTTLS. Use your Brevo SMTP login and SMTP key.', 'mnem' ),
+			),
+			'sendgrid' => array(
+				'label'           => __( 'SendGrid', 'mnem' ),
+				'host'            => 'smtp.sendgrid.net',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> 'apikey',
+				'credential_label'=> __( 'SendGrid API Key', 'mnem' ),
+				'username_label'  => __( 'SendGrid Username', 'mnem' ),
+				'help'            => __( 'SendGrid SMTP typically uses smtp.sendgrid.net on port 587 with username "apikey" and your API key as the password.', 'mnem' ),
+			),
+			'mailgun'  => array(
+				'label'           => __( 'Mailgun', 'mnem' ),
+				'host'            => 'smtp.mailgun.org',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'Mailgun SMTP Password', 'mnem' ),
+				'username_label'  => __( 'Mailgun SMTP Username', 'mnem' ),
+				'help'            => __( 'Mailgun SMTP commonly uses smtp.mailgun.org on port 587 with STARTTLS. If your account uses an EU region endpoint, update the host accordingly.', 'mnem' ),
+			),
+			'smtp2go'  => array(
+				'label'           => __( 'SMTP2GO', 'mnem' ),
+				'host'            => 'mail.smtp2go.com',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'SMTP2GO Password / API Key', 'mnem' ),
+				'username_label'  => __( 'SMTP2GO Username', 'mnem' ),
+				'help'            => __( 'SMTP2GO typically uses mail.smtp2go.com on port 587 with STARTTLS. Use your SMTP username and password or API key if your account is configured for it.', 'mnem' ),
+			),
+			'postmark' => array(
+				'label'           => __( 'Postmark', 'mnem' ),
+				'host'            => 'smtp.postmarkapp.com',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'Postmark Server Token / Password', 'mnem' ),
+				'username_label'  => __( 'Postmark SMTP Username', 'mnem' ),
+				'help'            => __( 'Postmark SMTP uses smtp.postmarkapp.com on port 587 with STARTTLS. Use the credentials provided for your Postmark server.', 'mnem' ),
+			),
+			'amazon_ses' => array(
+				'label'           => __( 'Amazon SES', 'mnem' ),
+				'host'            => 'email-smtp.us-east-1.amazonaws.com',
+				'port'            => 587,
+				'encryption'      => 'tls',
+				'auth_enabled'    => true,
+				'default_username'=> '',
+				'credential_label'=> __( 'Amazon SES SMTP Password', 'mnem' ),
+				'username_label'  => __( 'Amazon SES SMTP Username', 'mnem' ),
+				'help'            => __( 'Amazon SES SMTP endpoints are region-specific. Update the host to match your SES region if needed.', 'mnem' ),
+			),
+		);
 	}
 
 	/**
@@ -168,15 +271,28 @@ class MNEM_SMTP_Settings {
 			case 'enabled':
 			case 'auth_enabled':
 			case 'debug_mode':
+			case 'force_sender':
 				return (bool) $value;
 
 			case 'port':
 				$port = absint( $value );
 				return ( $port >= 1 && $port <= 65535 ) ? $port : 587;
 
+			case 'rate_limit_per_minute':
+			case 'rate_limit_per_hour':
+				return absint( $value );
+
 			case 'encryption':
 				$allowed = array( '', 'ssl', 'tls' );
 				return in_array( $value, $allowed, true ) ? $value : 'tls';
+
+			case 'provider':
+				$provider = sanitize_key( $value );
+				return array_key_exists( $provider, self::get_provider_presets() ) ? $provider : 'custom';
+
+			case 'sender_mode':
+				$allowed = array( 'master_site', 'child_site', 'network_global' );
+				return in_array( $value, $allowed, true ) ? $value : 'network_global';
 
 			case 'from_email':
 			case 'reply_to_email':
@@ -189,6 +305,10 @@ class MNEM_SMTP_Settings {
 			case 'reply_to_name':
 				return sanitize_text_field( $value );
 
+			case 'global_header':
+			case 'global_footer':
+				return wp_kses_post( $value );
+
 			case 'password':
 				// Return as-is; strip_tags/sanitize_text_field would corrupt special chars.
 				return (string) $value;
@@ -196,5 +316,49 @@ class MNEM_SMTP_Settings {
 			default:
 				return sanitize_text_field( $value );
 		}
+	}
+
+	/**
+	 * Fill missing connection values from the selected provider preset.
+	 *
+	 * @param array $settings Current settings.
+	 * @return array
+	 */
+	private static function apply_provider_defaults( array $settings ) {
+		$provider = isset( $settings['provider'] ) ? $settings['provider'] : 'custom';
+		$presets  = self::get_provider_presets();
+
+		if ( ! isset( $presets[ $provider ] ) ) {
+			return $settings;
+		}
+
+		$preset = $presets[ $provider ];
+
+		$raw_host = get_site_option( MNEM_OPTION_PREFIX . 'smtp_host', null );
+		if ( null === $raw_host && ! empty( $preset['host'] ) ) {
+			$settings['host'] = $preset['host'];
+		}
+
+		$raw_port = get_site_option( MNEM_OPTION_PREFIX . 'smtp_port', null );
+		if ( null === $raw_port && ! empty( $preset['port'] ) ) {
+			$settings['port'] = (int) $preset['port'];
+		}
+
+		$raw_encryption = get_site_option( MNEM_OPTION_PREFIX . 'smtp_encryption', null );
+		if ( null === $raw_encryption && isset( $preset['encryption'] ) ) {
+			$settings['encryption'] = $preset['encryption'];
+		}
+
+		$raw_username = get_site_option( MNEM_OPTION_PREFIX . 'smtp_username', null );
+		if ( null === $raw_username && ! empty( $preset['default_username'] ) ) {
+			$settings['username'] = $preset['default_username'];
+		}
+
+		$raw_auth_enabled = get_site_option( MNEM_OPTION_PREFIX . 'smtp_auth_enabled', null );
+		if ( null === $raw_auth_enabled && isset( $preset['auth_enabled'] ) ) {
+			$settings['auth_enabled'] = (bool) $preset['auth_enabled'];
+		}
+
+		return $settings;
 	}
 }
