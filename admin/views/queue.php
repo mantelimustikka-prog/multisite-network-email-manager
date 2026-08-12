@@ -1,6 +1,7 @@
 <?php
 ?><div class="wrap">
     <h1>Queue</h1>
+    <?php $items = $view_data['items']; ?>
     <?php if (! empty($notice_code)) : ?>
         <div class="notice notice-info"><p><?php echo esc_html($notice_message ? $notice_message : $notice_code); ?></p></div>
     <?php endif; ?>

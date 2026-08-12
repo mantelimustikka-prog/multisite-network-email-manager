@@ -40,6 +40,8 @@ class MNEM_Campaigns
             return false;
         }
 
+        $allowed_fields = array('name', 'subject', 'content', 'status');
+        $campaign = array_intersect_key($campaign, array_flip($allowed_fields));
         $campaign['updated_at_gmt'] = gmdate('Y-m-d H:i:s');
 
         return false !== $this->wpdb->update($this->table_name, $campaign, array('id' => (int) $id));

@@ -104,6 +104,15 @@ class MNEM_Queue
         return (array) $this->wpdb->get_results("SELECT * FROM {$this->table_name} ORDER BY updated_at_gmt DESC LIMIT {$limit}", ARRAY_A);
     }
 
+    public function count()
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_var')) {
+            return 0;
+        }
+
+        return (int) $this->wpdb->get_var("SELECT COUNT(1) FROM {$this->table_name}");
+    }
+
     protected function due_items($limit)
     {
         if (! $this->wpdb || ! method_exists($this->wpdb, 'get_results')) {

@@ -1,6 +1,7 @@
 <?php
 ?><div class="wrap">
     <h1>Campaigns</h1>
+    <?php $campaigns = $view_data['campaigns']; ?>
     <?php if (! empty($notice_code)) : ?>
         <div class="notice notice-info"><p><?php echo esc_html($notice_message ? $notice_message : $notice_code); ?></p></div>
     <?php endif; ?>

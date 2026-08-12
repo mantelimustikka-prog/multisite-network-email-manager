@@ -10,7 +10,6 @@ class MNEM_Installer
 
         $tables = self::table_names();
         self::maybe_create_tables($tables);
-        add_site_option('mnem_db_version', MNEM_DB_VERSION);
         update_site_option('mnem_db_version', MNEM_DB_VERSION);
 
         return true;

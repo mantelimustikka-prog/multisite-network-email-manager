@@ -50,12 +50,12 @@ class MNEM_SMTP_Settings extends MNEM_Settings
         return $settings;
     }
 
-    public function obfuscate_password($password)
+    protected function obfuscate_password($password)
     {
         return self::PASSWORD_PREFIX . base64_encode((string) $password);
     }
 
-    public function deobfuscate_password($stored)
+    protected function deobfuscate_password($stored)
     {
         if (0 !== strpos((string) $stored, self::PASSWORD_PREFIX)) {
             return (string) $stored;

@@ -176,9 +176,10 @@ class MNEM_Network_Admin
             wp_die(esc_html__('View not found.', 'multisite-network-email-manager'));
         }
 
-        $notice_code = isset($_GET['mnem_notice']) ? sanitize_key(wp_unslash($_GET['mnem_notice'])) : '';
-        $notice_message = isset($_GET['mnem_message']) ? sanitize_text_field(wp_unslash($_GET['mnem_message'])) : '';
-        extract($data, EXTR_SKIP);
+        $notice = $this->pull_notice();
+        $notice_code = isset($notice['code']) ? $notice['code'] : '';
+        $notice_message = isset($notice['message']) ? $notice['message'] : '';
+        $view_data = $data;
         include $file;
     }
 
@@ -193,17 +194,43 @@ class MNEM_Network_Admin
 
     protected function redirect_with_notice($page, $notice, $message = '')
     {
-        $url = add_query_arg(array_filter(array(
-            'page' => $page,
-            'mnem_notice' => $notice,
-            'mnem_message' => $message,
-        )), network_admin_url('admin.php'));
+        $this->store_notice($notice, $message);
+        $url = add_query_arg(array('page' => $page), network_admin_url('admin.php'));
         wp_safe_redirect($url);
         exit;
     }
 
     protected function current_user_can_manage()
     {
-        return ! function_exists('current_user_can') || current_user_can('manage_network_options');
+        return function_exists('current_user_can') && current_user_can('manage_network_options');
+    }
+
+    protected function store_notice($code, $message)
+    {
+        if (! function_exists('get_current_user_id') || ! function_exists('set_site_transient')) {
+            return;
+        }
+
+        set_site_transient(
+            'mnem_notice_' . get_current_user_id(),
+            array(
+                'code' => sanitize_key($code),
+                'message' => sanitize_text_field($message),
+            ),
+            MINUTE_IN_SECONDS
+        );
+    }
+
+    protected function pull_notice()
+    {
+        if (! function_exists('get_current_user_id') || ! function_exists('get_site_transient') || ! function_exists('delete_site_transient')) {
+            return array();
+        }
+
+        $key = 'mnem_notice_' . get_current_user_id();
+        $notice = get_site_transient($key);
+        delete_site_transient($key);
+
+        return is_array($notice) ? $notice : array();
     }
 }

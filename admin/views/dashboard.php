@@ -6,8 +6,8 @@
     <?php endif; ?>
     <p>This baseline scaffold centralizes network email settings for multisite.</p>
     <ul>
-        <li><strong>Queued items:</strong> <?php echo esc_html((string) count($queue)); ?></li>
-        <li><strong>Campaigns:</strong> <?php echo esc_html((string) count($campaigns)); ?></li>
-        <li><strong>Suppressed recipients:</strong> <?php echo esc_html((string) count($suppressions)); ?></li>
+        <li><strong>Queued items:</strong> <?php echo esc_html((string) count($view_data['queue'])); ?></li>
+        <li><strong>Campaigns:</strong> <?php echo esc_html((string) count($view_data['campaigns'])); ?></li>
+        <li><strong>Suppressed recipients:</strong> <?php echo esc_html((string) count($view_data['suppressions'])); ?></li>
     </ul>
 </div>

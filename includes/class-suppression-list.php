@@ -64,6 +64,15 @@ class MNEM_Suppression_List
         return (array) $this->wpdb->get_results("SELECT * FROM {$table} ORDER BY updated_at_gmt DESC LIMIT {$limit}", ARRAY_A);
     }
 
+    public function count()
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_var')) {
+            return 0;
+        }
+
+        return (int) $this->wpdb->get_var("SELECT COUNT(1) FROM {$this->table_name}");
+    }
+
     protected function find_by_email($email)
     {
         if (! $this->wpdb || ! method_exists($this->wpdb, 'get_row')) {

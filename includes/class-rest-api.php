@@ -76,7 +76,7 @@ class MNEM_REST_API
 
     public function can_manage()
     {
-        return ! function_exists('current_user_can') || current_user_can('manage_network_options');
+        return function_exists('current_user_can') && current_user_can('manage_network_options');
     }
 
     public function status()
@@ -84,8 +84,8 @@ class MNEM_REST_API
         return $this->respond(array(
             'version' => defined('MNEM_VERSION') ? MNEM_VERSION : null,
             'db_version' => function_exists('get_site_option') ? get_site_option('mnem_db_version') : null,
-            'queue_size' => count($this->queue->all(10)),
-            'suppression_count' => count($this->suppression_list->all(10)),
+            'queue_size' => $this->queue->count(),
+            'suppression_count' => $this->suppression_list->count(),
         ));
     }
 
@@ -100,7 +100,8 @@ class MNEM_REST_API
     public function update_smtp_settings($request)
     {
         $params = $this->request_params($request);
-        $updated = $this->smtp_settings->update($params);
+        $allowed = array('enabled', 'host', 'port', 'secure', 'username', 'password', 'from_email', 'from_name');
+        $updated = $this->smtp_settings->update(array_intersect_key($params, array_flip($allowed)));
 
         return $this->respond(array('success' => (bool) $updated));
     }

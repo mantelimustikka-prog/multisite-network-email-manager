@@ -1,6 +1,7 @@
 <?php
 ?><div class="wrap">
     <h1>SMTP Settings</h1>
+    <?php $settings = $view_data['settings']; ?>
     <?php if (! empty($notice_code)) : ?>
         <div class="notice notice-info"><p><?php echo esc_html($notice_message ? $notice_message : $notice_code); ?></p></div>
     <?php endif; ?>

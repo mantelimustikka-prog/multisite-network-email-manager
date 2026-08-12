@@ -18,9 +18,9 @@ foreach ($tests as $name => $callback) {
     try {
         $callback();
         echo "[PASS] {$name}\n";
-    } catch (Exception $exception) {
-        $failures[] = array($name, $exception->getMessage());
-        echo "[FAIL] {$name}: {$exception->getMessage()}\n";
+    } catch (Throwable $throwable) {
+        $failures[] = array($name, $throwable->getMessage());
+        echo "[FAIL] {$name}: {$throwable->getMessage()}\n";
     }
 }
 

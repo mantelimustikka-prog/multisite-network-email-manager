@@ -1,6 +1,7 @@
 <?php
 ?><div class="wrap">
     <h1>Suppression List</h1>
+    <?php $entries = $view_data['entries']; ?>
     <?php if (! empty($notice_code)) : ?>
         <div class="notice notice-info"><p><?php echo esc_html($notice_message ? $notice_message : $notice_code); ?></p></div>
     <?php endif; ?>

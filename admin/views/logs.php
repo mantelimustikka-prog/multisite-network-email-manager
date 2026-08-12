@@ -1,6 +1,7 @@
 <?php
 ?><div class="wrap">
     <h1>Logs</h1>
+    <?php $entries = $view_data['entries']; ?>
     <table class="widefat striped">
         <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
         <tbody>

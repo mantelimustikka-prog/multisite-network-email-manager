@@ -26,7 +26,7 @@ class MNEM_User_Events
         $this->logger->log('info', 'User registered event captured.', array('user_id' => (int) $user_id));
     }
 
-    public function handle_profile_update($user_id)
+    public function handle_profile_update($user_id, $old_user_data = null)
     {
         $this->logger->log('info', 'User profile updated event captured.', array('user_id' => (int) $user_id));
     }
