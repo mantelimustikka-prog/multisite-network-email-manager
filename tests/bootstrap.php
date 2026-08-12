@@ -1,311 +1,64 @@
 <?php
 
-$autoload = __DIR__ . '/../vendor/autoload.php';
-if (file_exists($autoload)) {
-    require_once $autoload;
+if (! defined('MINUTE_IN_SECONDS')) {
+    define('MINUTE_IN_SECONDS', 60);
 }
 
-if (!defined('ABSPATH')) {
-    define('ABSPATH', dirname(__DIR__) . '/');
+if (! defined('HOUR_IN_SECONDS')) {
+    define('HOUR_IN_SECONDS', 3600);
 }
 
-if (!defined('ARRAY_A')) {
+if (! defined('ARRAY_A')) {
     define('ARRAY_A', 'ARRAY_A');
 }
 
-if (!defined('OBJECT')) {
-    define('OBJECT', 'OBJECT');
-}
-
-if (!defined('MNEM_VERSION')) {
-    define('MNEM_VERSION', '1.0.0');
-}
-
-if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '1');
-}
-
-if (!defined('MNEM_PLUGIN_DIR')) {
-    define('MNEM_PLUGIN_DIR', dirname(__DIR__) . '/');
-}
-
-if (!defined('MNEM_PLUGIN_URL')) {
-    define('MNEM_PLUGIN_URL', 'http://example.org/wp-content/plugins/mnem/');
-}
-
-if (!defined('MNEM_PLUGIN_FILE')) {
-    define('MNEM_PLUGIN_FILE', dirname(__DIR__) . '/multisite-network-email-manager.php');
-}
-
-$GLOBALS['mnem_site_options'] = array();
-$GLOBALS['mnem_hooks'] = array();
-$GLOBALS['wpdb'] = null;
-
-if (!function_exists('wp_json_encode')) {
+if (! function_exists('wp_json_encode')) {
     function wp_json_encode($value)
     {
         return json_encode($value);
     }
 }
 
-if (!function_exists('get_site_option')) {
-    function get_site_option($key, $default = false)
+if (! function_exists('mnem_assert_true')) {
+    function mnem_assert_true($condition, $message = 'Expected condition to be true.')
     {
-        return array_key_exists($key, $GLOBALS['mnem_site_options']) ? $GLOBALS['mnem_site_options'][$key] : $default;
-    }
-}
-
-if (!function_exists('update_site_option')) {
-    function update_site_option($key, $value)
-    {
-        $GLOBALS['mnem_site_options'][$key] = $value;
-        return true;
-    }
-}
-
-if (!function_exists('sanitize_email')) {
-    function sanitize_email($email)
-    {
-        return filter_var((string) $email, FILTER_SANITIZE_EMAIL);
-    }
-}
-
-if (!function_exists('is_email')) {
-    function is_email($email)
-    {
-        return (bool) filter_var((string) $email, FILTER_VALIDATE_EMAIL);
-    }
-}
-
-if (!function_exists('sanitize_text_field')) {
-    function sanitize_text_field($value)
-    {
-        return trim(filter_var((string) $value, FILTER_UNSAFE_RAW));
-    }
-}
-
-if (!function_exists('wp_unslash')) {
-    function wp_unslash($value)
-    {
-        if (is_array($value)) {
-            return array_map('wp_unslash', $value);
-        }
-
-        return stripslashes((string) $value);
-    }
-}
-
-if (!function_exists('add_action')) {
-    function add_action($hook, $callback)
-    {
-        $GLOBALS['mnem_hooks'][$hook][] = $callback;
-        return true;
-    }
-}
-
-if (!function_exists('add_filter')) {
-    function add_filter($hook, $callback)
-    {
-        $GLOBALS['mnem_hooks'][$hook][] = $callback;
-        return true;
-    }
-}
-
-if (!function_exists('register_rest_route')) {
-    function register_rest_route($namespace, $route, $args)
-    {
-        $GLOBALS['mnem_hooks']['rest_routes'][] = array($namespace, $route, $args);
-        return true;
-    }
-}
-
-if (!function_exists('current_user_can')) {
-    function current_user_can($capability)
-    {
-        return $capability === 'manage_network';
-    }
-}
-
-if (!function_exists('is_multisite')) {
-    function is_multisite()
-    {
-        return true;
-    }
-}
-
-if (!function_exists('is_admin')) {
-    function is_admin()
-    {
-        return true;
-    }
-}
-
-if (!function_exists('get_current_blog_id')) {
-    function get_current_blog_id()
-    {
-        return 1;
-    }
-}
-
-if (!function_exists('current_time')) {
-    function current_time($type, $gmt = false)
-    {
-        return gmdate('Y-m-d H:i:s');
-    }
-}
-
-if (!function_exists('wp_mail')) {
-    function wp_mail($to, $subject, $message)
-    {
-        return true;
-    }
-}
-
-if (!function_exists('wp_nonce_field')) {
-    function wp_nonce_field($action)
-    {
-        echo '<input type="hidden" name="_wpnonce" value="test-nonce" />';
-    }
-}
-
-if (!function_exists('wp_verify_nonce')) {
-    function wp_verify_nonce($nonce, $action)
-    {
-        return true;
-    }
-}
-
-if (!function_exists('wp_safe_redirect')) {
-    function wp_safe_redirect($url)
-    {
-        $GLOBALS['mnem_last_redirect'] = $url;
-        return true;
-    }
-}
-
-if (!function_exists('network_admin_url')) {
-    function network_admin_url($path = '')
-    {
-        return 'http://example.org/wp-admin/network/' . ltrim($path, '/');
-    }
-}
-
-if (!function_exists('submit_button')) {
-    function submit_button($text = 'Submit', $type = 'primary', $name = 'submit', $wrap = true)
-    {
-        echo '<button type="submit">' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</button>';
-    }
-}
-
-if (!function_exists('selected')) {
-    function selected($current, $value)
-    {
-        if ((string) $current === (string) $value) {
-            echo 'selected="selected"';
+        if (! $condition) {
+            throw new Exception($message);
         }
     }
 }
 
-if (!function_exists('esc_html')) {
-    function esc_html($text)
+if (! function_exists('mnem_assert_false')) {
+    function mnem_assert_false($condition, $message = 'Expected condition to be false.')
     {
-        return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
-    }
-}
-
-if (!function_exists('esc_attr')) {
-    function esc_attr($text)
-    {
-        return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
-    }
-}
-
-if (!class_exists('WP_Error')) {
-    class WP_Error
-    {
-        public $code;
-        public $message;
-        public $data;
-
-        public function __construct($code = '', $message = '', $data = null)
-        {
-            $this->code = $code;
-            $this->message = $message;
-            $this->data = $data;
+        if ($condition) {
+            throw new Exception($message);
         }
     }
 }
 
-if (!class_exists('wpdb')) {
-    class wpdb
+if (! function_exists('mnem_assert_same')) {
+    function mnem_assert_same($expected, $actual, $message = '')
     {
-        public $prefix = 'wp_';
-        public $insert_id = 0;
-        public $queries = array();
-        public $results = array();
-        public $var = null;
-        public $row = null;
-        public $col = array();
-
-        public function prepare($query)
-        {
-            $args = func_get_args();
-            array_shift($args);
-            $index = 0;
-
-            return preg_replace_callback('/%[ds]/', function ($matches) use (&$args, &$index) {
-                $value = $args[$index++];
-                if ($matches[0] === '%d') {
-                    return (string) (int) $value;
-                }
-                return "'" . str_replace("'", "\'", (string) $value) . "'";
-            }, $query);
-        }
-
-        public function query($query)
-        {
-            $this->queries[] = $query;
-            return 1;
-        }
-
-        public function get_var($query)
-        {
-            $this->queries[] = $query;
-            return $this->var;
-        }
-
-        public function get_results($query, $output = OBJECT)
-        {
-            $this->queries[] = $query;
-            return $this->results;
-        }
-
-        public function get_row($query, $output = OBJECT)
-        {
-            $this->queries[] = $query;
-            return $this->row;
-        }
-
-        public function get_col($query)
-        {
-            $this->queries[] = $query;
-            return $this->col;
-        }
-
-        public function get_charset_collate()
-        {
-            return '';
+        if ($expected !== $actual) {
+            throw new Exception($message ?: sprintf('Expected %s but got %s.', var_export($expected, true), var_export($actual, true)));
         }
     }
 }
 
-if ($GLOBALS['wpdb'] === null) {
-    $GLOBALS['wpdb'] = new wpdb();
+if (! function_exists('mnem_assert_string_starts_with')) {
+    function mnem_assert_string_starts_with($prefix, $value, $message = '')
+    {
+        if (0 !== strpos($value, $prefix)) {
+            throw new Exception($message ?: sprintf('Expected %s to start with %s.', $value, $prefix));
+        }
+    }
 }
 
-require_once __DIR__ . '/../includes/class-settings.php';
-require_once __DIR__ . '/../includes/class-logger.php';
-require_once __DIR__ . '/../includes/class-smtp-settings.php';
-require_once __DIR__ . '/../includes/class-suppression.php';
-require_once __DIR__ . '/../includes/class-queue.php';
-require_once __DIR__ . '/../includes/class-campaigns.php';
+require dirname(__DIR__) . '/includes/class-settings.php';
+require dirname(__DIR__) . '/includes/class-logger.php';
+require dirname(__DIR__) . '/includes/class-installer.php';
+require dirname(__DIR__) . '/includes/class-smtp-settings.php';
+require dirname(__DIR__) . '/includes/class-suppression-list.php';
+require dirname(__DIR__) . '/includes/class-campaigns.php';
+require dirname(__DIR__) . '/includes/class-queue.php';

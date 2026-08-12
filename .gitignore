@@ -1,6 +1,2 @@
-vendor/
-node_modules/
-*.log
-.DS_Store
-coverage/
-.phpunit.result.cache
+/vendor/
+/.phpunit.result.cache

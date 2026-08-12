@@ -1,43 +1,73 @@
 <?php
 
-namespace MNEM;
-
-defined('ABSPATH') || exit;
-
-class Settings
+class MNEM_Settings
 {
-    public const OPTION_KEY = 'mnem_settings';
+    protected $option_name;
+    protected $defaults;
+    protected $get_callback;
+    protected $update_callback;
 
-    public static function get_all()
+    public function __construct($option_name = 'mnem_settings', array $defaults = array(), callable $get_callback = null, callable $update_callback = null)
     {
-        $settings = get_site_option(self::OPTION_KEY, array());
-
-        return is_array($settings) ? $settings : array();
+        $this->option_name = $option_name;
+        $this->defaults = $defaults;
+        $this->get_callback = $get_callback;
+        $this->update_callback = $update_callback;
     }
 
-    public static function get(string $key, $default = null)
+    public function all()
     {
-        $settings = self::get_all();
+        $value = $this->read_option();
+
+        if (! is_array($value)) {
+            $value = array();
+        }
+
+        return array_replace($this->defaults, $value);
+    }
+
+    public function get($key, $default = null)
+    {
+        $settings = $this->all();
 
         return array_key_exists($key, $settings) ? $settings[$key] : $default;
     }
 
-    public static function set(string $key, $value)
+    public function update(array $values)
     {
-        $settings = self::get_all();
-        $settings[$key] = $value;
+        $settings = array_replace($this->all(), $values);
 
-        return update_site_option(self::OPTION_KEY, $settings);
+        return $this->write_option($settings);
     }
 
-    public static function delete(string $key)
+    public function replace(array $values)
     {
-        $settings = self::get_all();
+        return $this->write_option(array_replace($this->defaults, $values));
+    }
 
-        if (array_key_exists($key, $settings)) {
-            unset($settings[$key]);
+    protected function read_option()
+    {
+        if ($this->get_callback) {
+            return call_user_func($this->get_callback, $this->option_name, $this->defaults);
         }
 
-        return update_site_option(self::OPTION_KEY, $settings);
+        if (function_exists('get_site_option')) {
+            return get_site_option($this->option_name, $this->defaults);
+        }
+
+        return $this->defaults;
+    }
+
+    protected function write_option(array $settings)
+    {
+        if ($this->update_callback) {
+            return (bool) call_user_func($this->update_callback, $this->option_name, $settings);
+        }
+
+        if (function_exists('update_site_option')) {
+            return (bool) update_site_option($this->option_name, $settings);
+        }
+
+        return false;
     }
 }

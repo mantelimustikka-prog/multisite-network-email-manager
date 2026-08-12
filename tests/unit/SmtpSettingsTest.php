@@ -1,42 +1,21 @@
 <?php
 
-defined('ABSPATH') || exit;
+return array(
+    'smtp password roundtrip' => function () {
+        $store = array();
+        $settings = new MNEM_SMTP_Settings(
+            function ($name, $defaults) use (&$store) {
+                return isset($store[$name]) ? $store[$name] : $defaults;
+            },
+            function ($name, $value) use (&$store) {
+                $store[$name] = $value;
+                return true;
+            }
+        );
 
-use MNEM\SmtpSettings;
-use PHPUnit\Framework\TestCase;
+        $settings->update(array('password' => 'super-secret'));
 
-class SmtpSettingsTest extends TestCase
-{
-    protected function setUp(): void
-    {
-        $GLOBALS['mnem_site_options'] = array();
-    }
-
-    public function test_default_settings_have_expected_keys()
-    {
-        $defaults = SmtpSettings::DEFAULT_SETTINGS;
-
-        $this->assertArrayHasKey('host', $defaults);
-        $this->assertArrayHasKey('port', $defaults);
-        $this->assertArrayHasKey('encryption', $defaults);
-        $this->assertArrayHasKey('username', $defaults);
-        $this->assertArrayHasKey('password', $defaults);
-        $this->assertArrayHasKey('from_email', $defaults);
-        $this->assertArrayHasKey('from_name', $defaults);
-    }
-
-    public function test_save_encodes_password()
-    {
-        SmtpSettings::save(array('password' => 'plain-text-secret'));
-        $stored = get_site_option(SmtpSettings::OPTION_KEY, array());
-
-        $this->assertSame(base64_encode('plain-text-secret'), $stored['password']);
-    }
-
-    public function test_get_password_decoded_returns_original_password()
-    {
-        SmtpSettings::save(array('password' => 'plain-text-secret'));
-
-        $this->assertSame('plain-text-secret', SmtpSettings::get_password_decoded());
-    }
-}
+        mnem_assert_string_starts_with(MNEM_SMTP_Settings::PASSWORD_PREFIX, $store['mnem_smtp_settings']['password']);
+        mnem_assert_same('super-secret', $settings->get_password());
+    },
+);

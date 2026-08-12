@@ -1,34 +1,23 @@
 <?php
 
-defined('ABSPATH') || exit;
+return array(
+    'settings merge defaults' => function () {
+        $store = array('mnem_settings' => array('enabled' => true));
+        $settings = new MNEM_Settings(
+            'mnem_settings',
+            array('enabled' => false, 'host' => 'localhost'),
+            function ($name, $defaults) use (&$store) {
+                return isset($store[$name]) ? $store[$name] : $defaults;
+            },
+            function ($name, $value) use (&$store) {
+                $store[$name] = $value;
+                return true;
+            }
+        );
 
-use MNEM\Settings;
-use PHPUnit\Framework\TestCase;
+        mnem_assert_same(array('enabled' => true, 'host' => 'localhost'), $settings->all());
+        $settings->update(array('host' => 'smtp.example.com'));
 
-class SettingsTest extends TestCase
-{
-    protected function setUp(): void
-    {
-        $GLOBALS['mnem_site_options'] = array();
-    }
-
-    public function test_get_returns_default_when_key_missing()
-    {
-        $this->assertSame('fallback', Settings::get('missing', 'fallback'));
-    }
-
-    public function test_set_updates_value()
-    {
-        Settings::set('enabled', 'yes');
-
-        $this->assertSame('yes', Settings::get('enabled'));
-    }
-
-    public function test_delete_removes_key()
-    {
-        Settings::set('enabled', 'yes');
-        Settings::delete('enabled');
-
-        $this->assertSame('fallback', Settings::get('enabled', 'fallback'));
-    }
-}
+        mnem_assert_same('smtp.example.com', $store['mnem_settings']['host']);
+    },
+);

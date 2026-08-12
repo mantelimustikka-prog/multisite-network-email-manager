@@ -1,37 +1,25 @@
 <?php
 
-defined('ABSPATH') || exit;
-
-use MNEM\Logger;
-use PHPUnit\Framework\TestCase;
-
-class LoggerTest extends TestCase
-{
-    public function test_scrub_context_redacts_sensitive_keys()
-    {
-        $scrubbed = Logger::scrub_context(
-            array(
-                'password' => 'secret',
-                'smtp_password' => 'another-secret',
-                'token' => 'abc123',
-            )
+return array(
+    'logger scrubs secrets' => function () {
+        $store = array();
+        $settings = new MNEM_Settings(
+            'mnem_logs',
+            array(),
+            function ($name, $defaults) use (&$store) {
+                return isset($store[$name]) ? $store[$name] : $defaults;
+            },
+            function ($name, $value) use (&$store) {
+                $store[$name] = $value;
+                return true;
+            }
         );
+        $logger = new MNEM_Logger($settings);
 
-        $this->assertSame('***REDACTED***', $scrubbed['password']);
-        $this->assertSame('***REDACTED***', $scrubbed['smtp_password']);
-        $this->assertSame('***REDACTED***', $scrubbed['token']);
-    }
+        $entry = $logger->log('info', '******', array('token' => 'abc123', 'safe' => 'ok'));
 
-    public function test_scrub_context_keeps_non_sensitive_keys()
-    {
-        $scrubbed = Logger::scrub_context(
-            array(
-                'email' => 'user@example.com',
-                'status' => 'ok',
-            )
-        );
-
-        $this->assertSame('user@example.com', $scrubbed['email']);
-        $this->assertSame('ok', $scrubbed['status']);
-    }
-}
+        mnem_assert_same('******', $entry['message']);
+        mnem_assert_same('[redacted]', $entry['context']['token']);
+        mnem_assert_same('ok', $entry['context']['safe']);
+    },
+);

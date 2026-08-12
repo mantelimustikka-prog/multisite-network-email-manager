@@ -1,22 +1,25 @@
 {
-  "name": "mnem/multisite-network-email-manager",
-  "description": "WordPress multisite plugin for managed email",
-  "type": "wordpress-plugin",
+  "name": "mantelimustikka-prog/multisite-network-email-manager",
+  "description": "WordPress multisite network email manager scaffold",
+  "type": "project",
+  "license": "GPL-2.0-or-later",
   "require": {
     "php": ">=7.4"
   },
-  "require-dev": {
-    "phpunit/phpunit": "^9.0",
-    "brain/monkey": "^2.6",
-    "mockery/mockery": "^1.5"
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "MNEM\\Tests\\": "tests/"
-    }
+  "autoload": {
+    "classmap": [
+      "includes/",
+      "admin/"
+    ]
   },
   "scripts": {
-    "test": "phpunit",
-    "lint": "find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l"
+    "lint": [
+      "php -l multisite-network-email-manager.php",
+      "find includes admin tests -name '*.php' -print0 | xargs -0 -n1 php -l"
+    ],
+    "test": "php tests/run.php"
+  },
+  "config": {
+    "sort-packages": true
   }
 }

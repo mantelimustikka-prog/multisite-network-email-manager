@@ -1,77 +1,68 @@
 <?php
 
-namespace MNEM;
-
-defined('ABSPATH') || exit;
-
-class SmtpSettings
+class MNEM_SMTP_Settings extends MNEM_Settings
 {
-    public const OPTION_KEY = 'mnem_smtp_settings';
+    const PASSWORD_PREFIX = 'obfuscated:';
 
-    public const DEFAULT_SETTINGS = array(
-        'host' => '',
-        'port' => 587,
-        'encryption' => 'tls',
-        'username' => '',
-        'password' => '',
-        'from_email' => '',
-        'from_name' => '',
-    );
-
-    public static function get_all()
+    public function __construct(callable $get_callback = null, callable $update_callback = null)
     {
-        $settings = get_site_option(self::OPTION_KEY, self::DEFAULT_SETTINGS);
-        $settings = is_array($settings) ? $settings : array();
-
-        return array_merge(self::DEFAULT_SETTINGS, $settings);
+        parent::__construct('mnem_smtp_settings', array(
+            'enabled' => false,
+            'host' => '',
+            'port' => 587,
+            'secure' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => '',
+            'from_name' => '',
+        ), $get_callback, $update_callback);
     }
 
-    public static function get(string $key, $default = null)
+    public function update(array $values)
     {
-        $settings = self::get_all();
+        if (array_key_exists('password', $values) && '' !== $values['password']) {
+            $values['password'] = $this->obfuscate_password($values['password']);
+        } elseif (array_key_exists('password', $values) && '' === $values['password']) {
+            unset($values['password']);
+        }
 
-        return array_key_exists($key, $settings) ? $settings[$key] : $default;
+        if (array_key_exists('enabled', $values)) {
+            $values['enabled'] = (bool) $values['enabled'];
+        }
+
+        if (array_key_exists('port', $values)) {
+            $values['port'] = (int) $values['port'];
+        }
+
+        return parent::update($values);
     }
 
-    public static function save(array $data)
+    public function get_password()
     {
-        $current = self::get_all();
-        $sanitized = self::DEFAULT_SETTINGS;
-
-        $sanitized['host'] = isset($data['host']) ? sanitize_text_field($data['host']) : $current['host'];
-        $sanitized['port'] = isset($data['port']) ? max(1, (int) $data['port']) : (int) $current['port'];
-
-        $encryption = isset($data['encryption']) ? sanitize_text_field($data['encryption']) : $current['encryption'];
-        if (!in_array($encryption, array('tls', 'ssl', 'none'), true)) {
-            $encryption = 'tls';
-        }
-        $sanitized['encryption'] = $encryption;
-
-        $sanitized['username'] = isset($data['username']) ? sanitize_text_field($data['username']) : $current['username'];
-
-        // Password is stored as base64-encoded text for obfuscation only. This is NOT encryption.
-        if (array_key_exists('password', $data) && $data['password'] !== '') {
-            $sanitized['password'] = base64_encode((string) $data['password']);
-        } else {
-            $sanitized['password'] = isset($current['password']) ? (string) $current['password'] : '';
-        }
-
-        $sanitized['from_email'] = isset($data['from_email']) ? sanitize_email($data['from_email']) : $current['from_email'];
-        $sanitized['from_name'] = isset($data['from_name']) ? sanitize_text_field($data['from_name']) : $current['from_name'];
-
-        return update_site_option(self::OPTION_KEY, $sanitized);
+        return $this->deobfuscate_password((string) $this->get('password', ''));
     }
 
-    public static function get_password_decoded()
+    public function export()
     {
-        $password = (string) self::get('password', '');
+        $settings = $this->all();
+        $settings['password'] = $this->get_password();
 
-        if ($password === '') {
-            return '';
+        return $settings;
+    }
+
+    public function obfuscate_password($password)
+    {
+        return self::PASSWORD_PREFIX . base64_encode((string) $password);
+    }
+
+    public function deobfuscate_password($stored)
+    {
+        if (0 !== strpos((string) $stored, self::PASSWORD_PREFIX)) {
+            return (string) $stored;
         }
 
-        $decoded = base64_decode($password, true);
+        $decoded = base64_decode(substr((string) $stored, strlen(self::PASSWORD_PREFIX)), true);
 
-        return $decoded === false ? '' : $decoded;
+        return false === $decoded ? '' : $decoded;
     }
 }

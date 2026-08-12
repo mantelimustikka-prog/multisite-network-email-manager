@@ -1,168 +1,233 @@
 <?php
 
-namespace MNEM;
-
-defined('ABSPATH') || exit;
-
-class Queue
+class MNEM_Queue
 {
-    public const MAX_ATTEMPTS = 3;
-    public const BACKOFF_BASE = 300;
+    protected $wpdb;
+    protected $table_name;
+    protected $suppression_list;
+    protected $logger;
 
-    public static function enqueue(int $site_id, string $email, string $subject, string $body)
+    public function __construct(MNEM_Suppression_List $suppression_list = null, MNEM_Logger $logger = null, $database = null, $table_name = '')
     {
         global $wpdb;
-
-        $email = strtolower(trim(sanitize_email($email)));
-        if ($email === '' || !is_email($email)) {
-            return false;
-        }
-
-        if (self::is_suppressed($site_id, $email)) {
-            Logger::info('Skipped queue insert for suppressed recipient.', array('site_id' => $site_id, 'email' => $email));
-            return false;
-        }
-
-        $table = $wpdb->prefix . 'mnem_queue';
-        $scheduled_at = self::current_time_mysql();
-        $created_at = self::current_time_mysql();
-
-        $result = $wpdb->query(
-            $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, recipient_email, subject, body, status, attempts, scheduled_at, created_at) VALUES (%d, %s, %s, %s, %s, %d, %s, %s)",
-                $site_id,
-                $email,
-                $subject,
-                $body,
-                'pending',
-                0,
-                $scheduled_at,
-                $created_at
-            )
-        );
-
-        if ($result === false) {
-            Logger::error('Failed to enqueue email.', array('site_id' => $site_id, 'email' => $email));
-            return false;
-        }
-
-        return isset($wpdb->insert_id) ? (int) $wpdb->insert_id : true;
+        $this->wpdb = $database ?: $wpdb;
+        $tables = MNEM_Installer::table_names($this->wpdb);
+        $this->table_name = $table_name ?: $tables['queue'];
+        $this->suppression_list = $suppression_list ?: new MNEM_Suppression_List($this->wpdb);
+        $this->logger = $logger ?: new MNEM_Logger();
     }
 
-    public static function process_batch(int $limit = 20)
+    public function enqueue($recipient, $subject, $body, array $headers = array(), $campaign_id = 0, $max_attempts = 3)
     {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'mnem_queue';
-        $now = self::current_time_mysql();
-        $limit = max(1, $limit);
-
-        $ids = $wpdb->get_col(
-            $wpdb->prepare(
-                "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d ORDER BY scheduled_at ASC LIMIT %d",
-                'pending',
-                $now,
-                self::MAX_ATTEMPTS,
-                $limit
-            )
-        );
-
-        if (empty($ids)) {
-            return 0;
+        if (! $this->wpdb) {
+            return false;
         }
 
-        $processed = 0;
+        $recipient = $this->normalize_email($recipient);
+        if ('' === $recipient || $this->suppression_list->is_suppressed($recipient)) {
+            return false;
+        }
 
-        foreach ($ids as $id) {
-            $claimed = $wpdb->query(
-                $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s",
-                    'processing',
-                    (int) $id,
-                    'pending'
-                )
-            );
+        $dedupe_key = $this->build_dedupe_key($recipient, $subject, $body, $campaign_id);
+        if ($this->has_duplicate($dedupe_key)) {
+            return false;
+        }
 
-            if (!$claimed) {
+        $now = gmdate('Y-m-d H:i:s');
+
+        return false !== $this->wpdb->insert($this->table_name, array(
+            'recipient' => $recipient,
+            'subject' => (string) $subject,
+            'body' => (string) $body,
+            'headers' => wp_json_encode($headers),
+            'campaign_id' => (int) $campaign_id,
+            'status' => 'queued',
+            'attempts' => 0,
+            'max_attempts' => max(1, (int) $max_attempts),
+            'next_attempt_gmt' => $now,
+            'dedupe_key' => $dedupe_key,
+            'created_at_gmt' => $now,
+            'updated_at_gmt' => $now,
+        ));
+    }
+
+    public function process_batch($limit = 10, callable $sender = null)
+    {
+        $processed = array('sent' => 0, 'failed' => 0, 'skipped' => 0);
+        foreach ($this->due_items($limit) as $item) {
+            if ($this->suppression_list->is_suppressed($item['recipient'])) {
+                $this->mark_skipped($item['id'], 'suppressed');
+                $processed['skipped']++;
                 continue;
             }
 
-            $row = $wpdb->get_row(
-                $wpdb->prepare(
-                    "SELECT id, site_id, recipient_email, subject, body, attempts FROM {$table} WHERE id = %d",
-                    (int) $id
-                ),
-                ARRAY_A
-            );
-
-            if (empty($row)) {
+            if (! $this->lock_item($item['id'])) {
+                $processed['skipped']++;
                 continue;
             }
 
-            $sent = wp_mail($row['recipient_email'], $row['subject'], $row['body']);
-            $attempts = (int) $row['attempts'] + 1;
-            $processed_at = self::current_time_mysql();
+            $result = $sender ? (bool) call_user_func($sender, $item) : $this->send_item($item);
 
-            if ($sent) {
-                $wpdb->query(
-                    $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s WHERE id = %d",
-                        'sent',
-                        $attempts,
-                        $processed_at,
-                        (int) $id
-                    )
-                );
-            } else {
-                $next_status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
-                $next_scheduled = $attempts >= self::MAX_ATTEMPTS ? $processed_at : self::calculate_next_attempt($attempts);
-
-                $wpdb->query(
-                    $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s WHERE id = %d",
-                        $next_status,
-                        $attempts,
-                        $next_scheduled,
-                        $processed_at,
-                        (int) $id
-                    )
-                );
+            if ($result) {
+                $this->mark_sent($item['id']);
+                $processed['sent']++;
+                continue;
             }
 
-            ++$processed;
+            $this->retry_or_fail($item);
+            $processed['failed']++;
         }
 
         return $processed;
     }
 
-    public static function calculate_next_attempt(int $attempts)
+    public function retry_delay_seconds($attempts)
     {
-        $delay = self::BACKOFF_BASE * (2 ** $attempts);
+        $attempts = max(1, (int) $attempts);
 
-        return gmdate('Y-m-d H:i:s', time() + $delay);
+        return (int) min(HOUR_IN_SECONDS * 24, pow(2, $attempts - 1) * MINUTE_IN_SECONDS * 5);
     }
 
-    public static function is_suppressed(int $site_id, string $email)
+    public function build_dedupe_key($recipient, $subject, $body, $campaign_id = 0)
     {
-        global $wpdb;
+        return hash('sha256', implode('|', array(strtolower((string) $recipient), (string) $campaign_id, (string) $subject, (string) $body)));
+    }
 
-        $table = $wpdb->prefix . 'mnem_suppression';
-        $email = strtolower(trim(sanitize_email($email)));
-        $found = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND email = %s",
-                $site_id,
-                $email
-            )
+    public function all($limit = 100)
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_results')) {
+            return array();
+        }
+
+        $limit = max(1, (int) $limit);
+
+        return (array) $this->wpdb->get_results("SELECT * FROM {$this->table_name} ORDER BY updated_at_gmt DESC LIMIT {$limit}", ARRAY_A);
+    }
+
+    protected function due_items($limit)
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_results')) {
+            return array();
+        }
+
+        $limit = max(1, (int) $limit);
+        $now = gmdate('Y-m-d H:i:s');
+        $sql = $this->wpdb->prepare(
+            "SELECT * FROM {$this->table_name} WHERE status IN ('queued','retrying') AND (next_attempt_gmt IS NULL OR next_attempt_gmt <= %s) ORDER BY id ASC LIMIT %d",
+            $now,
+            $limit
         );
 
-        return (int) $found > 0;
+        return (array) $this->wpdb->get_results($sql, ARRAY_A);
     }
 
-    private static function current_time_mysql()
+    protected function has_duplicate($dedupe_key)
     {
-        // All queue timestamps are stored in UTC to ensure consistent scheduling
-        // regardless of the WordPress blog timezone setting.
-        return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_var')) {
+            return false;
+        }
+
+        $sql = $this->wpdb->prepare(
+            "SELECT COUNT(1) FROM {$this->table_name} WHERE dedupe_key = %s AND status IN ('queued','retrying','processing','sent')",
+            $dedupe_key
+        );
+
+        return (int) $this->wpdb->get_var($sql) > 0;
+    }
+
+    protected function lock_item($id)
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'prepare') || ! method_exists($this->wpdb, 'query')) {
+            return false;
+        }
+
+        $now = gmdate('Y-m-d H:i:s');
+        $sql = $this->wpdb->prepare(
+            "UPDATE {$this->table_name} SET status = %s, locked_at_gmt = %s, updated_at_gmt = %s WHERE id = %d AND status IN ('queued','retrying')",
+            'processing',
+            $now,
+            $now,
+            (int) $id
+        );
+
+        return (int) $this->wpdb->query($sql) > 0;
+    }
+
+    protected function mark_sent($id)
+    {
+        return $this->update_item($id, array(
+            'status' => 'sent',
+            'sent_at_gmt' => gmdate('Y-m-d H:i:s'),
+            'last_error' => '',
+        ));
+    }
+
+    protected function mark_skipped($id, $reason)
+    {
+        return $this->update_item($id, array(
+            'status' => 'skipped',
+            'last_error' => (string) $reason,
+        ));
+    }
+
+    protected function retry_or_fail(array $item)
+    {
+        $attempts = (int) $item['attempts'] + 1;
+        $max_attempts = max(1, (int) $item['max_attempts']);
+
+        if ($attempts >= $max_attempts) {
+            return $this->update_item($item['id'], array(
+                'status' => 'failed',
+                'attempts' => $attempts,
+                'last_error' => 'Maximum attempts reached.',
+            ));
+        }
+
+        return $this->update_item($item['id'], array(
+            'status' => 'retrying',
+            'attempts' => $attempts,
+            'next_attempt_gmt' => gmdate('Y-m-d H:i:s', time() + $this->retry_delay_seconds($attempts)),
+            'last_error' => 'Send failed; retry scheduled.',
+        ));
+    }
+
+    protected function update_item($id, array $data)
+    {
+        if (! $this->wpdb) {
+            return false;
+        }
+
+        $data['updated_at_gmt'] = gmdate('Y-m-d H:i:s');
+
+        return false !== $this->wpdb->update($this->table_name, $data, array('id' => (int) $id));
+    }
+
+    protected function send_item(array $item)
+    {
+        $headers = json_decode(isset($item['headers']) ? (string) $item['headers'] : '[]', true);
+        if (! is_array($headers)) {
+            $headers = array();
+        }
+
+        if (function_exists('wp_mail')) {
+            $result = (bool) wp_mail($item['recipient'], $item['subject'], $item['body'], $headers);
+            if (! $result) {
+                $this->logger->log('error', 'Queue send failed', array('recipient' => $item['recipient'], 'campaign_id' => $item['campaign_id']));
+            }
+
+            return $result;
+        }
+
+        return false;
+    }
+
+    protected function normalize_email($email)
+    {
+        $email = strtolower(trim((string) $email));
+        if (function_exists('sanitize_email')) {
+            $email = sanitize_email($email);
+        }
+
+        return $email;
     }
 }

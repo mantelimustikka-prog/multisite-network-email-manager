@@ -1,125 +1,92 @@
 <?php
 
-namespace MNEM;
-
-defined('ABSPATH') || exit;
-
-class Campaigns
+class MNEM_Campaigns
 {
-    public const VALID_STATUSES = array('draft', 'scheduled', 'sending', 'sent', 'cancelled');
+    protected $wpdb;
+    protected $table_name;
 
-    public const VALID_TRANSITIONS = array(
-        'draft' => array('scheduled', 'cancelled'),
-        'scheduled' => array('sending', 'cancelled'),
-        'sending' => array('sent', 'cancelled'),
-        'sent' => array(),
-        'cancelled' => array(),
-    );
-
-    // NOTE: This is a placeholder scaffold. Actual campaign delivery logic is not yet implemented.
-
-    public static function create(int $site_id, string $name, string $subject, string $body)
+    public function __construct($database = null, $table_name = '')
     {
         global $wpdb;
+        $this->wpdb = $database ?: $wpdb;
+        $tables = MNEM_Installer::table_names($this->wpdb);
+        $this->table_name = $table_name ?: $tables['campaigns'];
+    }
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+    public function create(array $campaign)
+    {
+        if (! $this->wpdb) {
+            return false;
+        }
+
         $now = gmdate('Y-m-d H:i:s');
-
-        $result = $wpdb->query(
-            $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, name, subject, body, status, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s)",
-                $site_id,
-                sanitize_text_field($name),
-                $subject,
-                $body,
-                'draft',
-                $now,
-                $now
-            )
+        $data = array(
+            'name' => isset($campaign['name']) ? (string) $campaign['name'] : '',
+            'subject' => isset($campaign['subject']) ? (string) $campaign['subject'] : '',
+            'content' => isset($campaign['content']) ? (string) $campaign['content'] : '',
+            'status' => isset($campaign['status']) ? (string) $campaign['status'] : 'draft',
+            'created_at_gmt' => $now,
+            'updated_at_gmt' => $now,
         );
 
-        if ($result === false) {
+        $result = $this->wpdb->insert($this->table_name, $data);
+
+        return false === $result ? false : (int) $this->wpdb->insert_id;
+    }
+
+    public function update($id, array $campaign)
+    {
+        if (! $this->wpdb) {
             return false;
         }
 
-        return isset($wpdb->insert_id) ? (int) $wpdb->insert_id : true;
+        $campaign['updated_at_gmt'] = gmdate('Y-m-d H:i:s');
+
+        return false !== $this->wpdb->update($this->table_name, $campaign, array('id' => (int) $id));
     }
 
-    public static function get(int $id)
+    public function transition($id, $new_status)
     {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'mnem_campaigns';
-        $campaign = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT * FROM {$table} WHERE id = %d",
-                $id
-            ),
-            ARRAY_A
-        );
-
-        return $campaign ?: null;
-    }
-
-    public static function get_list(int $site_id, string $status = '', int $limit = 50, int $offset = 0)
-    {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'mnem_campaigns';
-        $limit = max(1, $limit);
-        $offset = max(0, $offset);
-
-        if ($status !== '' && in_array($status, self::VALID_STATUSES, true)) {
-            return (array) $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT * FROM {$table} WHERE site_id = %d AND status = %s ORDER BY created_at DESC LIMIT %d OFFSET %d",
-                    $site_id,
-                    $status,
-                    $limit,
-                    $offset
-                ),
-                ARRAY_A
-            );
-        }
-
-        return (array) $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d OFFSET %d",
-                $site_id,
-                $limit,
-                $offset
-            ),
-            ARRAY_A
-        );
-    }
-
-    public static function update_status(int $id, string $new_status)
-    {
-        global $wpdb;
-
-        if (!in_array($new_status, self::VALID_STATUSES, true)) {
+        $campaign = $this->get($id);
+        if (! $campaign || ! $this->can_transition($campaign['status'], $new_status)) {
             return false;
         }
 
-        $campaign = self::get($id);
-        if (!$campaign || !self::is_valid_transition($campaign['status'], $new_status)) {
-            return false;
-        }
-
-        $table = $wpdb->prefix . 'mnem_campaigns';
-        return $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, updated_at = %s WHERE id = %d",
-                $new_status,
-                gmdate('Y-m-d H:i:s'),
-                $id
-            )
-        );
+        return $this->update($id, array('status' => $new_status));
     }
 
-    public static function is_valid_transition(string $current_status, string $new_status)
+    public function get($id)
     {
-        return isset(self::VALID_TRANSITIONS[$current_status])
-            && in_array($new_status, self::VALID_TRANSITIONS[$current_status], true);
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_row')) {
+            return null;
+        }
+
+        $sql = $this->wpdb->prepare("SELECT * FROM {$this->table_name} WHERE id = %d LIMIT 1", (int) $id);
+
+        return $this->wpdb->get_row($sql, ARRAY_A);
+    }
+
+    public function all($limit = 100)
+    {
+        if (! $this->wpdb || ! method_exists($this->wpdb, 'get_results')) {
+            return array();
+        }
+
+        $limit = max(1, (int) $limit);
+
+        return (array) $this->wpdb->get_results("SELECT * FROM {$this->table_name} ORDER BY updated_at_gmt DESC LIMIT {$limit}", ARRAY_A);
+    }
+
+    public function can_transition($from_status, $to_status)
+    {
+        $transitions = array(
+            'draft' => array('scheduled', 'cancelled'),
+            'scheduled' => array('sending', 'cancelled'),
+            'sending' => array('completed', 'cancelled'),
+            'completed' => array(),
+            'cancelled' => array(),
+        );
+
+        return in_array($to_status, isset($transitions[$from_status]) ? $transitions[$from_status] : array(), true);
     }
 }

@@ -1,164 +1,153 @@
 <?php
 
-namespace MNEM;
-
-defined('ABSPATH') || exit;
-
-class RestApi
+class MNEM_REST_API
 {
-    public const NAMESPACE = 'mnem/v1';
+    const NAMESPACE = 'mnem/v1';
 
-    public function init()
+    protected $smtp_settings;
+    protected $queue;
+    protected $suppression_list;
+
+    public function __construct(MNEM_SMTP_Settings $smtp_settings = null, MNEM_Queue $queue = null, MNEM_Suppression_List $suppression_list = null)
     {
+        $this->smtp_settings = $smtp_settings ?: new MNEM_SMTP_Settings();
+        $this->queue = $queue ?: new MNEM_Queue();
+        $this->suppression_list = $suppression_list ?: new MNEM_Suppression_List();
+    }
+
+    public function register()
+    {
+        if (! function_exists('add_action')) {
+            return;
+        }
+
         add_action('rest_api_init', array($this, 'register_routes'));
     }
 
     public function register_routes()
     {
-        if (!function_exists('register_rest_route')) {
+        if (! function_exists('register_rest_route')) {
             return;
         }
 
-        register_rest_route(
-            self::NAMESPACE,
-            '/status',
+        register_rest_route(self::NAMESPACE, '/status', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'status'),
+            'permission_callback' => array($this, 'can_manage'),
+        ));
+
+        register_rest_route(self::NAMESPACE, '/smtp', array(
             array(
                 'methods' => 'GET',
-                'callback' => array($this, 'get_status'),
-                'permission_callback' => array($this, 'permission_check'),
-            )
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
-            '/smtp',
+                'callback' => array($this, 'get_smtp_settings'),
+                'permission_callback' => array($this, 'can_manage'),
+            ),
             array(
-                array(
-                    'methods' => 'GET',
-                    'callback' => array($this, 'get_smtp_settings'),
-                    'permission_callback' => array($this, 'permission_check'),
-                ),
-                array(
-                    'methods' => 'POST',
-                    'callback' => array($this, 'save_smtp_settings'),
-                    'permission_callback' => array($this, 'permission_check'),
-                ),
-            )
-        );
+                'methods' => 'POST',
+                'callback' => array($this, 'update_smtp_settings'),
+                'permission_callback' => array($this, 'can_manage'),
+            ),
+        ));
 
-        register_rest_route(
-            self::NAMESPACE,
-            '/queue',
+        register_rest_route(self::NAMESPACE, '/queue', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_queue'),
+            'permission_callback' => array($this, 'can_manage'),
+        ));
+
+        register_rest_route(self::NAMESPACE, '/suppression', array(
             array(
                 'methods' => 'GET',
-                'callback' => array($this, 'get_queue_items'),
-                'permission_callback' => array($this, 'permission_check'),
-            )
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
-            '/suppression',
+                'callback' => array($this, 'get_suppressions'),
+                'permission_callback' => array($this, 'can_manage'),
+            ),
             array(
-                array(
-                    'methods' => 'GET',
-                    'callback' => array($this, 'get_suppression_list'),
-                    'permission_callback' => array($this, 'permission_check'),
-                ),
-                array(
-                    'methods' => 'POST',
-                    'callback' => array($this, 'add_suppression_entry'),
-                    'permission_callback' => array($this, 'permission_check'),
-                ),
-                array(
-                    'methods' => 'DELETE',
-                    'callback' => array($this, 'delete_suppression_entry'),
-                    'permission_callback' => array($this, 'permission_check'),
-                ),
-            )
-        );
+                'methods' => 'POST',
+                'callback' => array($this, 'create_suppression'),
+                'permission_callback' => array($this, 'can_manage'),
+            ),
+            array(
+                'methods' => 'DELETE',
+                'callback' => array($this, 'delete_suppression'),
+                'permission_callback' => array($this, 'can_manage'),
+            ),
+        ));
     }
 
-    public function permission_check()
+    public function can_manage()
     {
-        if (function_exists('current_user_can') && current_user_can('manage_network')) {
-            return true;
-        }
-
-        return new \WP_Error('mnem_forbidden', 'You do not have permission to access this resource.', array('status' => 403));
+        return ! function_exists('current_user_can') || current_user_can('manage_network_options');
     }
 
-    public function get_status()
+    public function status()
     {
-        return array(
-            'plugin_version' => defined('MNEM_VERSION') ? MNEM_VERSION : '1.0.0',
-            'db_version' => get_site_option('mnem_db_version', ''),
-            'smtp_configured' => SmtpSettings::get('host', '') !== '',
-        );
+        return $this->respond(array(
+            'version' => defined('MNEM_VERSION') ? MNEM_VERSION : null,
+            'db_version' => function_exists('get_site_option') ? get_site_option('mnem_db_version') : null,
+            'queue_size' => count($this->queue->all(10)),
+            'suppression_count' => count($this->suppression_list->all(10)),
+        ));
     }
 
     public function get_smtp_settings()
     {
-        $settings = SmtpSettings::get_all();
-        $settings['password'] = '';
+        $settings = $this->smtp_settings->export();
+        $settings['password'] = '' === $settings['password'] ? '' : '***';
 
-        return $settings;
+        return $this->respond($settings);
     }
 
-    public function save_smtp_settings($request)
+    public function update_smtp_settings($request)
     {
-        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
-        SmtpSettings::save($params);
+        $params = $this->request_params($request);
+        $updated = $this->smtp_settings->update($params);
 
-        return array(
-            'success' => true,
-            'settings' => $this->get_smtp_settings(),
-        );
+        return $this->respond(array('success' => (bool) $updated));
     }
 
-    public function get_queue_items()
+    public function get_queue()
     {
-        global $wpdb;
-        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-        $table = $wpdb->prefix . 'mnem_queue';
-        $items = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT id, site_id, recipient_email, subject, status, attempts, scheduled_at, processed_at, created_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
-                $site_id,
-                100
-            ),
-            ARRAY_A
-        );
-
-        return array('items' => (array) $items);
+        return $this->respond($this->queue->all());
     }
 
-    public function get_suppression_list()
+    public function get_suppressions()
     {
-        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-
-        return array('items' => Suppression::get_list($site_id));
+        return $this->respond($this->suppression_list->all());
     }
 
-    public function add_suppression_entry($request)
+    public function create_suppression($request)
     {
-        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
-        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-        $result = Suppression::add(
-            $site_id,
-            isset($params['email']) ? (string) $params['email'] : '',
-            isset($params['reason']) ? (string) $params['reason'] : ''
-        );
+        $params = $this->request_params($request);
 
-        return array('success' => (bool) $result);
+        return $this->respond(array(
+            'success' => $this->suppression_list->add(isset($params['email']) ? $params['email'] : '', isset($params['reason']) ? $params['reason'] : ''),
+        ));
     }
 
-    public function delete_suppression_entry($request)
+    public function delete_suppression($request)
     {
-        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
-        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-        $result = Suppression::remove($site_id, isset($params['email']) ? (string) $params['email'] : '');
+        $params = $this->request_params($request);
 
-        return array('success' => (bool) $result);
+        return $this->respond(array(
+            'success' => $this->suppression_list->remove(isset($params['email']) ? $params['email'] : ''),
+        ));
+    }
+
+    protected function respond($data)
+    {
+        if (class_exists('WP_REST_Response')) {
+            return new WP_REST_Response($data, 200);
+        }
+
+        return $data;
+    }
+
+    protected function request_params($request)
+    {
+        if (is_object($request) && method_exists($request, 'get_json_params')) {
+            return (array) $request->get_json_params();
+        }
+
+        return is_array($request) ? $request : array();
     }
 }
