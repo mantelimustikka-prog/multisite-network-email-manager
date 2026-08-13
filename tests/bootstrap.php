@@ -22,7 +22,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '1');
+    define('MNEM_DB_VERSION', '2');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -122,7 +122,7 @@ if (!function_exists('register_rest_route')) {
 if (!function_exists('current_user_can')) {
     function current_user_can($capability)
     {
-        return $capability === 'manage_network';
+        return in_array($capability, array('manage_network', 'manage_network_options'), true);
     }
 }
 
@@ -144,6 +144,13 @@ if (!function_exists('get_current_blog_id')) {
     function get_current_blog_id()
     {
         return 1;
+    }
+}
+
+if (!function_exists('get_users')) {
+    function get_users($args = array())
+    {
+        return isset($GLOBALS['mnem_users']) ? $GLOBALS['mnem_users'] : array();
     }
 }
 
@@ -183,6 +190,62 @@ if (!function_exists('wp_safe_redirect')) {
     }
 }
 
+if (!function_exists('admin_url')) {
+    function admin_url($path = '')
+    {
+        return 'http://example.org/wp-admin/' . ltrim($path, '/');
+    }
+}
+
+if (!function_exists('wp_create_nonce')) {
+    function wp_create_nonce($action)
+    {
+        return 'test-nonce';
+    }
+}
+
+if (!function_exists('wp_enqueue_style')) {
+    function wp_enqueue_style()
+    {
+        return true;
+    }
+}
+
+if (!function_exists('wp_enqueue_script')) {
+    function wp_enqueue_script()
+    {
+        return true;
+    }
+}
+
+if (!function_exists('wp_localize_script')) {
+    function wp_localize_script()
+    {
+        return true;
+    }
+}
+
+if (!function_exists('check_ajax_referer')) {
+    function check_ajax_referer($action, $query_arg = false)
+    {
+        return true;
+    }
+}
+
+if (!function_exists('wp_send_json_success')) {
+    function wp_send_json_success($data = null)
+    {
+        return array('success' => true, 'data' => $data);
+    }
+}
+
+if (!function_exists('wp_send_json_error')) {
+    function wp_send_json_error($data = null, $status_code = null)
+    {
+        return array('success' => false, 'data' => $data, 'status_code' => $status_code);
+    }
+}
+
 if (!function_exists('network_admin_url')) {
     function network_admin_url($path = '')
     {
@@ -217,6 +280,27 @@ if (!function_exists('esc_attr')) {
     function esc_attr($text)
     {
         return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+if (!function_exists('esc_textarea')) {
+    function esc_textarea($text)
+    {
+        return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+if (!function_exists('add_menu_page')) {
+    function add_menu_page()
+    {
+        return true;
+    }
+}
+
+if (!function_exists('add_submenu_page')) {
+    function add_submenu_page()
+    {
+        return true;
     }
 }
 
@@ -309,3 +393,7 @@ require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-suppression.php';
 require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
+require_once __DIR__ . '/../includes/class-rest-api.php';
+require_once __DIR__ . '/../admin/class-admin-menu.php';
+require_once __DIR__ . '/../admin/class-network-admin.php';
+require_once __DIR__ . '/../admin/class-admin.php';
