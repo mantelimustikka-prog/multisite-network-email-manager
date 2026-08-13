@@ -67,6 +67,7 @@ class Installer
             "CREATE TABLE {$queue_table} (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                 site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 recipient_email varchar(190) NOT NULL,
                 subject text NOT NULL,
                 body longtext NOT NULL,
@@ -77,6 +78,7 @@ class Installer
                 created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY  (id),
                 KEY site_status (site_id, status),
+                KEY campaign_status (campaign_id, status),
                 KEY scheduled_at (scheduled_at)
             ) {$charset_collate};",
             "CREATE TABLE {$suppression_table} (
@@ -96,6 +98,13 @@ class Installer
                 body longtext NOT NULL,
                 status enum('draft','scheduled','sending','sent','cancelled') NOT NULL DEFAULT 'draft',
                 scheduled_at datetime NULL,
+                recipient_scope varchar(20) NOT NULL DEFAULT 'all_users',
+                recipient_list longtext NULL,
+                total_recipients int(11) NOT NULL DEFAULT 0,
+                sent_count int(11) NOT NULL DEFAULT 0,
+                failed_count int(11) NOT NULL DEFAULT 0,
+                enqueue_failed_count int(11) NOT NULL DEFAULT 0,
+                last_send_attempt_at datetime NULL,
                 sent_at datetime NULL,
                 created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -9,7 +9,7 @@ class Queue
     public const MAX_ATTEMPTS = 3;
     public const BACKOFF_BASE = 300;
 
-    public static function enqueue(int $site_id, string $email, string $subject, string $body)
+    public static function enqueue(int $site_id, string $email, string $subject, string $body, int $campaign_id = 0)
     {
         global $wpdb;
 
@@ -19,7 +19,7 @@ class Queue
         }
 
         if (self::is_suppressed($site_id, $email)) {
-            Logger::info('Skipped queue insert for suppressed recipient.', array('site_id' => $site_id, 'email' => $email));
+            Logger::info('Skipped queue insert for suppressed recipient.', array('site_id' => $site_id, 'email' => $email, 'campaign_id' => $campaign_id));
             return false;
         }
 
@@ -29,8 +29,9 @@ class Queue
 
         $result = $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, recipient_email, subject, body, status, attempts, scheduled_at, created_at) VALUES (%d, %s, %s, %s, %s, %d, %s, %s)",
+                "INSERT INTO {$table} (site_id, campaign_id, recipient_email, subject, body, status, attempts, scheduled_at, created_at) VALUES (%d, %d, %s, %s, %s, %s, %d, %s, %s)",
                 $site_id,
+                $campaign_id,
                 $email,
                 $subject,
                 $body,
@@ -42,7 +43,7 @@ class Queue
         );
 
         if ($result === false) {
-            Logger::error('Failed to enqueue email.', array('site_id' => $site_id, 'email' => $email));
+            Logger::error('Failed to enqueue email.', array('site_id' => $site_id, 'email' => $email, 'campaign_id' => $campaign_id));
             return false;
         }
 
@@ -89,7 +90,7 @@ class Queue
 
             $row = $wpdb->get_row(
                 $wpdb->prepare(
-                    "SELECT id, site_id, recipient_email, subject, body, attempts FROM {$table} WHERE id = %d",
+                    "SELECT id, site_id, campaign_id, recipient_email, subject, body, attempts FROM {$table} WHERE id = %d",
                     (int) $id
                 ),
                 ARRAY_A
@@ -113,6 +114,7 @@ class Queue
                         (int) $id
                     )
                 );
+                Logger::info('Queue email sent.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email']));
             } else {
                 $next_status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
                 $next_scheduled = $attempts >= self::MAX_ATTEMPTS ? $processed_at : self::calculate_next_attempt($attempts);
@@ -127,12 +129,88 @@ class Queue
                         (int) $id
                     )
                 );
+
+                if ($next_status === 'failed') {
+                    Logger::error('Queue email permanently failed.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts));
+                } else {
+                    Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled));
+                }
+            }
+
+            if (!empty($row['campaign_id'])) {
+                Campaigns::refresh_delivery_stats((int) $row['campaign_id']);
             }
 
             ++$processed;
         }
 
         return $processed;
+    }
+
+    public static function get_stats(int $site_id)
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $pending = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'pending'));
+        $processing = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'processing'));
+        $sent = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'sent'));
+        $failed = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'failed'));
+        $next_retry = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT scheduled_at, attempts FROM {$table} WHERE site_id = %d AND status = %s AND attempts > %d ORDER BY scheduled_at ASC LIMIT %d",
+                $site_id,
+                'pending',
+                0,
+                1
+            ),
+            ARRAY_A
+        );
+
+        return array(
+            'pending' => $pending,
+            'processing' => $processing,
+            'sent' => $sent,
+            'failed' => $failed,
+            'next_retry_at' => !empty($next_retry['scheduled_at']) ? $next_retry['scheduled_at'] : '',
+            'next_retry_attempts' => !empty($next_retry['attempts']) ? (int) $next_retry['attempts'] : 0,
+        );
+    }
+
+    public static function retry_failed(int $site_id)
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $campaign_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT DISTINCT campaign_id FROM {$table} WHERE site_id = %d AND status = %s AND campaign_id > %d",
+                $site_id,
+                'failed',
+                0
+            )
+        );
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s WHERE site_id = %d AND status = %s",
+                'pending',
+                0,
+                self::current_time_mysql(),
+                null,
+                $site_id,
+                'failed'
+            )
+        );
+
+        if ($result !== false && $result > 0) {
+            foreach ((array) $campaign_ids as $campaign_id) {
+                Campaigns::refresh_delivery_stats((int) $campaign_id);
+            }
+
+            Logger::info('Retried failed queue items.', array('site_id' => $site_id, 'count' => (int) $result));
+        }
+
+        return $result === false ? 0 : (int) $result;
     }
 
     public static function calculate_next_attempt(int $attempts)
@@ -161,8 +239,6 @@ class Queue
 
     private static function current_time_mysql()
     {
-        // All queue timestamps are stored in UTC to ensure consistent scheduling
-        // regardless of the WordPress blog timezone setting.
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
     }
 }

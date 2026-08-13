@@ -27,12 +27,16 @@ class QueueTest extends TestCase
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public $queries = array();
-            public $var = 1;
 
             public function get_var($query)
             {
                 $this->queries[] = $query;
-                return $this->var;
+
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+
+                return 1;
             }
 
             public function query($query)
@@ -49,5 +53,52 @@ class QueueTest extends TestCase
         $this->assertSame(0, count(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
             return strpos($query, 'INSERT INTO wp_mnem_queue') !== false;
         })));
+    }
+
+    public function test_get_stats_returns_retry_information()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, "status = 'pending'") !== false) {
+                    return 4;
+                }
+
+                if (strpos($query, "status = 'processing'") !== false) {
+                    return 1;
+                }
+
+                if (strpos($query, "status = 'sent'") !== false) {
+                    return 7;
+                }
+
+                if (strpos($query, "status = 'failed'") !== false) {
+                    return 2;
+                }
+
+                return 0;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+
+                return array(
+                    'scheduled_at' => '2026-08-13 23:00:00',
+                    'attempts' => 2,
+                );
+            }
+        };
+
+        $stats = Queue::get_stats(1);
+
+        $this->assertSame(4, $stats['pending']);
+        $this->assertSame(1, $stats['processing']);
+        $this->assertSame(7, $stats['sent']);
+        $this->assertSame(2, $stats['failed']);
+        $this->assertSame('2026-08-13 23:00:00', $stats['next_retry_at']);
+        $this->assertSame(2, $stats['next_retry_attempts']);
     }
 }

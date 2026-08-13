@@ -10,7 +10,7 @@ class Plugin
     {
         if (function_exists('is_admin') && is_admin()) {
             try {
-                $admin = new \MNEM\Admin\Admin();
+                $admin = new \MNEM\Admin\NetworkAdmin();
                 $admin->init();
             } catch (\Throwable $throwable) {
                 error_log('MNEM admin loader failed: ' . $throwable->getMessage());
