@@ -22,7 +22,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '2');
+    define('MNEM_DB_VERSION', '3');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -97,17 +97,17 @@ if (!function_exists('wp_unslash')) {
 }
 
 if (!function_exists('add_action')) {
-    function add_action($hook, $callback)
+    function add_action($hook, $callback, ...$args)
     {
-        $GLOBALS['mnem_hooks'][$hook][] = $callback;
+        $GLOBALS['mnem_hooks'][$hook][] = array('callback' => $callback, 'args' => $args);
         return true;
     }
 }
 
 if (!function_exists('add_filter')) {
-    function add_filter($hook, $callback)
+    function add_filter($hook, $callback, ...$args)
     {
-        $GLOBALS['mnem_hooks'][$hook][] = $callback;
+        $GLOBALS['mnem_hooks'][$hook][] = array('callback' => $callback, 'args' => $args);
         return true;
     }
 }
@@ -144,7 +144,7 @@ if (!function_exists('is_admin')) {
 if (!function_exists('get_current_blog_id')) {
     function get_current_blog_id()
     {
-        return 1;
+        return isset($GLOBALS['mnem_current_blog_id']) ? (int) $GLOBALS['mnem_current_blog_id'] : 1;
     }
 }
 
@@ -174,8 +174,15 @@ if (!function_exists('current_time')) {
 }
 
 if (!function_exists('wp_mail')) {
-    function wp_mail($to, $subject, $message)
+    function wp_mail($to, $subject, $message, $headers = array(), $attachments = array())
     {
+        $GLOBALS['mnem_last_wp_mail'] = array(
+            'to' => $to,
+            'subject' => $subject,
+            'message' => $message,
+            'headers' => $headers,
+            'attachments' => $attachments,
+        );
         return true;
     }
 }
@@ -276,6 +283,66 @@ if (!function_exists('network_admin_url')) {
     function network_admin_url($path = '')
     {
         return 'http://example.org/wp-admin/network/' . ltrim($path, '/');
+    }
+
+    if (!function_exists('is_network_admin')) {
+        function is_network_admin()
+        {
+            return true;
+        }
+    }
+
+    if (!function_exists('plugin_basename')) {
+        function plugin_basename($file)
+        {
+            return basename((string) $file);
+        }
+    }
+
+    if (!function_exists('deactivate_plugins')) {
+        function deactivate_plugins($plugin)
+        {
+            $GLOBALS['mnem_deactivated_plugins'][] = $plugin;
+            return true;
+        }
+    }
+
+    if (!function_exists('is_plugin_active_for_network')) {
+        function is_plugin_active_for_network($plugin)
+        {
+            return !empty($GLOBALS['mnem_plugin_network_active']);
+        }
+    }
+
+    if (!function_exists('is_plugin_active')) {
+        function is_plugin_active($plugin)
+        {
+            return !empty($GLOBALS['mnem_plugin_active']);
+        }
+    }
+
+    if (!function_exists('wp_die')) {
+        function wp_die($message = '')
+        {
+            throw new Exception((string) $message);
+        }
+    }
+
+    if (!function_exists('switch_to_blog')) {
+        function switch_to_blog($blog_id)
+        {
+            $GLOBALS['mnem_switched_blogs'][] = (int) $blog_id;
+            $GLOBALS['mnem_current_blog_id'] = (int) $blog_id;
+            return true;
+        }
+    }
+
+    if (!function_exists('restore_current_blog')) {
+        function restore_current_blog()
+        {
+            $GLOBALS['mnem_restore_blog_calls'] = isset($GLOBALS['mnem_restore_blog_calls']) ? (int) $GLOBALS['mnem_restore_blog_calls'] + 1 : 1;
+            return true;
+        }
     }
 }
 
@@ -562,6 +629,13 @@ if (!function_exists('get_bloginfo')) {
         if ($show === 'name') {
             return 'Test Site';
         }
+
+        if (!function_exists('esc_url')) {
+            function esc_url($url)
+            {
+                return (string) $url;
+            }
+        }
         return '';
     }
 }
@@ -604,6 +678,7 @@ require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-email-formatter.php';
+require_once __DIR__ . '/../includes/class-mail-interceptor.php';
 require_once __DIR__ . '/../includes/class-suppression.php';
 require_once __DIR__ . '/../includes/class-email-provider.php';
 require_once __DIR__ . '/../includes/class-smtp-provider.php';

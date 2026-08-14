@@ -51,6 +51,7 @@ defined('ABSPATH') || exit;
         <thead>
             <tr>
                 <th>ID</th>
+                <th>Blog ID</th>
                 <th>Campaign</th>
                 <th>Recipient</th>
                 <th>Subject</th>
@@ -58,17 +59,19 @@ defined('ABSPATH') || exit;
                 <th>Attempts</th>
                 <th>Scheduled At</th>
                 <th>Processed At</th>
+                <th>Sent At</th>
             </tr>
         </thead>
         <tbody>
             <?php if (empty($queue_items)) : ?>
                 <tr>
-                    <td colspan="8">No queue items found.</td>
+                    <td colspan="10">No queue items found.</td>
                 </tr>
             <?php else : ?>
                 <?php foreach ($queue_items as $item) : ?>
                     <tr>
                         <td><?php echo esc_html((string) $item['id']); ?></td>
+                        <td><?php echo esc_html((string) $item['blog_id']); ?></td>
                         <td><?php echo esc_html((string) $item['campaign_id']); ?></td>
                         <td><?php echo esc_html($item['recipient_email']); ?></td>
                         <td><?php echo esc_html($item['subject']); ?></td>
@@ -76,6 +79,7 @@ defined('ABSPATH') || exit;
                         <td><?php echo esc_html((string) $item['attempts']); ?></td>
                         <td><?php echo esc_html($item['scheduled_at']); ?></td>
                         <td><?php echo esc_html(!empty($item['processed_at']) ? $item['processed_at'] : '—'); ?></td>
+                        <td><?php echo esc_html(!empty($item['sent_at']) ? $item['sent_at'] : '—'); ?></td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>

@@ -101,4 +101,74 @@ class QueueTest extends TestCase
         $this->assertSame('2026-08-13 23:00:00', $stats['next_retry_at']);
         $this->assertSame(2, $stats['next_retry_attempts']);
     }
+
+    public function test_process_batch_switches_blog_context_and_restores()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        $GLOBALS['mnem_switched_blogs'] = array();
+        $GLOBALS['mnem_restore_blog_calls'] = 0;
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array(10);
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 10,
+                    'site_id' => 2,
+                    'blog_id' => 2,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'user@example.com',
+                    'subject' => 'Subject',
+                    'body' => 'Body',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 0,
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+
+                return 0;
+            }
+        };
+
+        $processed = Queue::process_batch(1);
+
+        $this->assertSame(1, $processed);
+        $this->assertSame(array(2), $GLOBALS['mnem_switched_blogs']);
+        $this->assertSame(1, $GLOBALS['mnem_restore_blog_calls']);
+        $this->assertSame('user@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
+    }
 }

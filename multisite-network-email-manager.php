@@ -15,7 +15,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '2');
+    define('MNEM_DB_VERSION', '3');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -81,8 +81,20 @@ spl_autoload_register(
 
 register_activation_hook(
     __FILE__,
-    static function () {
-        \MNEM\Installer::activate();
+    static function ($network_wide = false) {
+        if (function_exists('is_multisite') && is_multisite() && !$network_wide) {
+            if (function_exists('deactivate_plugins')) {
+                deactivate_plugins(plugin_basename(__FILE__));
+            }
+
+            if (function_exists('wp_die')) {
+                wp_die('Multisite Network Email Manager must be network activated.');
+            }
+
+            return;
+        }
+
+        \MNEM\Installer::activate($network_wide);
     }
 );
 
@@ -98,5 +110,49 @@ add_action(
     static function () {
         $plugin = new \MNEM\Plugin();
         $plugin->init();
+    }
+);
+
+add_action(
+    'admin_init',
+    static function () {
+        if (!function_exists('is_multisite') || !is_multisite()) {
+            return;
+        }
+
+        if (!function_exists('is_plugin_active_for_network') && defined('ABSPATH')) {
+            $plugin_file = ABSPATH . 'wp-admin/includes/plugin.php';
+            if (file_exists($plugin_file)) {
+                require_once $plugin_file;
+            }
+        }
+
+        if (function_exists('is_plugin_active_for_network') && !is_plugin_active_for_network(plugin_basename(__FILE__))) {
+            if (function_exists('is_plugin_active') && is_plugin_active(plugin_basename(__FILE__)) && function_exists('deactivate_plugins')) {
+                deactivate_plugins(plugin_basename(__FILE__));
+                update_site_option('mnem_network_only_notice', 1);
+            }
+        }
+
+        $is_plugin_activation = isset($_GET['action'], $_GET['plugin']) && $_GET['action'] === 'activate' && $_GET['plugin'] === plugin_basename(__FILE__);
+        $is_network_admin = function_exists('is_network_admin') ? is_network_admin() : false;
+
+        if ($is_plugin_activation && !$is_network_admin && function_exists('wp_safe_redirect')) {
+            update_site_option('mnem_network_only_notice', 1);
+            wp_safe_redirect(network_admin_url('plugins.php'));
+            exit;
+        }
+    }
+);
+
+add_action(
+    'network_admin_notices',
+    static function () {
+        if ((int) get_site_option('mnem_network_only_notice', 0) !== 1) {
+            return;
+        }
+
+        update_site_option('mnem_network_only_notice', 0);
+        echo '<div class="notice notice-error"><p>Multisite Network Email Manager must be network activated.</p></div>';
     }
 );

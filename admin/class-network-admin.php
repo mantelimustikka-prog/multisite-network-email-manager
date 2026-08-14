@@ -274,11 +274,10 @@ class NetworkAdmin
     {
         $this->ensure_ajax_permissions();
 
-        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
         wp_send_json_success(
             array(
-                'queue' => \MNEM\Queue::get_stats($site_id),
-                'campaigns' => \MNEM\Campaigns::get_list($site_id, '', 10, 0),
+                'queue' => \MNEM\Queue::get_stats(null),
+                'campaigns' => \MNEM\Campaigns::get_list(function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1, '', 10, 0),
                 'paused' => (int) get_site_option('mnem_campaign_sends_paused', 0) === 1,
                 'cron' => \MNEM\Cron::get_status(),
             )

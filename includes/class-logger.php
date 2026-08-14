@@ -107,13 +107,19 @@ class Logger
         }
 
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        $blog_id = $site_id;
+        $user_id = function_exists('get_current_user_id') ? (int) get_current_user_id() : 0;
         $created_at = gmdate('Y-m-d H:i:s');
+        $context['blog_id'] = isset($context['blog_id']) ? (int) $context['blog_id'] : $blog_id;
+        $context['user_id'] = isset($context['user_id']) ? (int) $context['user_id'] : $user_id;
         $encoded_context = wp_json_encode($context);
 
         $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, level, message, context, created_at) VALUES (%d, %s, %s, %s, %s)",
+                "INSERT INTO {$table} (site_id, blog_id, user_id, level, message, context, created_at) VALUES (%d, %d, %d, %s, %s, %s, %s)",
                 $site_id,
+                $blog_id,
+                $user_id,
                 $level,
                 $message,
                 $encoded_context,
