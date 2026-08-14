@@ -79,7 +79,9 @@ class AdminMenu
             $smtp_status = 'Not Configured';
         }
 
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings'));
+        $tracking_enabled = \MNEM\EmailTracking::is_enabled();
+
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings', 'tracking_enabled'));
     }
 
     public function render_settings()

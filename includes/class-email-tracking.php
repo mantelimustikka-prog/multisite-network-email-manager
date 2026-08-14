@@ -12,7 +12,15 @@ class EmailTracking
 
     public static function is_enabled(): bool
     {
-        return (int) get_site_option(self::OPTION_KEEP_PREVIEWS, 1) === 1;
+        $keep_previews = get_site_option(self::OPTION_KEEP_PREVIEWS);
+
+        // If the option has never been set, default to enabled and persist it.
+        if ($keep_previews === false) {
+            update_site_option(self::OPTION_KEEP_PREVIEWS, 1);
+            return true;
+        }
+
+        return (int) $keep_previews === 1;
     }
 
     public static function get_retention_days(): int
@@ -83,7 +91,7 @@ class EmailTracking
                 isset($queue_row['subject']) ? (string) $queue_row['subject'] : '',
                 isset($queue_row['body']) ? (string) $queue_row['body'] : '',
                 wp_json_encode(array_values($headers)),
-                'pending',
+                !empty($send_result['success']) ? 'pending' : 'failed',
                 0,
                 wp_json_encode(array()),
                 0,
