@@ -58,7 +58,7 @@ class AdminMenu
         $sender_email = \MNEM\SmtpSettings::get_sender_email();
         $smtp_warnings = array();
         if ($sender_email === '') {
-            $smtp_warnings[] = 'Sender email is not configured. Please configure it in <a href="' . esc_url(network_admin_url('admin.php?page=mnem-settings&tab=sender')) . '">Settings &gt; Sender Settings</a>.';
+            $smtp_warnings[] = 'Sender email is not configured. Please configure it in <a href="' . esc_url(network_admin_url('admin.php?page=mnem-settings&tab=sender')) . '">Settings > Sender Settings</a>.';
         }
 
         $smtp_provider_type = \MNEM\SmtpSettings::get('provider_type', 'smtp');

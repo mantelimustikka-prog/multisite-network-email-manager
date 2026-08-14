@@ -216,9 +216,9 @@ class SmtpDiagnostics
                 EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
             } else {
                 $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
-                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider, 'provider_error' => $error, 'user_id' => $user_id));
+                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider !== '' ? $provider : $provider_type, 'provider_error' => $error, 'user_id' => $user_id));
 
-                if ($provider === '' && !$sent) {
+                if ($provider === '') {
                     Logger::error('Test email failed - no provider returned in result.', array(
                         'expected_provider' => $provider_type,
                         'result'            => $send_result,
