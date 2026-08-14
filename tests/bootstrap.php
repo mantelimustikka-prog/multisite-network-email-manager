@@ -22,7 +22,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '4');
+    define('MNEM_DB_VERSION', '5');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -729,6 +729,7 @@ require_once __DIR__ . '/../includes/class-brevo-provider.php';
 require_once __DIR__ . '/../includes/class-postmark-provider.php';
 require_once __DIR__ . '/../includes/class-smtp2go-provider.php';
 require_once __DIR__ . '/../includes/class-provider-manager.php';
+require_once __DIR__ . '/../includes/class-email-tracking.php';
 require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
 require_once __DIR__ . '/../includes/class-cron.php';

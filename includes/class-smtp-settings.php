@@ -131,6 +131,41 @@ class SmtpSettings
         return $decoded === false ? '' : $decoded;
     }
 
+    public static function is_active_provider_configured(): bool
+    {
+        return self::is_provider_configured((string) self::get('provider_type', 'smtp'), self::get_all());
+    }
+
+    /**
+     * @param string              $provider_type
+     * @param array<string,mixed> $settings
+     */
+    public static function is_provider_configured(string $provider_type, array $settings): bool
+    {
+        $provider_type = sanitize_text_field($provider_type);
+
+        if ($provider_type === 'smtp') {
+            return isset($settings['host']) && trim((string) $settings['host']) !== '';
+        }
+
+        $provider_config = isset($settings['provider_config']) && is_array($settings['provider_config'])
+            ? $settings['provider_config']
+            : array();
+        $config = isset($provider_config[$provider_type]) && is_array($provider_config[$provider_type])
+            ? $provider_config[$provider_type]
+            : array();
+
+        if ($provider_type === 'mailgun') {
+            return !empty($config['api_key']) && !empty($config['domain']);
+        }
+
+        if ($provider_type === 'postmark') {
+            return !empty($config['server_token']);
+        }
+
+        return in_array($provider_type, array('sendgrid', 'brevo', 'smtp2go'), true) && !empty($config['api_key']);
+    }
+
     /**
      * Get the sender name. Falls back to the site name if not set.
      */

@@ -186,6 +186,10 @@ class Queue
                         )
                     );
 
+                    $tracking_headers = $headers;
+                    unset($tracking_headers['__attachments']);
+                    EmailTracking::store_sent_email((int) $id, $row, $result, $tracking_headers);
+
                     Logger::info('Queue email sent.', array('queue_id' => (int) $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
                 } else {
                     $next_status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';

@@ -58,6 +58,7 @@ class Installer
         $campaigns_table = $wpdb->prefix . 'mnem_campaigns';
         $subscriber_lists_table = $wpdb->prefix . 'mnem_subscriber_lists';
         $list_subscribers_table = $wpdb->prefix . 'mnem_list_subscribers';
+        $email_tracking_table = $wpdb->prefix . 'mnem_email_tracking';
 
         $sql = array(
             "CREATE TABLE {$logs_table} (
@@ -158,6 +159,28 @@ class Installer
                 KEY subscription_status (subscription_status),
                 UNIQUE KEY list_user (list_id, user_id)
             ) {$charset_collate};",
+            "CREATE TABLE {$email_tracking_table} (
+                email_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                queue_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                provider_message_id varchar(255) NOT NULL DEFAULT '',
+                recipient_email varchar(190) NOT NULL DEFAULT '',
+                subject text NOT NULL,
+                body longtext NOT NULL,
+                headers longtext NULL,
+                delivery_status enum('pending','delivered','bounced','failed') NOT NULL DEFAULT 'pending',
+                open_count int(11) NOT NULL DEFAULT 0,
+                open_timestamps longtext NULL,
+                click_count int(11) NOT NULL DEFAULT 0,
+                click_timestamps longtext NULL,
+                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY  (email_id),
+                KEY queue_id (queue_id),
+                KEY recipient_email (recipient_email),
+                KEY provider_message_id (provider_message_id),
+                KEY delivery_status (delivery_status),
+                KEY created_at (created_at)
+            ) {$charset_collate};",
         );
 
         foreach ($sql as $statement) {
@@ -165,6 +188,12 @@ class Installer
         }
 
         self::update_db_version();
+        if ((int) get_site_option(EmailTracking::OPTION_KEEP_PREVIEWS, -1) === -1) {
+            update_site_option(EmailTracking::OPTION_KEEP_PREVIEWS, 1);
+        }
+        if ((int) get_site_option(EmailTracking::OPTION_RETENTION_DAYS, -1) === -1) {
+            update_site_option(EmailTracking::OPTION_RETENTION_DAYS, 30);
+        }
     }
 
     public static function update_db_version()
