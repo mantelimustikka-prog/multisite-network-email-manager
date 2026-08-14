@@ -512,6 +512,7 @@ class RestApi
             $event_type = isset($event['event_type']) ? (string) $event['event_type'] : '';
             $recipient = isset($event['recipient']) ? (string) $event['recipient'] : '';
             $message_id = isset($event['message_id']) ? (string) $event['message_id'] : '';
+            $timestamp = isset($event['timestamp']) ? (string) $event['timestamp'] : '';
 
             Logger::info('Webhook event processed.', array(
                 'provider'   => $provider,
@@ -520,7 +521,7 @@ class RestApi
                 'message_id' => $message_id,
             ));
 
-            EmailTracking::handle_webhook_event($provider, $event_type, $recipient, $message_id);
+            EmailTracking::handle_webhook_event($provider, $event_type, $recipient, $message_id, $timestamp);
 
             // Auto-suppress on hard bounce events.
             $bounce_events = array(
@@ -556,6 +557,7 @@ class RestApi
                     'event_type' => isset($event_data['event']) ? (string) $event_data['event'] : '',
                     'recipient' => isset($event_data['recipient']) ? (string) $event_data['recipient'] : '',
                     'message_id' => isset($event_data['message']['headers']['message-id']) ? (string) $event_data['message']['headers']['message-id'] : '',
+                    'timestamp' => isset($event_data['timestamp']) ? gmdate('Y-m-d H:i:s', (int) $event_data['timestamp']) : '',
                 );
                 break;
             case 'sendgrid':
@@ -568,6 +570,7 @@ class RestApi
                         'event_type' => isset($item['event']) ? (string) $item['event'] : '',
                         'recipient' => isset($item['email']) ? (string) $item['email'] : '',
                         'message_id' => isset($item['sg_message_id']) ? (string) $item['sg_message_id'] : '',
+                        'timestamp' => isset($item['timestamp']) ? gmdate('Y-m-d H:i:s', (int) $item['timestamp']) : '',
                     );
                 }
                 break;
@@ -576,6 +579,7 @@ class RestApi
                     'event_type' => isset($data['event']) ? (string) $data['event'] : '',
                     'recipient' => isset($data['email']) ? (string) $data['email'] : '',
                     'message_id' => isset($data['message-id']) ? (string) $data['message-id'] : '',
+                    'timestamp' => isset($data['ts_event']) ? gmdate('Y-m-d H:i:s', (int) $data['ts_event']) : '',
                 );
                 break;
             case 'postmark':
@@ -583,6 +587,7 @@ class RestApi
                     'event_type' => isset($data['RecordType']) ? (string) $data['RecordType'] : '',
                     'recipient' => isset($data['Recipient']) ? (string) $data['Recipient'] : (isset($data['Email']) ? (string) $data['Email'] : ''),
                     'message_id' => isset($data['MessageID']) ? (string) $data['MessageID'] : '',
+                    'timestamp' => isset($data['ReceivedAt']) ? (string) $data['ReceivedAt'] : '',
                 );
                 break;
             case 'smtp2go':
@@ -590,6 +595,7 @@ class RestApi
                     'event_type' => isset($data['type']) ? (string) $data['type'] : '',
                     'recipient' => isset($data['recipient']) ? (string) $data['recipient'] : '',
                     'message_id' => isset($data['request_id']) ? (string) $data['request_id'] : '',
+                    'timestamp' => isset($data['time']) ? (string) $data['time'] : '',
                 );
                 break;
         }

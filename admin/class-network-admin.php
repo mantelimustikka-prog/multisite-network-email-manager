@@ -26,6 +26,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));
         add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
+        add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -41,8 +42,10 @@ class NetworkAdmin
             return;
         }
 
-        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_smtp_settings')) {
-            $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => 'smtp'));
+        $action = isset($_POST['mnem_action']) ? sanitize_text_field(wp_unslash($_POST['mnem_action'])) : '';
+        $nonce_action = $action === 'save_email_tracking_settings' ? 'mnem_email_tracking_settings' : 'mnem_smtp_settings';
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', $nonce_action)) {
+            $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => $action === 'save_email_tracking_settings' ? 'email-tracking' : 'smtp'));
             return;
         }
 
@@ -559,8 +562,25 @@ class NetworkAdmin
             wp_send_json_success($result);
             return;
         }
-
         wp_send_json_error($result, 400);
+    }
+
+    public function ajax_get_email_preview()
+    {
+        $this->ensure_ajax_permissions();
+        $email_id = isset($_POST['email_id']) ? (int) $_POST['email_id'] : 0;
+        if ($email_id <= 0) {
+            wp_send_json_error(array('message' => 'Invalid email ID.'), 400);
+            return;
+        }
+
+        $email = \MNEM\EmailTracking::get_email($email_id);
+        if (empty($email)) {
+            wp_send_json_error(array('message' => 'Email preview not found.'), 404);
+            return;
+        }
+
+        wp_send_json_success($email);
     }
 
     public function handle_user_event_rule_action()

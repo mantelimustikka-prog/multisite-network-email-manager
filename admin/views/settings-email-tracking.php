@@ -7,7 +7,7 @@ $retention_days = \MNEM\EmailTracking::get_retention_days();
 ?>
 <h2><?php esc_html_e('Email Preview & Tracking Retention', 'multisite-network-email-manager'); ?></h2>
 <form method="post" action="">
-    <?php wp_nonce_field('mnem_smtp_settings'); ?>
+    <?php wp_nonce_field('mnem_email_tracking_settings'); ?>
     <input type="hidden" name="mnem_action" value="save_email_tracking_settings" />
 
     <table class="form-table" role="presentation">

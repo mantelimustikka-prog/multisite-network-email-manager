@@ -193,26 +193,41 @@
 
     $(document).on('click', '.mnem-email-preview-button', function(){
         var $button = $(this);
+        var emailId = parseInt($button.data('email-id') || 0, 10);
+        if (!emailId) {
+            return;
+        }
         var $modal = ensurePreviewModal();
-        var status = $button.data('status') || 'pending';
-
-        $modal.find('[data-field="recipient"]').text($button.data('recipient') || '');
-        $modal.find('[data-field="sentAt"]').text($button.data('sent-at') || '');
-        $modal.find('[data-field="status"]').text(status).attr('class', 'mnem-badge mnem-status-' + status);
-        $modal.find('[data-field="messageId"]').text($button.data('message-id') || '');
-        $modal.find('[data-field="openCount"]').text($button.data('open-count') || 0);
-        $modal.find('[data-field="clickCount"]').text($button.data('click-count') || 0);
-        $modal.find('[data-field="subject"]').text($button.data('subject') || '');
-        $modal.find('[data-field="body"]').text($button.data('body') || '');
-
-        var headersRaw = $button.attr('data-headers') || '[]';
-        var openRaw = $button.attr('data-open-timestamps') || '[]';
-        var clickRaw = $button.attr('data-click-timestamps') || '[]';
-
-        $modal.find('[data-field="headers"]').text(headersRaw);
-        $modal.find('[data-field="openTimestamps"]').text(parseJsonArray(openRaw).join('\n'));
-        $modal.find('[data-field="clickTimestamps"]').text(parseJsonArray(clickRaw).join('\n'));
+        $modal.find('[data-field="subject"]').text('Loading...');
+        $modal.find('[data-field="body"]').text('Loading...');
         $modal.show();
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_get_email_preview',
+            nonce: mnemAdmin.nonce,
+            email_id: emailId
+        }).done(function(response){
+            if (!response || !response.success || !response.data) {
+                $modal.find('[data-field="subject"]').text('Failed to load preview');
+                $modal.find('[data-field="body"]').text('');
+                return;
+            }
+
+            var row = response.data;
+            var status = row.delivery_status || 'pending';
+
+            $modal.find('[data-field="recipient"]').text(row.recipient_email || '');
+            $modal.find('[data-field="sentAt"]').text(row.created_at || '');
+            $modal.find('[data-field="status"]').text(status).attr('class', 'mnem-badge mnem-status-' + status);
+            $modal.find('[data-field="messageId"]').text(row.provider_message_id || '');
+            $modal.find('[data-field="openCount"]').text(row.open_count || 0);
+            $modal.find('[data-field="clickCount"]').text(row.click_count || 0);
+            $modal.find('[data-field="subject"]').text(row.subject || '');
+            $modal.find('[data-field="body"]').text(row.body || '');
+            $modal.find('[data-field="headers"]').text(row.headers || '[]');
+            $modal.find('[data-field="openTimestamps"]').text(parseJsonArray(row.open_timestamps || '[]').join('\n'));
+            $modal.find('[data-field="clickTimestamps"]').text(parseJsonArray(row.click_timestamps || '[]').join('\n'));
+        });
     });
 
     $(document).on('click', '.mnem-modal__close, .mnem-modal__backdrop', function(){
