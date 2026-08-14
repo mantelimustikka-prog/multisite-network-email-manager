@@ -208,12 +208,6 @@ class SmtpDiagnostics
 
             if ($sent) {
                 Logger::info('Test email sent successfully.', array('to' => $to, 'provider' => $provider, 'message_id' => $message_id, 'user_id' => $user_id));
-                $tracking_row = array(
-                    'recipient_email' => $to,
-                    'subject'         => $subject,
-                    'body'            => $body,
-                );
-                EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
             } else {
                 $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
                 Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider !== '' ? $provider : $provider_type, 'provider_error' => $error, 'user_id' => $user_id));
@@ -225,6 +219,13 @@ class SmtpDiagnostics
                     ));
                 }
             }
+
+            $tracking_row = array(
+                'recipient_email' => $to,
+                'subject'         => $subject,
+                'body'            => $body,
+            );
+            EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
 
             $provider_label = $provider !== '' ? $provider : $provider_type;
             $message = $sent

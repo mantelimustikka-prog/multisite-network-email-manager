@@ -20,6 +20,23 @@ $storage_usage = \MNEM\EmailTracking::get_storage_usage();
                         <input type="checkbox" id="mnem-keep-email-previews" name="keep_email_previews" value="1" <?php checked($tracking_enabled); ?> />
                         <?php esc_html_e('Store sent email previews and tracking details for audit history', 'multisite-network-email-manager'); ?>
                     </label>
+                    <p class="description">
+                        <?php
+                        $allowed_tags = array( 'strong' => array( 'style' => array() ) );
+                        if ( $tracking_enabled ) {
+                            echo wp_kses(
+                                '<strong style="color:#0a6b0a;">' . esc_html__( 'Email Tracking: Enabled ✓', 'multisite-network-email-manager' ) . '</strong>',
+                                $allowed_tags
+                            );
+                        } else {
+                            echo wp_kses(
+                                '<strong style="color:#c7362a;">' . esc_html__( 'Email Tracking: Disabled ✗', 'multisite-network-email-manager' ) . '</strong>',
+                                $allowed_tags
+                            );
+                            echo ' &mdash; ' . esc_html__( 'Emails are not being recorded. Check the checkbox above and save to enable.', 'multisite-network-email-manager' );
+                        }
+                        ?>
+                    </p>
                 </td>
             </tr>
             <tr>
