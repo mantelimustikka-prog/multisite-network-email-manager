@@ -181,6 +181,28 @@ class QueueDeletionTest extends TestCase
         })));
     }
 
+    public function test_delete_by_status_with_zero_site_id_deletes_all_sites()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 5;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return strpos($query, 'SHOW TABLES LIKE') !== false ? 'wp_mnem_logs' : 0;
+            }
+        };
+
+        $this->assertSame(5, Queue::delete_by_status(0, 'failed'));
+        $this->assertNotEmpty(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
+            return strpos($query, "DELETE FROM wp_mnem_queue WHERE status = 'failed'") !== false;
+        }));
+    }
+
     public function test_delete_by_campaign_deletes_pending_and_failed_items()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {

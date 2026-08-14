@@ -49,8 +49,6 @@ defined('ABSPATH') || exit;
 
     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" class="mnem-queue-bulk-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
-        <input type="hidden" name="mnem_action" value="" />
-        <input type="hidden" name="status" value="" />
         <input type="hidden" name="redirect_page" value="mnem-queue" />
 
         <div class="mnem-panel mnem-queue-bulk-actions">
