@@ -148,6 +148,7 @@ $provider_field_defs = array(
                             <option value="<?php echo esc_attr($ptype); ?>" <?php selected($settings['fallback_provider'], $ptype); ?>><?php echo esc_html($pmeta['name']); ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <p class="description"><?php esc_html_e('Configure the selected fallback provider in its settings section above.', 'multisite-network-email-manager'); ?></p>
                 </td>
             </tr>
         </tbody>
@@ -220,8 +221,9 @@ $provider_field_defs = array(
 
 <script>
 (function() {
-    var select = document.getElementById('mnem-provider-type');
-    if (!select) return;
+    var primarySelect  = document.getElementById('mnem-provider-type');
+    var fallbackSelect = document.getElementById('mnem-fallback-provider');
+    if (!primarySelect) return;
 
     var sections = {
         smtp:     document.getElementById('mnem-smtp-fields'),
@@ -232,16 +234,21 @@ $provider_field_defs = array(
         smtp2go:  document.getElementById('mnem-smtp2go-fields')
     };
 
-    function showActive() {
-        var active = select.value;
+    function updateVisibility() {
+        var primary  = primarySelect.value;
+        var fallback = fallbackSelect ? fallbackSelect.value : '';
+
         for (var key in sections) {
             if (sections[key]) {
-                sections[key].style.display = (key === active) ? '' : 'none';
+                sections[key].style.display = (key === primary || key === fallback) ? '' : 'none';
             }
         }
     }
 
-    select.addEventListener('change', showActive);
-    showActive();
+    primarySelect.addEventListener('change', updateVisibility);
+    if (fallbackSelect) {
+        fallbackSelect.addEventListener('change', updateVisibility);
+    }
+    updateVisibility();
 }());
 </script>
