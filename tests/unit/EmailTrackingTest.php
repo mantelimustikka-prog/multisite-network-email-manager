@@ -83,4 +83,25 @@ class EmailTrackingTest extends TestCase
         $this->assertSame(array(), $GLOBALS['wpdb']->queries);
         $this->assertGreaterThan(0, (int) $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT]);
     }
+
+    public function test_cleanup_old_records_throttles_zero_retention_path()
+    {
+        $GLOBALS['mnem_site_options'][EmailTracking::OPTION_RETENTION_DAYS] = 0;
+        $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT] = 0;
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        EmailTracking::cleanup_old_records();
+        $first_cleanup = (int) $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT];
+        EmailTracking::cleanup_old_records();
+
+        $this->assertGreaterThan(0, $first_cleanup);
+        $this->assertSame($first_cleanup, (int) $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT]);
+        $this->assertSame(array(), $GLOBALS['wpdb']->queries);
+    }
 }

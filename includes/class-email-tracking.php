@@ -28,13 +28,14 @@ class EmailTracking
 
     public static function cleanup_old_records(): void
     {
-        if (!self::is_enabled()) {
-            return;
-        }
-
         $now_unix = time();
         $last_cleanup = (int) get_site_option(self::OPTION_LAST_CLEANUP_AT, 0);
         if (($now_unix - $last_cleanup) < 3600) {
+            return;
+        }
+
+        if (!self::is_enabled()) {
+            update_site_option(self::OPTION_LAST_CLEANUP_AT, $now_unix);
             return;
         }
 

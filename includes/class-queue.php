@@ -128,7 +128,7 @@ class Queue
             return array(
                 'processed' => false,
                 'success' => false,
-                'status' => 'pending',
+                'status' => 'not_claimed',
                 'message' => 'Queue item is not ready to process.',
                 'queue_id' => $id,
                 'provider' => '',
@@ -164,6 +164,12 @@ class Queue
         if ($blog_id > 0 && function_exists('switch_to_blog')) {
             switch_to_blog($blog_id);
         }
+
+        $sent = false;
+        $status = 'processing';
+        $provider_type = '';
+        $provider_message_id = '';
+        $result = array();
 
         try {
             $headers = json_decode(isset($row['headers']) ? (string) $row['headers'] : '[]', true);
