@@ -459,7 +459,7 @@ class NetworkAdmin
         }
 
         $deleted = \MNEM\Queue::delete_by_status(0, $status);
-        \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
+        \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => 0, 'requested_site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
         $this->redirect_with_notice($page, $deleted > 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
     }
 

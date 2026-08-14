@@ -525,8 +525,13 @@ class Queue
         global $wpdb;
 
         if ($add_status_filter) {
-            $has_where = stripos($query, ' where ') !== false;
-            $query .= $has_where ? ' AND ' : ' WHERE ';
+            $has_where = preg_match('/\bWHERE\b/i', $query) === 1;
+            $query_ends_with_where = preg_match('/\bWHERE\s*$/i', rtrim($query)) === 1;
+            if ($has_where) {
+                $query .= $query_ends_with_where ? ' ' : ' AND ';
+            } else {
+                $query .= ' WHERE ';
+            }
             $query .= 'status IN (' . implode(', ', array_fill(0, count(self::DELETABLE_STATUSES), '%s')) . ')';
             $args = array_merge($args, self::DELETABLE_STATUSES);
         }
