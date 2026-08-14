@@ -21,8 +21,8 @@ defined('ABSPATH') || exit;
 
     <?php if (!$tracking_enabled) : ?>
         <div class="notice notice-warning"><p>
-            Email tracking is disabled. Emails will not be recorded in Email History.
-            <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>">Enable in Settings</a>
+            <?php esc_html_e('Email tracking is disabled. Emails will not be recorded in Email History.', 'multisite-network-email-manager'); ?>
+            <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>"><?php esc_html_e('Enable in Settings', 'multisite-network-email-manager'); ?></a>
         </p></div>
     <?php endif; ?>
 
