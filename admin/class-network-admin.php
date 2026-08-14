@@ -41,20 +41,20 @@ class NetworkAdmin
         }
 
         if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_smtp_settings')) {
-            $this->redirect_with_notice('mnem-smtp-settings', 'smtp_nonce_failed');
+            $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => 'smtp'));
         }
 
         if ($_POST['mnem_action'] === 'send_test_email') {
             $email = isset($_POST['test_email']) ? sanitize_email(wp_unslash($_POST['test_email'])) : '';
             $result = \MNEM\SmtpDiagnostics::send_test_email($email);
-            $this->redirect_with_notice('mnem-smtp-settings', $result['success'] ? 'smtp_test_sent' : 'smtp_test_failed');
+            $this->redirect_with_notice('mnem-settings', $result['success'] ? 'smtp_test_sent' : 'smtp_test_failed', array('tab' => 'smtp'));
             return;
         }
 
         if ($_POST['mnem_action'] === 'save_cron_settings') {
             $interval = isset($_POST['cron_interval']) ? sanitize_text_field(wp_unslash($_POST['cron_interval'])) : \MNEM\Cron::DEFAULT_INTERVAL;
             \MNEM\Cron::set_interval($interval);
-            $this->redirect_with_notice('mnem-smtp-settings', 'cron_settings_saved');
+            $this->redirect_with_notice('mnem-settings', 'cron_settings_saved', array('tab' => 'smtp'));
             return;
         }
 
@@ -69,7 +69,7 @@ class NetworkAdmin
         );
 
         $saved = \MNEM\SmtpSettings::save($data);
-        $this->redirect_with_notice('mnem-smtp-settings', $saved ? 'smtp_saved' : 'smtp_failed');
+        $this->redirect_with_notice('mnem-settings', $saved ? 'smtp_saved' : 'smtp_failed', array('tab' => 'smtp'));
     }
 
     public function handle_save_sender_settings()
@@ -462,7 +462,13 @@ class NetworkAdmin
     {
         $this->ensure_ajax_permissions();
         $to_email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
-        wp_send_json_success(\MNEM\SmtpDiagnostics::send_test_email($to_email));
+        $result = \MNEM\SmtpDiagnostics::send_test_email($to_email);
+        if (!empty($result['success'])) {
+            wp_send_json_success($result);
+            return;
+        }
+
+        wp_send_json_error($result, 400);
     }
 
     public function handle_user_event_rule_action()

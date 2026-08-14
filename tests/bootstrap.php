@@ -183,6 +183,9 @@ if (!function_exists('wp_mail')) {
             'headers' => $headers,
             'attachments' => $attachments,
         );
+        if (array_key_exists('mnem_wp_mail_return', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_wp_mail_return'];
+        }
         return true;
     }
 }
@@ -268,14 +271,16 @@ if (!function_exists('wp_generate_uuid4')) {
 if (!function_exists('wp_send_json_success')) {
     function wp_send_json_success($data = null)
     {
-        return array('success' => true, 'data' => $data);
+        $GLOBALS['mnem_last_json_response'] = array('success' => true, 'data' => $data);
+        return $GLOBALS['mnem_last_json_response'];
     }
 }
 
 if (!function_exists('wp_send_json_error')) {
     function wp_send_json_error($data = null, $status_code = null)
     {
-        return array('success' => false, 'data' => $data, 'status_code' => $status_code);
+        $GLOBALS['mnem_last_json_response'] = array('success' => false, 'data' => $data, 'status_code' => $status_code);
+        return $GLOBALS['mnem_last_json_response'];
     }
 }
 
@@ -452,15 +457,17 @@ if (!function_exists('esc_textarea')) {
 }
 
 if (!function_exists('add_menu_page')) {
-    function add_menu_page()
+    function add_menu_page($page_title = '', $menu_title = '', $capability = '', $menu_slug = '', $callback = null, $icon_url = '', $position = null)
     {
+        $GLOBALS['mnem_menu_pages'][] = array($page_title, $menu_title, $capability, $menu_slug, $callback, $icon_url, $position);
         return true;
     }
 }
 
 if (!function_exists('add_submenu_page')) {
-    function add_submenu_page()
+    function add_submenu_page($parent_slug = '', $page_title = '', $menu_title = '', $capability = '', $menu_slug = '', $callback = null, $position = null)
     {
+        $GLOBALS['mnem_submenu_pages'][] = array($parent_slug, $page_title, $menu_title, $capability, $menu_slug, $callback, $position);
         return true;
     }
 }
