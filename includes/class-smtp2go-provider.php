@@ -105,7 +105,22 @@ class Smtp2goProvider extends EmailProvider
                 return $this->success_result('Email accepted by SMTP2GO.', $request_id, array('response' => $data));
             }
 
-            return $this->error_result('SMTP2GO returned HTTP ' . $code . '.', array('body' => $data));
+            $http_labels = array(
+                401 => 'Unauthorized - Check your API key',
+                403 => 'Forbidden - API key lacks permissions',
+            );
+            $http_label = isset($http_labels[$code]) ? $http_labels[$code] : '';
+            $provider_detail = isset($data['data']['error']) ? $data['data']['error'] : substr($raw, 0, 200);
+            $error_msg = 'SMTP2GO returned HTTP ' . $code . ($http_label !== '' ? ' ' . $http_label : '') . '. ' . $provider_detail;
+
+            Logger::error('SMTP2GO send failed', array(
+                'recipient'      => $to,
+                'http_code'      => $code,
+                'response_body'  => substr($raw, 0, 500),
+                'api_key_length' => strlen((string) $this->config('api_key')),
+            ));
+
+            return $this->error_result($error_msg, array('http_code' => $code, 'body' => $data));
         } catch (\Exception $e) {
             return $this->error_result('Exception: ' . $e->getMessage());
         }

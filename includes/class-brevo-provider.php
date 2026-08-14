@@ -109,7 +109,23 @@ class BrevoProvider extends EmailProvider
                 return $this->success_result('Email accepted by Brevo.', $msg_id, array('response' => $data));
             }
 
-            return $this->error_result('Brevo returned HTTP ' . $code . '.', array('body' => $data));
+            $http_labels = array(
+                401 => 'Unauthorized - Check your API key is correct and not expired',
+                403 => 'Forbidden - API key lacks required permissions',
+                429 => 'Too Many Requests - Rate limit exceeded',
+            );
+            $http_label = isset($http_labels[$code]) ? $http_labels[$code] : '';
+            $provider_detail = isset($data['message']) ? $data['message'] : substr($raw, 0, 200);
+            $error_msg = 'Brevo returned HTTP ' . $code . ($http_label !== '' ? ' ' . $http_label : '') . '. ' . $provider_detail;
+
+            Logger::error('Brevo send failed', array(
+                'recipient'      => $to,
+                'http_code'      => $code,
+                'response_body'  => substr($raw, 0, 500),
+                'api_key_length' => strlen((string) $this->config('api_key')),
+            ));
+
+            return $this->error_result($error_msg, array('http_code' => $code, 'body' => $data));
         } catch (\Exception $e) {
             return $this->error_result('Exception: ' . $e->getMessage());
         }

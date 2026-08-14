@@ -66,7 +66,7 @@ class AdminMenu
                 $smtp_status = (string) $smtp_status_cached;
             } else {
                 $smtp_test   = $smtp_provider->test_connection();
-                $smtp_status = !empty($smtp_test['success']) ? 'Connected' : 'Not Connected';
+                $smtp_status = !empty($smtp_test['success']) ? 'Connected' : 'Not Connected: ' . (isset($smtp_test['message']) ? $smtp_test['message'] : 'Unknown error');
                 set_site_transient($smtp_status_cache_key, $smtp_status, 5 * MINUTE_IN_SECONDS);
             }
         } else {

@@ -114,7 +114,23 @@ class SendgridProvider extends EmailProvider
             $raw  = (string) wp_remote_retrieve_body($response);
             $data = json_decode($raw, true);
 
-            return $this->error_result('SendGrid returned HTTP ' . $code . '.', array('body' => $data));
+            $http_labels = array(
+                401 => 'Invalid API key (HTTP 401) - Check your API key in Settings',
+                403 => 'API key lacks Send permissions (HTTP 403)',
+                429 => 'Rate limit exceeded (HTTP 429)',
+            );
+            $http_label = isset($http_labels[$code]) ? $http_labels[$code] : '';
+            $provider_detail = isset($data['errors'][0]['message']) ? $data['errors'][0]['message'] : substr($raw, 0, 200);
+            $error_msg = 'SendGrid: ' . ($http_label !== '' ? $http_label . '. ' . $provider_detail : 'returned HTTP ' . $code . '. ' . $provider_detail);
+
+            Logger::error('SendGrid send failed', array(
+                'recipient'      => $to,
+                'http_code'      => $code,
+                'response_body'  => substr($raw, 0, 500),
+                'api_key_length' => strlen((string) $this->config('api_key')),
+            ));
+
+            return $this->error_result($error_msg, array('http_code' => $code, 'body' => $data));
         } catch (\Exception $e) {
             return $this->error_result('Exception: ' . $e->getMessage());
         }

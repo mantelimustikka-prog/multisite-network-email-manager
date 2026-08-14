@@ -11,7 +11,7 @@ class Logger
     public const WARNING = 'warning';
     public const ERROR = 'error';
 
-    public const SCRUB_KEYS = array('password', 'smtp_password', 'secret', 'token', 'key', 'auth');
+    public const SCRUB_KEYS = array('password', 'smtp_password', 'secret', 'token', 'auth', 'api_key', 'server_token');
 
     public static function log(string $level, string $message, array $context = array())
     {
@@ -76,7 +76,7 @@ class Logger
     private static function should_scrub_key(string $key)
     {
         foreach (self::SCRUB_KEYS as $scrub_key) {
-            if (strpos($key, $scrub_key) !== false) {
+            if ($key === $scrub_key) {
                 return true;
             }
         }
