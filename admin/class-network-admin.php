@@ -61,13 +61,17 @@ class NetworkAdmin
         }
 
         $data = array(
-            'host' => isset($_POST['host']) ? wp_unslash($_POST['host']) : '',
-            'port' => isset($_POST['port']) ? wp_unslash($_POST['port']) : '',
-            'encryption' => isset($_POST['encryption']) ? wp_unslash($_POST['encryption']) : 'tls',
-            'username' => isset($_POST['username']) ? wp_unslash($_POST['username']) : '',
-            'password' => isset($_POST['password']) ? wp_unslash($_POST['password']) : '',
-            'from_email' => isset($_POST['from_email']) ? wp_unslash($_POST['from_email']) : '',
-            'from_name' => isset($_POST['from_name']) ? wp_unslash($_POST['from_name']) : '',
+            'host'              => isset($_POST['host']) ? wp_unslash($_POST['host']) : '',
+            'port'              => isset($_POST['port']) ? wp_unslash($_POST['port']) : '',
+            'encryption'        => isset($_POST['encryption']) ? wp_unslash($_POST['encryption']) : 'tls',
+            'username'          => isset($_POST['username']) ? wp_unslash($_POST['username']) : '',
+            'password'          => isset($_POST['password']) ? wp_unslash($_POST['password']) : '',
+            'from_email'        => isset($_POST['from_email']) ? wp_unslash($_POST['from_email']) : '',
+            'from_name'         => isset($_POST['from_name']) ? wp_unslash($_POST['from_name']) : '',
+            'provider_type'     => isset($_POST['provider_type']) ? wp_unslash($_POST['provider_type']) : 'smtp',
+            'provider_config'   => isset($_POST['provider_config']) && is_array($_POST['provider_config']) ? wp_unslash($_POST['provider_config']) : array(),
+            'fallback_provider' => isset($_POST['fallback_provider']) ? wp_unslash($_POST['fallback_provider']) : '',
+            'fallback_enabled'  => isset($_POST['fallback_enabled']) ? 1 : 0,
         );
 
         $saved = \MNEM\SmtpSettings::save($data);
