@@ -43,6 +43,7 @@ class NetworkAdmin
 
         if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_smtp_settings')) {
             $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => 'smtp'));
+            return;
         }
 
         if ($_POST['mnem_action'] === 'send_test_email') {
