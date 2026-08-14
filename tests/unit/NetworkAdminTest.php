@@ -5,6 +5,13 @@ defined('ABSPATH') || exit;
 use MNEM\Admin\NetworkAdmin;
 use PHPUnit\Framework\TestCase;
 
+class TestableNetworkAdmin extends NetworkAdmin
+{
+    protected function exit_after_redirect()
+    {
+    }
+}
+
 class NetworkAdminTest extends TestCase
 {
     protected function setUp(): void
@@ -80,7 +87,7 @@ class NetworkAdminTest extends TestCase
             'redirect_page' => 'mnem-queue',
         );
 
-        $admin = new NetworkAdmin();
+        $admin = new TestableNetworkAdmin();
         $admin->handle_queue_item_delete_action();
 
         $this->assertStringContainsString('mnem_notice=queue_item_deleted', $GLOBALS['mnem_last_redirect']);
@@ -94,7 +101,7 @@ class NetworkAdminTest extends TestCase
             'redirect_page' => 'mnem-queue',
         );
 
-        $admin = new NetworkAdmin();
+        $admin = new TestableNetworkAdmin();
         $admin->handle_queue_item_delete_action();
 
         $this->assertStringContainsString('mnem_notice=queue_nothing_selected', $GLOBALS['mnem_last_redirect']);
@@ -110,7 +117,7 @@ class NetworkAdminTest extends TestCase
             'redirect_page' => 'mnem-queue',
         );
 
-        $admin = new NetworkAdmin();
+        $admin = new TestableNetworkAdmin();
         $admin->handle_queue_item_delete_action();
 
         $this->assertStringContainsString('mnem_notice=queue_nonce_failed', $GLOBALS['mnem_last_redirect']);
@@ -126,7 +133,7 @@ class NetworkAdminTest extends TestCase
             'redirect_page' => 'mnem-queue',
         );
 
-        $admin = new NetworkAdmin();
+        $admin = new TestableNetworkAdmin();
         $admin->handle_queue_item_delete_action();
 
         $this->assertArrayNotHasKey('mnem_last_redirect', $GLOBALS);
@@ -161,7 +168,7 @@ class NetworkAdminTest extends TestCase
             'redirect_page' => 'mnem-queue',
         );
 
-        $admin = new NetworkAdmin();
+        $admin = new TestableNetworkAdmin();
         $admin->handle_queue_item_delete_action();
 
         $this->assertStringContainsString('mnem_notice=queue_deleted_by_status', $GLOBALS['mnem_last_redirect']);

@@ -392,14 +392,15 @@ class NetworkAdmin
     {
         $action = isset($_POST['mnem_action']) ? sanitize_text_field(wp_unslash($_POST['mnem_action'])) : '';
         $bulk_action = isset($_POST['bulk_action']) ? sanitize_text_field(wp_unslash($_POST['bulk_action'])) : '';
+        $status = isset($_POST['status']) ? sanitize_text_field(wp_unslash($_POST['status'])) : '';
 
         if ($action === '' && $bulk_action !== '') {
             if ($bulk_action === 'delete_pending') {
                 $action = 'delete_queue_by_status';
-                $_POST['status'] = 'pending';
+                $status = 'pending';
             } elseif ($bulk_action === 'delete_failed') {
                 $action = 'delete_queue_by_status';
-                $_POST['status'] = 'failed';
+                $status = 'failed';
             } elseif ($bulk_action === 'delete_selected') {
                 $action = 'delete_queue_items';
             }
@@ -443,8 +444,7 @@ class NetworkAdmin
             return;
         }
 
-        $status = isset($_POST['status']) ? sanitize_text_field(wp_unslash($_POST['status'])) : '';
-        if (!in_array($status, array('pending', 'failed'), true)) {
+        if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             \MNEM\Logger::warning('Queue status delete rejected because status is invalid.', array('site_id' => $site_id, 'status' => $status));
             $this->redirect_with_notice($page, 'queue_delete_failed');
             return;
@@ -452,7 +452,7 @@ class NetworkAdmin
 
         $deleted = \MNEM\Queue::delete_by_status($site_id, $status);
         \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
-        $this->redirect_with_notice($page, $deleted >= 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
+        $this->redirect_with_notice($page, $deleted > 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
     }
 
     public function enqueue_assets($hook_suffix)
@@ -631,9 +631,11 @@ class NetworkAdmin
             ? network_admin_url('admin.php?' . http_build_query($args, '', '&'))
             : 'admin.php?' . http_build_query($args, '', '&');
         wp_safe_redirect($url);
-        if (defined('MNEM_TESTING') && MNEM_TESTING) {
-            return;
-        }
+        $this->exit_after_redirect();
+    }
+
+    protected function exit_after_redirect()
+    {
         exit;
     }
 }

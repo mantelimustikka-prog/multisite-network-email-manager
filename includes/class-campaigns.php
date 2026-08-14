@@ -220,17 +220,27 @@ class Campaigns
         $campaign = self::get($id);
         $recipients = array();
         if (!empty($list_ids)) {
-            $contains_email = false;
+            $direct_recipients = array();
+            $target_list_ids = array();
+
             foreach ($list_ids as $list_id) {
-                if (is_string($list_id) && is_email(sanitize_email($list_id))) {
-                    $contains_email = true;
-                    break;
+                if (is_string($list_id) && is_email($list_id)) {
+                    $direct_recipients[] = $list_id;
+                    continue;
                 }
+
+                $target_list_ids[] = (int) $list_id;
             }
 
-            $recipients = $contains_email
-                ? self::parse_recipient_list($list_ids)
-                : self::get_recipient_emails_from_lists($list_ids);
+            if (!empty($target_list_ids)) {
+                $recipients = array_merge($recipients, self::get_recipient_emails_from_lists($target_list_ids));
+            }
+
+            if (!empty($direct_recipients)) {
+                $recipients = array_merge($recipients, self::parse_recipient_list($direct_recipients));
+            }
+
+            $recipients = array_values(array_unique($recipients));
         } else {
             $target_lists = isset($campaign['target_lists']) ? json_decode((string) $campaign['target_lists'], true) : array();
             if (is_array($target_lists) && !empty($target_lists)) {
@@ -479,6 +489,7 @@ class Campaigns
             return false;
         }
 
+        // Intentionally leave processing items in place so workers that already claimed them can finish safely.
         $deleted = Queue::delete_by_campaign($id);
         $updated = self::update_status($id, 'cancelled');
         if ($updated !== false) {

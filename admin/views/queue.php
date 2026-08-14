@@ -47,7 +47,7 @@ defined('ABSPATH') || exit;
         </div>
     </div>
 
-    <form method="post" class="mnem-queue-bulk-form">
+    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" class="mnem-queue-bulk-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="mnem_action" value="" />
         <input type="hidden" name="status" value="" />
@@ -91,7 +91,7 @@ defined('ABSPATH') || exit;
                     </tr>
                 <?php else : ?>
                     <?php foreach ($queue_items as $item) : ?>
-                        <?php $is_deletable = in_array($item['status'], array('pending', 'failed'), true); ?>
+                        <?php $is_deletable = in_array($item['status'], \MNEM\Queue::DELETABLE_STATUSES, true); ?>
                         <tr>
                             <th scope="row" class="check-column">
                                 <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" value="<?php echo esc_attr((string) $item['id']); ?>"<?php echo $is_deletable ? '' : ' disabled="disabled"'; ?> />
@@ -125,7 +125,7 @@ defined('ABSPATH') || exit;
             </tbody>
         </table>
     </form>
-    <form method="post" id="mnem-single-queue-delete-form">
+    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-single-queue-delete-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="mnem_action" value="delete_queue_item" />
         <input type="hidden" name="queue_id" value="" />

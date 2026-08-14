@@ -338,11 +338,9 @@ class Queue
         }
 
         $deleted = $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$table} WHERE id = %d AND status IN (%s, %s)",
-                $id,
-                'pending',
-                'failed'
+            self::prepare_delete_query(
+                "DELETE FROM {$table} WHERE id = %d",
+                array($id)
             )
         );
 
@@ -406,15 +404,6 @@ class Queue
         }
 
         $table = $wpdb->prefix . 'mnem_queue';
-        $campaign_ids = $wpdb->get_col(
-            $wpdb->prepare(
-                "SELECT DISTINCT campaign_id FROM {$table} WHERE site_id = %d AND status = %s AND campaign_id > %d",
-                $site_id,
-                $status,
-                0
-            )
-        );
-
         $deleted = $wpdb->query(
             $wpdb->prepare(
                 "DELETE FROM {$table} WHERE site_id = %d AND status = %s",
@@ -448,11 +437,9 @@ class Queue
 
         $table = $wpdb->prefix . 'mnem_queue';
         $deleted = $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$table} WHERE campaign_id = %d AND status IN (%s, %s)",
-                $campaign_id,
-                'pending',
-                'failed'
+            self::prepare_delete_query(
+                "DELETE FROM {$table} WHERE campaign_id = %d",
+                array($campaign_id)
             )
         );
 
@@ -524,5 +511,14 @@ class Queue
         }
 
         return '';
+    }
+
+    private static function prepare_delete_query(string $query, array $args)
+    {
+        global $wpdb;
+
+        $query .= ' AND status IN (' . implode(', ', array_fill(0, count(self::DELETABLE_STATUSES), '%s')) . ')';
+
+        return $wpdb->prepare($query, ...array_merge($args, self::DELETABLE_STATUSES));
     }
 }
