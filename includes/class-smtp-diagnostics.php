@@ -160,34 +160,64 @@ class SmtpDiagnostics
                 return $result;
             }
 
+            $from_email = SmtpSettings::get_sender_email();
+            if ($from_email === '') {
+                $result = array(
+                    'success' => false,
+                    'message' => 'Sender email address is not configured. Please configure it in Settings > Sender Settings.',
+                    'details' => array(),
+                );
+                self::store_result('send_test_email', $result, $user_id);
+                return $result;
+            }
+
+            $provider_type = (string) SmtpSettings::get('provider_type', 'smtp');
+            if (!SmtpSettings::is_active_provider_configured()) {
+                $result = array(
+                    'success' => false,
+                    'message' => 'Email provider is not properly configured. Please configure ' . $provider_type . ' settings.',
+                    'details' => array('provider' => $provider_type),
+                );
+                self::store_result('send_test_email', $result, $user_id);
+                return $result;
+            }
+
             $subject = 'MNEM SMTP Test Email';
             $body    = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
 
-            $from_email = SmtpSettings::get_sender_email();
-            $from_name  = SmtpSettings::get_sender_name();
+            $from_name = SmtpSettings::get_sender_name();
 
             $headers = array('Content-Type: text/html; charset=UTF-8');
-            if ($from_email !== '') {
-                $headers[] = $from_name !== ''
-                    ? 'From: ' . $from_name . ' <' . $from_email . '>'
-                    : 'From: ' . $from_email;
-            }
+            $headers[] = $from_name !== ''
+                ? 'From: ' . $from_name . ' <' . $from_email . '>'
+                : 'From: ' . $from_email;
 
-            Logger::info('Sending test email via configured provider.', array('to' => $to, 'user_id' => $user_id));
+            Logger::info('Sending test email via configured provider.', array(
+                'to'         => $to,
+                'user_id'    => $user_id,
+                'provider'   => $provider_type,
+                'from_email' => $from_email,
+                'from_name'  => $from_name,
+            ));
 
             $send_result = ProviderManager::send_email($to, $subject, $body, $headers);
 
-            $sent           = !empty($send_result['success']);
-            $provider       = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
-            $message_id     = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
-            $settings       = SmtpSettings::get_all();
-            $provider_label = $provider !== '' ? $provider : (isset($settings['provider_type']) && (string) $settings['provider_type'] !== '' ? (string) $settings['provider_type'] : 'provider');
+            $sent       = !empty($send_result['success']);
+            $provider   = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
+            $message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
 
             if ($sent) {
                 Logger::info('Test email sent successfully.', array('to' => $to, 'provider' => $provider, 'message_id' => $message_id, 'user_id' => $user_id));
             } else {
                 $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
-                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider, 'provider_error' => $error, 'user_id' => $user_id));
+                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider !== '' ? $provider : $provider_type, 'provider_error' => $error, 'user_id' => $user_id));
+
+                if ($provider === '') {
+                    Logger::error('Test email failed - no provider returned in result.', array(
+                        'expected_provider' => $provider_type,
+                        'result'            => $send_result,
+                    ));
+                }
             }
 
             $tracking_row = array(
@@ -197,12 +227,20 @@ class SmtpDiagnostics
             );
             EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
 
+            $provider_label = $provider !== '' ? $provider : $provider_type;
             $message = $sent
                 ? 'Test email sent successfully via ' . $provider_label . '.'
                 : 'Test email sending failed via ' . $provider_label . '.';
 
             if (!$sent && isset($send_result['message']) && (string) $send_result['message'] !== '') {
-                $message .= ' ' . (string) $send_result['message'];
+                $error = (string) $send_result['message'];
+                $message .= ' Error: ' . $error;
+
+                if (strpos($error, '401') !== false || strpos($error, 'Unauthorized') !== false) {
+                    $message .= ' (Check your API key in Settings > Email Service Provider)';
+                } elseif (strpos($error, 'From') !== false || strpos($error, 'sender') !== false) {
+                    $message .= ' (Configure sender email in Settings > Sender Settings)';
+                }
             }
 
             $result = array(

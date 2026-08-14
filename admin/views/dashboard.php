@@ -13,6 +13,12 @@ defined('ABSPATH') || exit;
         <div class="notice notice-warning"><p>SMTP is not configured yet.</p></div>
     <?php endif; ?>
 
+    <?php if (!empty($smtp_warnings)) : ?>
+        <?php foreach ($smtp_warnings as $smtp_warning) : ?>
+            <div class="notice notice-warning"><p><?php echo wp_kses($smtp_warning, array('a' => array('href' => array()))); ?></p></div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
     <?php if (!$tracking_enabled) : ?>
         <div class="notice notice-warning"><p>Email tracking is disabled &mdash; Email History will not record any emails. <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>">Enable in Settings &gt; Email Tracking</a>.</p></div>
     <?php endif; ?>
