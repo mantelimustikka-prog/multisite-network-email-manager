@@ -98,137 +98,182 @@ class Queue
         $processed = 0;
 
         foreach ($ids as $id) {
-            $claimed = $wpdb->query(
-                $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s",
-                    'processing',
-                    (int) $id,
-                    'pending'
-                )
-            );
-
-            if (!$claimed) {
-                continue;
+            $result = self::process_item((int) $id);
+            if (!empty($result['processed'])) {
+                ++$processed;
             }
-
-            $row = $wpdb->get_row(
-                $wpdb->prepare(
-                    "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, attachments, metadata, attempts FROM {$table} WHERE id = %d",
-                    (int) $id
-                ),
-                ARRAY_A
-            );
-
-            if (empty($row)) {
-                continue;
-            }
-
-            $blog_id = isset($row['blog_id']) ? (int) $row['blog_id'] : (int) $row['site_id'];
-            if ($blog_id <= 0) {
-                $blog_id = (int) $row['site_id'];
-            }
-
-            if ($blog_id > 0 && function_exists('switch_to_blog')) {
-                switch_to_blog($blog_id);
-            }
-
-            try {
-                $headers = json_decode(isset($row['headers']) ? (string) $row['headers'] : '[]', true);
-                $headers = is_array($headers) ? $headers : array();
-                $attachments = json_decode(isset($row['attachments']) ? (string) $row['attachments'] : '[]', true);
-                $attachments = is_array($attachments) ? $attachments : array();
-
-                if (!empty($row['from_email'])) {
-                    $from_name = !empty($row['from_name']) ? (string) $row['from_name'] : '';
-                    $headers[] = $from_name !== ''
-                        ? 'From: ' . $from_name . ' <' . (string) $row['from_email'] . '>'
-                        : 'From: ' . (string) $row['from_email'];
-                }
-
-                $headers['__attachments'] = $attachments;
-
-                $send = static function () use ($row, $headers) {
-                    return ProviderManager::send_email($row['recipient_email'], $row['subject'], $row['body'], $headers);
-                };
-
-                $result = class_exists('\\MNEM\\MailInterceptor')
-                    ? MailInterceptor::run_without_interception($send)
-                    : $send();
-                $attempts = (int) $row['attempts'] + 1;
-                $processed_at = self::current_time_mysql();
-                $provider_type = isset($result['provider']) ? (string) $result['provider'] : '';
-                $provider_message_id = isset($result['message_id']) ? (string) $result['message_id'] : '';
-                $provider_metadata = !empty($result['metadata']) ? wp_json_encode($result['metadata']) : null;
-                $sent = !empty($result['success']);
-
-                if ($sent) {
-                    $wpdb->query(
-                        $wpdb->prepare(
-                            "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
-                            'sent',
-                            $attempts,
-                            $processed_at,
-                            $processed_at,
-                            $provider_type,
-                            $provider_message_id,
-                            $provider_metadata,
-                            (int) $id
-                        )
-                    );
-                    $metadata = json_decode(isset($row['metadata']) ? (string) $row['metadata'] : '[]', true);
-                    $metadata = is_array($metadata) ? $metadata : array();
-                    $metadata['message_id'] = $provider_message_id;
-                    $wpdb->query(
-                        $wpdb->prepare(
-                            "UPDATE {$table} SET metadata = %s WHERE id = %d",
-                            wp_json_encode($metadata),
-                            (int) $id
-                        )
-                    );
-
-                    $tracking_headers = $headers;
-                    unset($tracking_headers['__attachments']);
-                    EmailTracking::store_sent_email((int) $id, $row, $result, $tracking_headers);
-
-                    Logger::info('Queue email sent.', array('queue_id' => (int) $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
-                } else {
-                    $next_status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
-                    $next_scheduled = $attempts >= self::MAX_ATTEMPTS ? $processed_at : self::calculate_next_attempt($attempts);
-
-                    $wpdb->query(
-                        $wpdb->prepare(
-                            "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
-                            $next_status,
-                            $attempts,
-                            $next_scheduled,
-                            $processed_at,
-                            $provider_type,
-                            $provider_message_id,
-                            $provider_metadata,
-                            (int) $id
-                        )
-                    );
-
-                    if ($next_status === 'failed') {
-                        Logger::error('Queue email permanently failed.', array('queue_id' => (int) $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'provider' => $provider_type, 'error' => $result['message']));
-                    } else {
-                        Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => (int) $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled, 'provider' => $provider_type));
-                    }
-                }
-            } finally {
-                if ($blog_id > 0 && function_exists('restore_current_blog')) {
-                    restore_current_blog();
-                }
-            }
-
-            if (!empty($row['campaign_id'])) {
-                Campaigns::refresh_delivery_stats((int) $row['campaign_id']);
-            }
-
-            ++$processed;
         }
 
         return $processed;
+    }
+
+    /**
+     * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string}
+     */
+    public static function process_item(int $id): array
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $claimed = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s",
+                'processing',
+                $id,
+                'pending'
+            )
+        );
+
+        if (!$claimed) {
+            return array(
+                'processed' => false,
+                'success' => false,
+                'status' => 'not_claimed',
+                'message' => 'Queue item is not ready to process.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
+        }
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, attachments, metadata, attempts FROM {$table} WHERE id = %d",
+                $id
+            ),
+            ARRAY_A
+        );
+
+        if (empty($row)) {
+            return array(
+                'processed' => false,
+                'success' => false,
+                'status' => 'processing',
+                'message' => 'Queue item could not be loaded.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
+        }
+
+        $blog_id = isset($row['blog_id']) ? (int) $row['blog_id'] : (int) $row['site_id'];
+        if ($blog_id <= 0) {
+            $blog_id = (int) $row['site_id'];
+        }
+
+        if ($blog_id > 0 && function_exists('switch_to_blog')) {
+            switch_to_blog($blog_id);
+        }
+
+        $sent = false;
+        $status = 'processing';
+        $provider_type = '';
+        $provider_message_id = '';
+        $result = array();
+
+        try {
+            $headers = json_decode(isset($row['headers']) ? (string) $row['headers'] : '[]', true);
+            $headers = is_array($headers) ? $headers : array();
+            $attachments = json_decode(isset($row['attachments']) ? (string) $row['attachments'] : '[]', true);
+            $attachments = is_array($attachments) ? $attachments : array();
+
+            if (!empty($row['from_email'])) {
+                $from_name = !empty($row['from_name']) ? (string) $row['from_name'] : '';
+                $headers[] = $from_name !== ''
+                    ? 'From: ' . $from_name . ' <' . (string) $row['from_email'] . '>'
+                    : 'From: ' . (string) $row['from_email'];
+            }
+
+            $headers['__attachments'] = $attachments;
+
+            $send = static function () use ($row, $headers) {
+                return ProviderManager::send_email($row['recipient_email'], $row['subject'], $row['body'], $headers);
+            };
+
+            $result = class_exists('\\MNEM\\MailInterceptor')
+                ? MailInterceptor::run_without_interception($send)
+                : $send();
+            $attempts = (int) $row['attempts'] + 1;
+            $processed_at = self::current_time_mysql();
+            $provider_type = isset($result['provider']) ? (string) $result['provider'] : '';
+            $provider_message_id = isset($result['message_id']) ? (string) $result['message_id'] : '';
+            $provider_metadata = !empty($result['metadata']) ? wp_json_encode($result['metadata']) : null;
+            $sent = !empty($result['success']);
+
+            if ($sent) {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
+                        'sent',
+                        $attempts,
+                        $processed_at,
+                        $processed_at,
+                        $provider_type,
+                        $provider_message_id,
+                        $provider_metadata,
+                        $id
+                    )
+                );
+                $metadata = json_decode(isset($row['metadata']) ? (string) $row['metadata'] : '[]', true);
+                $metadata = is_array($metadata) ? $metadata : array();
+                $metadata['message_id'] = $provider_message_id;
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET metadata = %s WHERE id = %d",
+                        wp_json_encode($metadata),
+                        $id
+                    )
+                );
+
+                $tracking_headers = $headers;
+                unset($tracking_headers['__attachments']);
+                EmailTracking::store_sent_email($id, $row, $result, $tracking_headers);
+
+                Logger::info('Queue email sent.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
+                $status = 'sent';
+            } else {
+                $status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
+                $next_scheduled = $status === 'failed' ? $processed_at : self::calculate_next_attempt($attempts);
+
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
+                        $status,
+                        $attempts,
+                        $next_scheduled,
+                        $processed_at,
+                        $provider_type,
+                        $provider_message_id,
+                        $provider_metadata,
+                        $id
+                    )
+                );
+
+                if ($status === 'failed') {
+                    Logger::error('Queue email permanently failed.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'provider' => $provider_type, 'error' => $result['message']));
+                } else {
+                    Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled, 'provider' => $provider_type));
+                }
+            }
+        } finally {
+            if ($blog_id > 0 && function_exists('restore_current_blog')) {
+                restore_current_blog();
+            }
+        }
+
+        if (!empty($row['campaign_id'])) {
+            Campaigns::refresh_delivery_stats((int) $row['campaign_id']);
+        }
+
+        return array(
+            'processed' => true,
+            'success' => $sent,
+            'status' => $status,
+            'message' => isset($result['message']) ? (string) $result['message'] : '',
+            'queue_id' => $id,
+            'provider' => $provider_type,
+            'message_id' => $provider_message_id,
+        );
     }
 
     public static function get_stats(?int $site_id = null)

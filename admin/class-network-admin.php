@@ -65,7 +65,7 @@ class NetworkAdmin
 
         if ($_POST['mnem_action'] === 'save_email_tracking_settings') {
             $enabled = isset($_POST['keep_email_previews']) && (int) $_POST['keep_email_previews'] === 1;
-            $retention_days = isset($_POST['email_preview_retention_days']) ? max(1, (int) $_POST['email_preview_retention_days']) : 30;
+            $retention_days = isset($_POST['email_preview_retention_days']) ? max(0, (int) $_POST['email_preview_retention_days']) : 30;
             \MNEM\EmailTracking::save_settings($enabled, $retention_days);
             $this->redirect_with_notice('mnem-settings', 'email_tracking_saved', array('tab' => 'email-tracking'));
             return;
