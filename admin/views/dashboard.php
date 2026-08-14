@@ -19,6 +19,13 @@ defined('ABSPATH') || exit;
         <?php endforeach; ?>
     <?php endif; ?>
 
+    <?php if (!$tracking_enabled) : ?>
+        <div class="notice notice-warning"><p>
+            Email tracking is disabled. Emails will not be recorded in Email History.
+            <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>">Enable in Settings</a>
+        </p></div>
+    <?php endif; ?>
+
     <div class="mnem-grid">
         <div class="mnem-panel">
             <h2>Overview</h2>

@@ -27,6 +27,14 @@ $storage_usage = \MNEM\EmailTracking::get_storage_usage();
                 <td>
                     <input type="number" min="0" class="small-text" id="mnem-email-preview-retention-days" name="email_preview_retention_days" value="<?php echo esc_attr((string) $retention_days); ?>" />
                     <p class="description"><?php esc_html_e('Use 0 to keep previews until they are manually removed.', 'multisite-network-email-manager'); ?></p>
+                    <p class="description">
+                        <?php if ($tracking_enabled) : ?>
+                            <strong style="color:#0a6b0a;"><?php esc_html_e('Email Tracking: Enabled ✓', 'multisite-network-email-manager'); ?></strong>
+                        <?php else : ?>
+                            <strong style="color:#c7362a;"><?php esc_html_e('Email Tracking: Disabled ✗', 'multisite-network-email-manager'); ?></strong>
+                            &mdash; <?php esc_html_e('Emails are not being recorded. Enable above and save.', 'multisite-network-email-manager'); ?>
+                        <?php endif; ?>
+                    </p>
                 </td>
             </tr>
             <tr>
