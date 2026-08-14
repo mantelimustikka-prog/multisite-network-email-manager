@@ -17,26 +17,36 @@ class EmailTracking
 
     public static function get_retention_days(): int
     {
-        return max(1, (int) get_site_option(self::OPTION_RETENTION_DAYS, 30));
+        return max(0, (int) get_site_option(self::OPTION_RETENTION_DAYS, 30));
     }
 
     public static function save_settings(bool $enabled, int $retention_days): void
     {
         update_site_option(self::OPTION_KEEP_PREVIEWS, $enabled ? 1 : 0);
-        update_site_option(self::OPTION_RETENTION_DAYS, max(1, $retention_days));
+        update_site_option(self::OPTION_RETENTION_DAYS, max(0, $retention_days));
     }
 
     public static function cleanup_old_records(): void
     {
+        if (!self::is_enabled()) {
+            return;
+        }
+
         $now_unix = time();
         $last_cleanup = (int) get_site_option(self::OPTION_LAST_CLEANUP_AT, 0);
         if (($now_unix - $last_cleanup) < 3600) {
             return;
         }
 
+        $retention_days = self::get_retention_days();
+        if ($retention_days === 0) {
+            update_site_option(self::OPTION_LAST_CLEANUP_AT, $now_unix);
+            return;
+        }
+
         global $wpdb;
         $table = $wpdb->prefix . 'mnem_email_tracking';
-        $cutoff = gmdate('Y-m-d H:i:s', $now_unix - (self::get_retention_days() * 86400));
+        $cutoff = gmdate('Y-m-d H:i:s', $now_unix - ($retention_days * 86400));
 
         $wpdb->query(
             $wpdb->prepare(
@@ -118,6 +128,27 @@ class EmailTracking
         }
 
         return array('items' => (array) $items);
+    }
+
+    /**
+     * @return array{emails:int,bytes:int,formatted:string}
+     */
+    public static function get_storage_usage(): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'mnem_email_tracking';
+        $row = $wpdb->get_row(
+            "SELECT COUNT(1) AS total_emails, COALESCE(SUM(COALESCE(LENGTH(recipient_email), 0) + COALESCE(LENGTH(subject), 0) + COALESCE(LENGTH(body), 0) + COALESCE(LENGTH(headers), 0) + COALESCE(LENGTH(provider_message_id), 0)), 0) AS total_bytes FROM {$table}",
+            ARRAY_A
+        );
+
+        $bytes = isset($row['total_bytes']) ? (int) $row['total_bytes'] : 0;
+
+        return array(
+            'emails' => isset($row['total_emails']) ? (int) $row['total_emails'] : 0,
+            'bytes' => $bytes,
+            'formatted' => self::format_bytes($bytes),
+        );
     }
 
     public static function handle_webhook_event(string $provider, string $event_type, string $recipient, string $message_id, string $timestamp = ''): void
@@ -269,5 +300,23 @@ class EmailTracking
         );
 
         return !empty($row) ? $row : null;
+    }
+
+    private static function format_bytes(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes . ' B';
+        }
+
+        $units = array('KB', 'MB', 'GB', 'TB');
+        $size = (float) $bytes;
+        foreach ($units as $unit) {
+            $size /= 1024;
+            if ($size < 1024 || $unit === 'TB') {
+                return number_format($size, $size >= 10 ? 1 : 2) . ' ' . $unit;
+            }
+        }
+
+        return $bytes . ' B';
     }
 }

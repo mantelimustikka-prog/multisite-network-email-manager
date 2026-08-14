@@ -157,11 +157,15 @@
                 '<div class="mnem-modal__dialog" role="dialog" aria-modal="true" aria-label="Email preview">' +
                     '<button type="button" class="mnem-modal__close button-link" aria-label="Close">&times;</button>' +
                     '<h2>Email Preview</h2>' +
-                    '<p><strong>Recipient:</strong> <span data-field="recipient"></span></p>' +
-                    '<p><strong>Sent:</strong> <span data-field="sentAt"></span></p>' +
-                    '<p><strong>Status:</strong> <span data-field="status" class="mnem-badge"></span></p>' +
-                    '<p><strong>Provider Message ID:</strong> <code data-field="messageId"></code></p>' +
-                    '<p><strong>Open Count:</strong> <strong data-field="openCount"></strong> | <strong>Click Count:</strong> <strong data-field="clickCount"></strong></p>' +
+                    '<div class="mnem-email-preview__meta">' +
+                        '<p><strong>From:</strong> <span data-field="from"></span></p>' +
+                        '<p><strong>To:</strong> <span data-field="recipient"></span></p>' +
+                        '<p><strong>Sent:</strong> <span data-field="sentAt"></span></p>' +
+                        '<p><strong>Status:</strong> <span data-field="status" class="mnem-badge"></span></p>' +
+                        '<p><strong>Provider Message ID:</strong> <code data-field="messageId"></code></p>' +
+                        '<p><strong>Open Count:</strong> <strong data-field="openCount"></strong></p>' +
+                        '<p><strong>Click Count:</strong> <strong data-field="clickCount"></strong></p>' +
+                    '</div>' +
                     '<p><strong>Open Timestamps:</strong></p>' +
                     '<pre data-field="openTimestamps"></pre>' +
                     '<p><strong>Click Timestamps:</strong></p>' +
@@ -170,7 +174,9 @@
                     '<pre data-field="subject"></pre>' +
                     '<p><strong>Headers (JSON):</strong></p>' +
                     '<pre data-field="headers"></pre>' +
-                    '<p><strong>Body:</strong></p>' +
+                    '<p><strong>Rendered Preview:</strong></p>' +
+                    '<iframe title="Rendered email preview" class="mnem-email-preview__frame" sandbox="" data-field="bodyFrame"></iframe>' +
+                    '<p><strong>HTML Source:</strong></p>' +
                     '<pre data-field="body"></pre>' +
                 '</div>' +
             '</div>';
@@ -189,6 +195,44 @@
         } catch (e) {
             return [];
         }
+    }
+
+    function parseHeaders(raw) {
+        if (!raw) {
+            return [];
+        }
+
+        if (Array.isArray(raw)) {
+            return raw;
+        }
+
+        try {
+            var parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function extractHeaderValue(headers, name) {
+        var prefix = String(name || '').toLowerCase() + ':';
+        for (var i = 0; i < headers.length; i++) {
+            var header = String(headers[i] || '');
+            if (header.toLowerCase().indexOf(prefix) === 0) {
+                return $.trim(header.substring(prefix.length));
+            }
+        }
+
+        return '';
+    }
+
+    function renderPreviewFrame($frame, html) {
+        var frame = $frame.get(0);
+        if (!frame) {
+            return;
+        }
+
+        frame.srcdoc = html || '';
     }
 
     $(document).on('click', '.mnem-email-preview-button', function(){
@@ -215,7 +259,9 @@
 
             var row = response.data;
             var status = row.delivery_status || 'pending';
+            var headers = parseHeaders(row.headers || '[]');
 
+            $modal.find('[data-field="from"]').text(extractHeaderValue(headers, 'From') || '');
             $modal.find('[data-field="recipient"]').text(row.recipient_email || '');
             $modal.find('[data-field="sentAt"]').text(row.created_at || '');
             $modal.find('[data-field="status"]').text(status).attr('class', 'mnem-badge mnem-status-' + status);
@@ -224,9 +270,10 @@
             $modal.find('[data-field="clickCount"]').text(row.click_count || 0);
             $modal.find('[data-field="subject"]').text(row.subject || '');
             $modal.find('[data-field="body"]').text(row.body || '');
-            $modal.find('[data-field="headers"]').text(row.headers || '[]');
+            $modal.find('[data-field="headers"]').text(JSON.stringify(headers, null, 2));
             $modal.find('[data-field="openTimestamps"]').text(parseJsonArray(row.open_timestamps || '[]').join('\n'));
             $modal.find('[data-field="clickTimestamps"]').text(parseJsonArray(row.click_timestamps || '[]').join('\n'));
+            renderPreviewFrame($modal.find('[data-field="bodyFrame"]'), row.body || '');
         });
     });
 

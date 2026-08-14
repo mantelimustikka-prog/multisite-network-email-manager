@@ -122,25 +122,56 @@ class SmtpDiagnostics
                 return $result;
             }
 
-            $send = static function () use ($to) {
-                return wp_mail($to, 'MNEM SMTP Test Email', 'This is a test email from Multisite Network Email Manager.');
-            };
-            $sent = class_exists(__NAMESPACE__ . '\\MailInterceptor')
-                ? MailInterceptor::run_without_interception($send)
-                : $send();
+            $blog_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+            $subject = 'MNEM SMTP Test Email';
+            $body = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
+            $headers = array('Content-Type: text/html; charset=UTF-8');
+            $queue_id = Queue::enqueue(
+                $blog_id,
+                $to,
+                $subject,
+                $body,
+                0,
+                array(
+                    'from_email' => SmtpSettings::get_sender_email(),
+                    'from_name' => SmtpSettings::get_sender_name(),
+                    'headers' => $headers,
+                    'metadata' => array(
+                        'type' => 'test_email',
+                        'requested_by_user_id' => $user_id,
+                    ),
+                    'source' => Queue::SOURCE_PLUGIN,
+                )
+            );
 
-            $message = 'Test email sent successfully.';
-            if (!$sent) {
-                $message = 'Failed to send test email.';
-                if (isset($GLOBALS['phpmailer']) && is_object($GLOBALS['phpmailer']) && !empty($GLOBALS['phpmailer']->ErrorInfo)) {
-                    $message .= ' ' . (string) $GLOBALS['phpmailer']->ErrorInfo;
-                }
+            if (!$queue_id) {
+                $result = array(
+                    'success' => false,
+                    'message' => 'Failed to queue test email.',
+                    'details' => array('to' => $to),
+                );
+                self::store_result('send_test_email', $result, $user_id);
+                return $result;
+            }
+
+            $processed = Queue::process_item((int) $queue_id);
+            $sent = !empty($processed['success']);
+            $message = $sent
+                ? 'Test email queued and sent successfully.'
+                : 'Test email queued, but sending failed.';
+
+            if (!$sent && !empty($processed['message'])) {
+                $message .= ' ' . (string) $processed['message'];
             }
 
             $result = array(
-                'success' => (bool) $sent,
+                'success' => $sent,
                 'message' => $message,
-                'details' => array('to' => $to),
+                'details' => array(
+                    'to' => $to,
+                    'queue_id' => (int) $queue_id,
+                    'status' => isset($processed['status']) ? (string) $processed['status'] : 'pending',
+                ),
             );
             self::store_result('send_test_email', $result, $user_id);
             return $result;

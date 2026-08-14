@@ -58,4 +58,29 @@ class EmailTrackingTest extends TestCase
         $this->assertStringContainsString("open_count = 2", $queries[1]);
         $this->assertStringContainsString("delivery_status = 'pending'", $queries[1]);
     }
+
+    public function test_save_settings_allows_zero_day_retention()
+    {
+        EmailTracking::save_settings(true, 0);
+
+        $this->assertSame(0, EmailTracking::get_retention_days());
+    }
+
+    public function test_cleanup_old_records_skips_deletes_when_retention_disabled()
+    {
+        $GLOBALS['mnem_site_options'][EmailTracking::OPTION_RETENTION_DAYS] = 0;
+        $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT] = 0;
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        EmailTracking::cleanup_old_records();
+
+        $this->assertSame(array(), $GLOBALS['wpdb']->queries);
+        $this->assertGreaterThan(0, (int) $GLOBALS['mnem_site_options'][EmailTracking::OPTION_LAST_CLEANUP_AT]);
+    }
 }
