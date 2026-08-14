@@ -148,7 +148,7 @@ $provider_field_defs = array(
                             <option value="<?php echo esc_attr($ptype); ?>" <?php selected($settings['fallback_provider'], $ptype); ?>><?php echo esc_html($pmeta['name']); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <p class="description"><?php esc_html_e('Configure the selected fallback provider in its settings section above.', 'multisite-network-email-manager'); ?></p>
+                    <p class="description"><?php esc_html_e('Configure the selected fallback provider in its settings section on this page.', 'multisite-network-email-manager'); ?></p>
                 </td>
             </tr>
         </tbody>
