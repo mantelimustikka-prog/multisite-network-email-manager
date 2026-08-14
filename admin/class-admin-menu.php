@@ -15,7 +15,7 @@ class AdminMenu
     {
         add_menu_page(
             'MNEM Dashboard',
-            'Email Manager',
+            'Network Email Manager',
             'manage_network_options',
             'mnem-dashboard',
             array($this, 'render_dashboard'),
@@ -25,8 +25,6 @@ class AdminMenu
 
         add_submenu_page('mnem-dashboard', 'Dashboard', 'Dashboard', 'manage_network_options', 'mnem-dashboard', array($this, 'render_dashboard'));
         add_submenu_page('mnem-dashboard', 'Settings', 'Settings', 'manage_network_options', 'mnem-settings', array($this, 'render_settings'));
-        add_submenu_page('mnem-dashboard', 'SMTP Settings', 'SMTP Settings', 'manage_network_options', 'mnem-smtp-settings', array($this, 'render_smtp_settings'));
-        add_submenu_page('mnem-dashboard', 'SMTP Diagnostics', 'SMTP Diagnostics', 'manage_network_options', 'mnem-smtp-diagnostics', array($this, 'render_smtp_diagnostics'));
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
         add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
@@ -77,26 +75,6 @@ class AdminMenu
         $notice_class = $this->get_notice_class($notice);
 
         $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'notice', 'notice_message', 'notice_class'));
-    }
-
-    public function render_smtp_settings()
-    {
-        $settings = \MNEM\SmtpSettings::get_all();
-        $cron_status = \MNEM\Cron::get_status();
-        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
-        $notice_message = $this->get_notice_message($notice);
-        $notice_class = $this->get_notice_class($notice);
-
-        $this->render_view('smtp-settings.php', compact('settings', 'notice', 'notice_message', 'notice_class', 'cron_status'));
-    }
-
-    public function render_smtp_diagnostics()
-    {
-        $settings = \MNEM\SmtpSettings::get_all();
-        $connection = \MNEM\SmtpDiagnostics::validate_settings();
-        $last_result = \MNEM\SmtpDiagnostics::get_last_result();
-
-        $this->render_view('smtp-diagnostics.php', compact('settings', 'connection', 'last_result'));
     }
 
     public function render_campaigns()

@@ -20,6 +20,7 @@ class SmtpDiagnosticsTest extends TestCase
             'from_name' => 'Mailer',
         );
         $GLOBALS['mnem_site_options'][SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
+        unset($GLOBALS['mnem_wp_mail_return']);
     }
 
     public function test_validate_settings_returns_success_for_valid_data()
@@ -52,5 +53,15 @@ class SmtpDiagnosticsTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('validation failed', strtolower($result['message']));
+    }
+
+    public function test_send_test_email_returns_failure_when_mail_fails()
+    {
+        $GLOBALS['mnem_wp_mail_return'] = false;
+
+        $result = SmtpDiagnostics::send_test_email('admin@example.com');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Failed to send test email', $result['message']);
     }
 }
