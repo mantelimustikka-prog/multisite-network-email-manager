@@ -20,7 +20,16 @@ defined('ABSPATH') || exit;
     <?php endif; ?>
 
     <?php if (!$tracking_enabled) : ?>
-        <div class="notice notice-warning"><p>Email tracking is disabled &mdash; Email History will not record any emails. <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>">Enable in Settings &gt; Email Tracking</a>.</p></div>
+        <div class="notice notice-warning"><p><?php
+            echo wp_kses(
+                sprintf(
+                    /* translators: %s is the link to the Email Tracking settings page */
+                    __( 'Email tracking is disabled &mdash; Email History will not record any emails. <a href="%s">Enable in Settings &gt; Email Tracking</a>.', 'multisite-network-email-manager' ),
+                    esc_url( network_admin_url( 'admin.php?page=mnem-settings&tab=email_tracking' ) )
+                ),
+                array( 'a' => array( 'href' => array() ) )
+            );
+        ?></p></div>
     <?php endif; ?>
 
     <div class="mnem-grid">

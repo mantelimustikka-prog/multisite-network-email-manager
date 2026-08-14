@@ -16,7 +16,6 @@ class EmailTracking
 
         // Default to enabled if option has never been set.
         if ($keep_previews === false) {
-            update_site_option(self::OPTION_KEEP_PREVIEWS, 1);
             return true;
         }
 
