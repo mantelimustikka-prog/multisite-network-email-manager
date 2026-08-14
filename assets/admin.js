@@ -96,6 +96,34 @@
         }
     });
 
+    $(document).on('click', '.mnem-test-provider-connection', function () {
+        var $button   = $(this);
+        var provider  = $button.data('provider');
+        var $result   = $('#mnem-test-result-' + provider);
+
+        if (!provider || typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
+            return;
+        }
+
+        $button.prop('disabled', true).text('Testing\u2026');
+        $result.text('').css('color', '');
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action:   'mnem_test_provider_connection',
+            nonce:    mnemAdmin.nonce,
+            provider: provider
+        }).done(function (response) {
+            $button.prop('disabled', false).text('Test Connection');
+            var msg = response && response.data && response.data.message ? response.data.message : 'Connection successful.';
+            $result.text('\u2714 ' + msg).css('color', 'green');
+        }).fail(function (jqXHR) {
+            $button.prop('disabled', false).text('Test Connection');
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            var msg  = data.message || 'Connection failed.';
+            $result.text('\u2716 ' + msg).css('color', '#d63638');
+        });
+    });
+
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
     }

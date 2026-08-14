@@ -118,6 +118,47 @@ class SmtpSettings
         return update_site_option(self::OPTION_KEY, $sanitized);
     }
 
+    /**
+     * Decode a stored (base64-obfuscated) API key for the given provider.
+     * Falls back to the raw value if decoding fails.
+     */
+    public static function get_provider_api_key_decoded(string $provider_type): string
+    {
+        $settings        = self::get_all();
+        $provider_config = isset($settings['provider_config']) ? $settings['provider_config'] : array();
+        $config          = isset($provider_config[$provider_type]) && is_array($provider_config[$provider_type])
+            ? $provider_config[$provider_type]
+            : array();
+
+        $field = $provider_type === 'postmark' ? 'server_token' : 'api_key';
+
+        if (!isset($config[$field]) || (string) $config[$field] === '') {
+            return '';
+        }
+
+        $decoded = base64_decode($config[$field], true);
+
+        if ($decoded === false) {
+            Logger::warning('API key decode failed', array('provider' => $provider_type));
+            return (string) $config[$field];
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Validate an API key string: non-empty, printable ASCII, minimum 8 chars.
+     */
+    public static function validate_api_key(string $key): bool
+    {
+        if (strlen($key) < 8) {
+            return false;
+        }
+
+        // Must contain only printable, non-whitespace ASCII characters.
+        return (bool) preg_match('/^[!-~]+$/', $key);
+    }
+
     public static function get_password_decoded()
     {
         $password = (string) self::get('password', '');

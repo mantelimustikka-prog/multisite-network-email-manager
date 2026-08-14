@@ -25,6 +25,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_retry_failed_queue', array($this, 'ajax_retry_failed_queue'));
         add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));
         add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
 
@@ -551,6 +552,30 @@ class NetworkAdmin
     {
         $this->ensure_ajax_permissions();
         wp_send_json_success(\MNEM\SmtpDiagnostics::test_connection());
+    }
+
+    public function ajax_test_provider_connection()
+    {
+        $this->ensure_ajax_permissions();
+        $valid_providers = array('smtp', 'mailgun', 'sendgrid', 'brevo', 'postmark', 'smtp2go');
+        $provider = isset($_POST['provider']) ? sanitize_text_field(wp_unslash($_POST['provider'])) : '';
+        if (!in_array($provider, $valid_providers, true)) {
+            wp_send_json_error(array('message' => 'Invalid provider.'), 400);
+            return;
+        }
+
+        $instance = \MNEM\ProviderManager::get_provider($provider);
+        if ($instance === null) {
+            wp_send_json_error(array('message' => 'Provider not available.'), 400);
+            return;
+        }
+
+        $result = $instance->test_connection();
+        if (!empty($result['success'])) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result, 400);
+        }
     }
 
     public function ajax_send_test_email()

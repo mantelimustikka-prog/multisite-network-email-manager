@@ -130,6 +130,15 @@ $provider_field_defs = array(
                     </td>
                 </tr>
                 <?php endforeach; ?>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Connection', 'multisite-network-email-manager'); ?></th>
+                    <td>
+                        <button type="button" class="button button-secondary mnem-test-provider-connection" data-provider="<?php echo esc_attr($ptype); ?>" <?php echo empty($pconfig) ? 'disabled' : ''; ?>>
+                            <?php esc_html_e('Test Connection', 'multisite-network-email-manager'); ?>
+                        </button>
+                        <span class="mnem-test-connection-result" id="mnem-test-result-<?php echo esc_attr($ptype); ?>" style="margin-left:8px;"></span>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
