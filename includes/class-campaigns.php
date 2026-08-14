@@ -220,7 +220,17 @@ class Campaigns
         $campaign = self::get($id);
         $recipients = array();
         if (!empty($list_ids)) {
-            $recipients = self::get_recipient_emails_from_lists($list_ids);
+            $contains_email = false;
+            foreach ($list_ids as $list_id) {
+                if (is_string($list_id) && is_email(sanitize_email($list_id))) {
+                    $contains_email = true;
+                    break;
+                }
+            }
+
+            $recipients = $contains_email
+                ? self::parse_recipient_list($list_ids)
+                : self::get_recipient_emails_from_lists($list_ids);
         } else {
             $target_lists = isset($campaign['target_lists']) ? json_decode((string) $campaign['target_lists'], true) : array();
             if (is_array($target_lists) && !empty($target_lists)) {
@@ -469,17 +479,7 @@ class Campaigns
             return false;
         }
 
-        global $wpdb;
-        $queue_table = $wpdb->prefix . 'mnem_queue';
-        $deleted = $wpdb->query(
-            $wpdb->prepare(
-                "DELETE FROM {$queue_table} WHERE campaign_id = %d AND status IN (%s, %s)",
-                $id,
-                'pending',
-                'processing'
-            )
-        );
-
+        $deleted = Queue::delete_by_campaign($id);
         $updated = self::update_status($id, 'cancelled');
         if ($updated !== false) {
             Logger::info('Campaign cancelled', array(

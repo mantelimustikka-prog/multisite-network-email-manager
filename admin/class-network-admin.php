@@ -16,6 +16,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
         add_action('admin_init', array($this, 'handle_email_template_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
+        add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
         add_action('admin_init', array($this, 'handle_user_event_rule_action'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
         add_action('wp_ajax_mnem_dashboard_stats', array($this, 'ajax_dashboard_stats'));
@@ -362,6 +363,7 @@ class NetworkAdmin
 
         if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_queue')) {
             $this->redirect_with_notice($this->get_queue_redirect_page(), 'queue_nonce_failed');
+            return;
         }
 
         $page = $this->get_queue_redirect_page();
@@ -371,17 +373,86 @@ class NetworkAdmin
             $processed = \MNEM\Cron::process_queue_batch();
             \MNEM\Logger::info('Manual queue processing triggered.', array('site_id' => $site_id, 'processed' => $processed));
             $this->redirect_with_notice($page, 'queue_processed', array('processed' => $processed));
+            return;
         }
 
         if ($_POST['mnem_action'] === 'retry_failed_queue') {
             $retried = \MNEM\Queue::retry_failed($site_id);
             $this->redirect_with_notice($page, 'queue_retried', array('retried' => $retried));
+            return;
         }
 
         $paused = (int) get_site_option('mnem_campaign_sends_paused', 0) === 1 ? 0 : 1;
         update_site_option('mnem_campaign_sends_paused', $paused);
         \MNEM\Logger::info('Campaign sending pause state changed.', array('site_id' => $site_id, 'paused' => $paused));
         $this->redirect_with_notice($page, $paused === 1 ? 'campaign_paused' : 'campaign_resumed');
+    }
+
+    public function handle_queue_item_delete_action()
+    {
+        $action = isset($_POST['mnem_action']) ? sanitize_text_field(wp_unslash($_POST['mnem_action'])) : '';
+        $bulk_action = isset($_POST['bulk_action']) ? sanitize_text_field(wp_unslash($_POST['bulk_action'])) : '';
+
+        if ($action === '' && $bulk_action !== '') {
+            if ($bulk_action === 'delete_pending') {
+                $action = 'delete_queue_by_status';
+                $_POST['status'] = 'pending';
+            } elseif ($bulk_action === 'delete_failed') {
+                $action = 'delete_queue_by_status';
+                $_POST['status'] = 'failed';
+            } elseif ($bulk_action === 'delete_selected') {
+                $action = 'delete_queue_items';
+            }
+        }
+
+        if (!in_array($action, array('delete_queue_item', 'delete_queue_items', 'delete_queue_by_status'), true)) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $page = $this->get_queue_redirect_page();
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_queue_item_delete')) {
+            \MNEM\Logger::warning('Queue deletion request failed nonce verification.', array('action' => $action));
+            $this->redirect_with_notice($page, 'queue_nonce_failed');
+            return;
+        }
+
+        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+
+        if ($action === 'delete_queue_item') {
+            $queue_id = isset($_POST['queue_id']) ? (int) $_POST['queue_id'] : 0;
+            $deleted = $queue_id > 0 ? \MNEM\Queue::delete_item($queue_id) : false;
+            \MNEM\Logger::info('Queue single delete requested.', array('site_id' => $site_id, 'queue_id' => $queue_id, 'deleted' => (bool) $deleted));
+            $this->redirect_with_notice($page, $deleted ? 'queue_item_deleted' : 'queue_delete_failed');
+            return;
+        }
+
+        if ($action === 'delete_queue_items') {
+            $queue_ids = isset($_POST['queue_ids']) ? array_map('intval', (array) wp_unslash($_POST['queue_ids'])) : array();
+            if (empty($queue_ids)) {
+                $this->redirect_with_notice($page, 'queue_nothing_selected');
+                return;
+            }
+
+            $deleted = \MNEM\Queue::delete_items($queue_ids);
+            \MNEM\Logger::info('Queue bulk delete requested.', array('site_id' => $site_id, 'queue_ids' => $queue_ids, 'deleted_count' => $deleted));
+            $this->redirect_with_notice($page, $deleted > 0 ? 'queue_items_deleted' : 'queue_delete_failed', array('count' => $deleted));
+            return;
+        }
+
+        $status = isset($_POST['status']) ? sanitize_text_field(wp_unslash($_POST['status'])) : '';
+        if (!in_array($status, array('pending', 'failed'), true)) {
+            \MNEM\Logger::warning('Queue status delete rejected because status is invalid.', array('site_id' => $site_id, 'status' => $status));
+            $this->redirect_with_notice($page, 'queue_delete_failed');
+            return;
+        }
+
+        $deleted = \MNEM\Queue::delete_by_status($site_id, $status);
+        \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
+        $this->redirect_with_notice($page, $deleted >= 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
     }
 
     public function enqueue_assets($hook_suffix)
@@ -560,6 +631,9 @@ class NetworkAdmin
             ? network_admin_url('admin.php?' . http_build_query($args, '', '&'))
             : 'admin.php?' . http_build_query($args, '', '&');
         wp_safe_redirect($url);
+        if (defined('MNEM_TESTING') && MNEM_TESTING) {
+            return;
+        }
         exit;
     }
 }
