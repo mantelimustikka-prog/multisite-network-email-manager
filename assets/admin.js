@@ -78,7 +78,14 @@
         }
 
         if ($input.attr('type') === 'password') {
-            var decoded = encoded ? atob(String(encoded)) : '';
+            var decoded = '';
+            if (encoded) {
+                try {
+                    decoded = atob(String(encoded));
+                } catch (e) {
+                    decoded = String(encoded);
+                }
+            }
             $input.attr('type', 'text').val(decoded);
             $icon.removeClass('dashicons-visibility').addClass('dashicons-hidden');
             $button.attr('title', 'Hide API key');
