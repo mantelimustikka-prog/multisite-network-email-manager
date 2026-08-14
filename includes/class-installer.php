@@ -23,7 +23,7 @@ class Installer
 
     public static function deactivate()
     {
-        return;
+        Cron::deactivate();
     }
 
     public static function install()
