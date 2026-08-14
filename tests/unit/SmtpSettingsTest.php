@@ -74,4 +74,41 @@ class SmtpSettingsTest extends TestCase
 
         $this->assertFalse(SmtpSettings::is_active_provider_configured());
     }
+
+    public function test_get_provider_api_key_decoded_returns_decoded_key()
+    {
+        $raw_key = 'xkeysib-abc123def456-test';
+        // save() base64-encodes the api_key before storing, so get_provider_api_key_decoded()
+        // must decode it back to the original value.
+        SmtpSettings::save(array(
+            'provider_type' => 'brevo',
+            'provider_config' => array(
+                'brevo' => array('api_key' => $raw_key),
+            ),
+        ));
+
+        $this->assertSame($raw_key, SmtpSettings::get_provider_api_key_decoded('brevo'));
+    }
+
+    public function test_get_provider_api_key_decoded_returns_empty_for_missing_provider()
+    {
+        SmtpSettings::save(array('provider_config' => array()));
+
+        $this->assertSame('', SmtpSettings::get_provider_api_key_decoded('brevo'));
+    }
+
+    public function test_validate_api_key_accepts_valid_key()
+    {
+        $this->assertTrue(SmtpSettings::validate_api_key('xkeysib-abc123def456'));
+    }
+
+    public function test_validate_api_key_rejects_short_key()
+    {
+        $this->assertFalse(SmtpSettings::validate_api_key('short'));
+    }
+
+    public function test_validate_api_key_rejects_empty_string()
+    {
+        $this->assertFalse(SmtpSettings::validate_api_key(''));
+    }
 }

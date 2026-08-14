@@ -43,6 +43,45 @@ class SmtpDiagnostics
     public static function test_connection()
     {
         try {
+            $settings      = SmtpSettings::get_all();
+            $provider_type = isset($settings['provider_type']) ? (string) $settings['provider_type'] : 'smtp';
+
+            Logger::info('Testing provider connection.', array('provider' => $provider_type));
+
+            // For API-based providers, delegate to the provider's own test_connection().
+            if ($provider_type !== 'smtp') {
+                if (!SmtpSettings::is_active_provider_configured()) {
+                    $result = array(
+                        'success' => false,
+                        'message' => ucfirst($provider_type) . ' is not fully configured. Please save your API key.',
+                        'details' => array('provider' => $provider_type),
+                    );
+                    self::store_result('connection', $result);
+                    return $result;
+                }
+
+                $provider = ProviderManager::get_provider($provider_type);
+                if ($provider === null) {
+                    $result = array(
+                        'success' => false,
+                        'message' => 'Unknown provider type: ' . $provider_type,
+                        'details' => array('provider' => $provider_type),
+                    );
+                    self::store_result('connection', $result);
+                    return $result;
+                }
+
+                $result = $provider->test_connection();
+                $result['details'] = array_merge(
+                    isset($result['details']) && is_array($result['details']) ? $result['details'] : array(),
+                    array('provider' => $provider_type)
+                );
+                self::store_result('connection', $result);
+                Logger::info('Provider connection test result.', array('provider' => $provider_type, 'success' => !empty($result['success']), 'message' => isset($result['message']) ? $result['message'] : ''));
+                return $result;
+            }
+
+            // SMTP: validate settings first.
             $validation = self::validate_settings();
             if (empty($validation['success'])) {
                 self::store_result('connection', $validation);
@@ -59,7 +98,6 @@ class SmtpDiagnostics
                 return $result;
             }
 
-            $settings = SmtpSettings::get_all();
             $mailer = new \PHPMailer\PHPMailer\PHPMailer(true);
             $mailer->isSMTP();
             $mailer->Host = $settings['host'];

@@ -167,15 +167,28 @@ class ProviderManager
             ? $provider_configs[$type]
             : array();
 
-        // Decode stored API keys (stored as base64 for obfuscation).
+        // Decode stored API keys (stored as base64 for obfuscation) and validate.
         if (isset($provider_specific['api_key']) && (string) $provider_specific['api_key'] !== '') {
             $decoded = base64_decode($provider_specific['api_key'], true);
-            $provider_specific['api_key'] = $decoded !== false ? $decoded : $provider_specific['api_key'];
+            if ($decoded === false) {
+                Logger::warning('API key base64 decode failed; using raw value.', array('provider' => $type));
+            } else {
+                $provider_specific['api_key'] = $decoded;
+                if (!SmtpSettings::validate_api_key($decoded)) {
+                    Logger::warning('Decoded API key failed validation check.', array('provider' => $type, 'key_length' => strlen($decoded)));
+                } else {
+                    Logger::info('API key decoded and validated.', array('provider' => $type, 'key_prefix' => substr($decoded, 0, 4) . '...'));
+                }
+            }
         }
 
         if (isset($provider_specific['server_token']) && (string) $provider_specific['server_token'] !== '') {
             $decoded = base64_decode($provider_specific['server_token'], true);
-            $provider_specific['server_token'] = $decoded !== false ? $decoded : $provider_specific['server_token'];
+            if ($decoded === false) {
+                Logger::warning('Server token base64 decode failed; using raw value.', array('provider' => $type));
+            } else {
+                $provider_specific['server_token'] = $decoded;
+            }
         }
 
         return array_merge($base, $provider_specific);
