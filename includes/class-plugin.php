@@ -8,6 +8,11 @@ class Plugin
 {
     public function init()
     {
+        $db_version = (string) get_site_option('mnem_db_version', '');
+        if ($db_version !== (string) MNEM_DB_VERSION) {
+            Installer::install();
+        }
+
         if (function_exists('is_admin') && is_admin()) {
             try {
                 $admin = new \MNEM\Admin\NetworkAdmin();
@@ -29,6 +34,12 @@ class Plugin
             $smtp_service->init();
         } catch (\Throwable $throwable) {
             error_log('MNEM SMTP service loader failed: ' . $throwable->getMessage());
+        }
+
+        try {
+            MailInterceptor::init();
+        } catch (\Throwable $throwable) {
+            error_log('MNEM mail interceptor loader failed: ' . $throwable->getMessage());
         }
 
         try {

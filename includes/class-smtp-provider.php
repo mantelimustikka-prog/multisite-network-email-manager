@@ -46,7 +46,13 @@ class SmtpProvider extends EmailProvider
         }
 
         try {
-            $sent = wp_mail($to, $subject, $body, $headers);
+            $attachments = array();
+            if (isset($headers['__attachments'])) {
+                $attachments = is_array($headers['__attachments']) ? $headers['__attachments'] : array();
+                unset($headers['__attachments']);
+            }
+
+            $sent = wp_mail($to, $subject, $body, $headers, $attachments);
 
             if ($sent) {
                 return $this->success_result('Email sent via SMTP.', '', array('to' => $to));

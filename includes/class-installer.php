@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
 
 class Installer
 {
-    public static function activate()
+    public static function activate($network_wide = false)
     {
         if (version_compare(PHP_VERSION, '7.4', '<')) {
             error_log('MNEM requires PHP 7.4 or newer.');
@@ -15,6 +15,11 @@ class Installer
 
         if (!function_exists('is_multisite') || !is_multisite()) {
             error_log('MNEM requires WordPress multisite.');
+            return;
+        }
+
+        if (!$network_wide) {
+            error_log('MNEM requires network activation.');
             return;
         }
 
@@ -56,6 +61,8 @@ class Installer
             "CREATE TABLE {$logs_table} (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                 site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                user_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 level varchar(20) NOT NULL,
                 message text NOT NULL,
                 context longtext NULL,
@@ -67,20 +74,29 @@ class Installer
             "CREATE TABLE {$queue_table} (
                 id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                 site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
                 recipient_email varchar(190) NOT NULL,
                 subject text NOT NULL,
                 body longtext NOT NULL,
+                from_email varchar(190) NOT NULL DEFAULT '',
+                from_name varchar(255) NOT NULL DEFAULT '',
+                headers longtext NULL,
+                attachments longtext NULL,
+                metadata longtext NULL,
+                source enum('campaign','user_event','plugin','core') NOT NULL DEFAULT 'core',
                 status enum('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
                 attempts int(11) NOT NULL DEFAULT 0,
                 scheduled_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 processed_at datetime NULL,
+                sent_at datetime NULL,
                 created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 provider_type varchar(20) NOT NULL DEFAULT '',
                 provider_message_id varchar(255) NOT NULL DEFAULT '',
                 provider_metadata longtext NULL,
                 PRIMARY KEY  (id),
                 KEY site_status (site_id, status),
+                KEY blog_status_created (blog_id, status, created_at),
                 KEY campaign_status (campaign_id, status),
                 KEY scheduled_at (scheduled_at)
             ) {$charset_collate};",
