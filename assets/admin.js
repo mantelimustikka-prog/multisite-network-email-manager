@@ -66,6 +66,29 @@
 
     bindQueueDeletionUi();
 
+    $(document).on('click', '.mnem-toggle-api-key', function () {
+        var $button = $(this);
+        var inputId = $button.data('input-id');
+        var encoded = $button.data('encoded');
+        var $input = $('#' + inputId);
+        var $icon = $button.find('.dashicons');
+
+        if (!$input.length) {
+            return;
+        }
+
+        if ($input.attr('type') === 'password') {
+            var decoded = encoded ? atob(String(encoded)) : '';
+            $input.attr('type', 'text').val(decoded);
+            $icon.removeClass('dashicons-visibility').addClass('dashicons-hidden');
+            $button.attr('title', 'Hide API key');
+        } else {
+            $input.attr('type', 'password').val('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022');
+            $icon.removeClass('dashicons-hidden').addClass('dashicons-visibility');
+            $button.attr('title', 'Show/hide API key');
+        }
+    });
+
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
     }

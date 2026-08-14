@@ -122,55 +122,56 @@ class SmtpDiagnostics
                 return $result;
             }
 
-            $blog_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
             $subject = 'MNEM SMTP Test Email';
-            $body = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
-            $headers = array('Content-Type: text/html; charset=UTF-8');
-            $queue_id = Queue::enqueue(
-                $blog_id,
-                $to,
-                $subject,
-                $body,
-                0,
-                array(
-                    'from_email' => SmtpSettings::get_sender_email(),
-                    'from_name' => SmtpSettings::get_sender_name(),
-                    'headers' => $headers,
-                    'metadata' => array(
-                        'type' => 'test_email',
-                        'requested_by_user_id' => $user_id,
-                    ),
-                    'source' => Queue::SOURCE_PLUGIN,
-                )
-            );
+            $body    = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
 
-            if (!$queue_id) {
-                $result = array(
-                    'success' => false,
-                    'message' => 'Failed to queue test email.',
-                    'details' => array('to' => $to),
-                );
-                self::store_result('send_test_email', $result, $user_id);
-                return $result;
+            $from_email = SmtpSettings::get_sender_email();
+            $from_name  = SmtpSettings::get_sender_name();
+
+            $headers = array('Content-Type: text/html; charset=UTF-8');
+            if ($from_email !== '') {
+                $headers[] = $from_name !== ''
+                    ? 'From: ' . $from_name . ' <' . $from_email . '>'
+                    : 'From: ' . $from_email;
             }
 
-            $processed = Queue::process_item((int) $queue_id);
-            $sent = !empty($processed['success']);
-            $message = $sent
-                ? 'Test email queued and sent successfully.'
-                : 'Test email queued, but sending failed.';
+            Logger::info('Sending test email via configured provider.', array('to' => $to, 'user_id' => $user_id));
 
-            if (!$sent && !empty($processed['message'])) {
-                $message .= ' ' . (string) $processed['message'];
+            $send_result = ProviderManager::send_email($to, $subject, $body, $headers);
+
+            $sent       = !empty($send_result['success']);
+            $provider   = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
+            $message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+
+            if ($sent) {
+                Logger::info('Test email sent successfully.', array('to' => $to, 'provider' => $provider, 'message_id' => $message_id, 'user_id' => $user_id));
+                $tracking_row = array(
+                    'recipient_email' => $to,
+                    'subject'         => $subject,
+                    'body'            => $body,
+                );
+                EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
+            } else {
+                $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
+                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider, 'error' => $error, 'user_id' => $user_id));
+            }
+
+            $provider_label = $provider !== '' ? $provider : 'provider';
+            $message = $sent
+                ? 'Test email sent successfully via ' . $provider_label . '.'
+                : 'Test email sending failed via ' . $provider_label . '.';
+
+            if (!$sent && isset($send_result['message']) && (string) $send_result['message'] !== '') {
+                $message .= ' ' . (string) $send_result['message'];
             }
 
             $result = array(
                 'success' => $sent,
                 'message' => $message,
                 'details' => array(
-                    'to' => $to,
-                    'queue_id' => (int) $queue_id,
-                    'status' => isset($processed['status']) ? (string) $processed['status'] : 'pending',
+                    'to'         => $to,
+                    'provider'   => $provider,
+                    'message_id' => $message_id,
                 ),
             );
             self::store_result('send_test_email', $result, $user_id);

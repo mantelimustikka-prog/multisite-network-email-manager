@@ -112,7 +112,7 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertStringContainsString('sending failed', strtolower($result['message']));
     }
 
-    public function test_send_test_email_uses_queue_tracking_and_global_header_footer()
+    public function test_send_test_email_uses_provider_tracking_and_global_header_footer()
     {
         $GLOBALS['mnem_site_options']['mnem_force_global_header_footer'] = 1;
         $GLOBALS['mnem_site_options']['mnem_global_header'] = '<p>Header</p>';
@@ -126,7 +126,9 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertSame('admin@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
         $this->assertStringContainsString('<p>Header</p>', $GLOBALS['mnem_last_wp_mail']['message']);
         $this->assertStringContainsString('<p>Footer</p>', $GLOBALS['mnem_last_wp_mail']['message']);
-        $this->assertStringContainsString('INSERT INTO wp_mnem_queue', $queries);
+        $this->assertStringNotContainsString('INSERT INTO wp_mnem_queue', $queries);
         $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking', $queries);
+        $this->assertSame('smtp', $result['details']['provider']);
+        $this->assertArrayHasKey('message_id', $result['details']);
     }
 }
