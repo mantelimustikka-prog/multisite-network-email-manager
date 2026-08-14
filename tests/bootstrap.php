@@ -549,6 +549,44 @@ if (!function_exists('wp_strip_all_tags')) {
     }
 }
 
+if (!function_exists('wp_kses_post')) {
+    function wp_kses_post($content)
+    {
+        return strip_tags((string) $content, '<a><p><br><strong><em><u><img><ul><ol><li><h1><h2><h3><h4><h5><h6><blockquote><hr><span><div>');
+    }
+}
+
+if (!function_exists('get_bloginfo')) {
+    function get_bloginfo($show = '')
+    {
+        if ($show === 'name') {
+            return 'Test Site';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('get_option')) {
+    function get_option($key, $default = false)
+    {
+        return array_key_exists($key, $GLOBALS['mnem_site_options']) ? $GLOBALS['mnem_site_options'][$key] : $default;
+    }
+}
+
+if (!function_exists('__')) {
+    function __($text, $domain = '')
+    {
+        return $text;
+    }
+}
+
+if (!function_exists('esc_html__')) {
+    function esc_html__($text, $domain = '')
+    {
+        return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+    }
+}
+
 if (!function_exists('checked')) {
     function checked($current, $value = true, $echo = true)
     {
@@ -565,6 +603,7 @@ if (!function_exists('checked')) {
 require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
+require_once __DIR__ . '/../includes/class-email-formatter.php';
 require_once __DIR__ . '/../includes/class-suppression.php';
 require_once __DIR__ . '/../includes/class-email-provider.php';
 require_once __DIR__ . '/../includes/class-smtp-provider.php';
