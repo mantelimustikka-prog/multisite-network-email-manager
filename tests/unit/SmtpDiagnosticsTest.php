@@ -34,6 +34,9 @@ class SmtpDiagnosticsTest extends TestCase
                 $this->queries[] = $query;
 
                 if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    if (preg_match("/SHOW TABLES LIKE '([^']+)'/", $query, $matches)) {
+                        return $matches[1];
+                    }
                     return 'wp_mnem_logs';
                 }
 
