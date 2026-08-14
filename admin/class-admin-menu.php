@@ -203,6 +203,11 @@ class AdminMenu
 
     private function get_notice_message($notice)
     {
+        $count = isset($_GET['count']) ? (int) $_GET['count'] : 0;
+        $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
+        if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
+            $status = 'queue';
+        }
         $messages = array(
             'campaign_created' => 'Campaign created successfully.',
             'campaign_updated' => 'Campaign updated successfully.',
@@ -213,6 +218,11 @@ class AdminMenu
             'campaign_resumed' => 'Campaign sending has resumed.',
             'queue_processed' => 'Queue processed successfully.',
             'queue_retried' => 'Failed queue items were rescheduled.',
+            'queue_item_deleted' => 'Queue item deleted.',
+            'queue_items_deleted' => $count === 1 ? '1 queue item deleted.' : sprintf('%d queue items deleted.', $count),
+            'queue_deleted_by_status' => sprintf('%d %s item%s deleted.', $count, $status, $count === 1 ? '' : 's'),
+            'queue_delete_failed' => 'Failed to delete queue item.',
+            'queue_nothing_selected' => 'No items selected for deletion.',
             'campaign_nonce_failed' => 'Campaign security check failed.',
             'queue_nonce_failed' => 'Queue security check failed.',
             'campaign_send_failed' => 'Campaign send failed.',
@@ -250,7 +260,11 @@ class AdminMenu
 
     private function get_notice_class($notice)
     {
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed'), true)) {
+        if ($notice === 'queue_nothing_selected') {
+            return 'notice notice-warning';
+        }
+
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed'), true)) {
             return 'notice notice-error';
         }
 

@@ -8,6 +8,7 @@ class Queue
 {
     public const MAX_ATTEMPTS = 3;
     public const BACKOFF_BASE = 300;
+    public const DELETABLE_STATUSES = array('pending', 'failed');
     public const SOURCE_CORE = 'core';
     public const SOURCE_CAMPAIGN = 'campaign';
     public const SOURCE_USER_EVENT = 'user_event';
@@ -308,6 +309,154 @@ class Queue
         return $result === false ? 0 : (int) $result;
     }
 
+    public static function delete_item(int $id)
+    {
+        global $wpdb;
+
+        if ($id <= 0) {
+            return false;
+        }
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $item = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, site_id, campaign_id, recipient_email, status FROM {$table} WHERE id = %d",
+                $id
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($item) || empty($item['id'])) {
+            Logger::warning('Queue item deletion skipped because item was not found.', array('queue_id' => $id, 'deleted_by' => get_current_user_id()));
+            return false;
+        }
+
+        $status = isset($item['status']) ? (string) $item['status'] : '';
+        if (!in_array($status, self::DELETABLE_STATUSES, true)) {
+            Logger::warning('Queue item deletion skipped because status is not deletable.', array('queue_id' => $id, 'status' => $status, 'deleted_by' => get_current_user_id()));
+            return false;
+        }
+
+        $deleted = $wpdb->query(
+            self::prepare_delete_query(
+                "DELETE FROM {$table} WHERE id = %d",
+                array($id)
+            )
+        );
+
+        if ($deleted === false || (int) $deleted < 1) {
+            Logger::error('Queue item deletion failed.', array('queue_id' => $id, 'status' => $status, 'deleted_by' => get_current_user_id()));
+            return false;
+        }
+
+        Logger::info('Queue item deleted.', array(
+            'queue_id' => $id,
+            'site_id' => isset($item['site_id']) ? (int) $item['site_id'] : 0,
+            'campaign_id' => isset($item['campaign_id']) ? (int) $item['campaign_id'] : 0,
+            'recipient_email' => isset($item['recipient_email']) ? (string) $item['recipient_email'] : '',
+            'status' => $status,
+            'deleted_by' => get_current_user_id(),
+        ));
+
+        return true;
+    }
+
+    public static function delete_items(array $ids)
+    {
+        $queue_ids = array_values(array_unique(array_filter(array_map('intval', $ids), static function ($id) {
+            return $id > 0;
+        })));
+
+        if (empty($queue_ids)) {
+            return 0;
+        }
+
+        $deleted = 0;
+        $deleted_ids = array();
+
+        foreach ($queue_ids as $queue_id) {
+            if (self::delete_item($queue_id)) {
+                ++$deleted;
+                $deleted_ids[] = $queue_id;
+            }
+        }
+
+        if ($deleted > 0) {
+            Logger::info('Queue items deleted.', array(
+                'queue_ids' => $deleted_ids,
+                'requested_ids' => $queue_ids,
+                'deleted_count' => $deleted,
+                'deleted_by' => get_current_user_id(),
+            ));
+        }
+
+        return $deleted;
+    }
+
+    public static function delete_by_status(int $site_id, string $status)
+    {
+        global $wpdb;
+
+        $status = sanitize_text_field($status);
+        if ($site_id <= 0 || !in_array($status, self::DELETABLE_STATUSES, true)) {
+            Logger::warning('Queue deletion by status was rejected.', array('site_id' => $site_id, 'status' => $status, 'deleted_by' => get_current_user_id()));
+            return 0;
+        }
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $deleted = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$table} WHERE site_id = %d AND status = %s",
+                $site_id,
+                $status
+            )
+        );
+
+        if ($deleted === false) {
+            Logger::error('Queue deletion by status failed.', array('site_id' => $site_id, 'status' => $status, 'deleted_by' => get_current_user_id()));
+            return 0;
+        }
+
+        Logger::info('Queue items deleted by status.', array(
+            'site_id' => $site_id,
+            'status' => $status,
+            'deleted_count' => (int) $deleted,
+            'deleted_by' => get_current_user_id(),
+        ));
+
+        return (int) $deleted;
+    }
+
+    public static function delete_by_campaign(int $campaign_id)
+    {
+        global $wpdb;
+
+        if ($campaign_id <= 0) {
+            return 0;
+        }
+
+        $table = $wpdb->prefix . 'mnem_queue';
+        $deleted = $wpdb->query(
+            self::prepare_delete_query(
+                "DELETE FROM {$table} WHERE campaign_id = %d",
+                array($campaign_id)
+            )
+        );
+
+        if ($deleted === false) {
+            Logger::error('Queue deletion by campaign failed.', array('campaign_id' => $campaign_id, 'deleted_by' => get_current_user_id()));
+            return 0;
+        }
+
+        Logger::info('Queue items deleted by campaign.', array(
+            'campaign_id' => $campaign_id,
+            'deleted_count' => (int) $deleted,
+            'deleted_by' => get_current_user_id(),
+        ));
+
+        return (int) $deleted;
+    }
+
     public static function calculate_next_attempt(int $attempts)
     {
         $delay = self::BACKOFF_BASE * (2 ** $attempts);
@@ -362,5 +511,14 @@ class Queue
         }
 
         return '';
+    }
+
+    private static function prepare_delete_query(string $query, array $args)
+    {
+        global $wpdb;
+
+        $query .= ' AND status IN (' . implode(', ', array_fill(0, count(self::DELETABLE_STATUSES), '%s')) . ')';
+
+        return $wpdb->prepare($query, ...array_merge($args, self::DELETABLE_STATUSES));
     }
 }

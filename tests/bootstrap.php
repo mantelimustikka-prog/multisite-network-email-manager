@@ -37,6 +37,10 @@ if (!defined('MNEM_PLUGIN_FILE')) {
     define('MNEM_PLUGIN_FILE', dirname(__DIR__) . '/multisite-network-email-manager.php');
 }
 
+if (!defined('MNEM_TESTING')) {
+    define('MNEM_TESTING', true);
+}
+
 $GLOBALS['mnem_site_options'] = array();
 $GLOBALS['mnem_hooks'] = array();
 $GLOBALS['mnem_cron_events'] = array();
@@ -123,6 +127,10 @@ if (!function_exists('register_rest_route')) {
 if (!function_exists('current_user_can')) {
     function current_user_can($capability)
     {
+        if (array_key_exists('mnem_current_user_can', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_current_user_can'];
+        }
+
         return in_array($capability, array('manage_network', 'manage_network_options'), true);
     }
 }
@@ -193,7 +201,7 @@ if (!function_exists('wp_mail')) {
 if (!function_exists('get_current_user_id')) {
     function get_current_user_id()
     {
-        return 1;
+        return isset($GLOBALS['mnem_current_user_id']) ? (int) $GLOBALS['mnem_current_user_id'] : 1;
     }
 }
 
@@ -207,6 +215,10 @@ if (!function_exists('wp_nonce_field')) {
 if (!function_exists('wp_verify_nonce')) {
     function wp_verify_nonce($nonce, $action)
     {
+        if (array_key_exists('mnem_verify_nonce', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_verify_nonce'];
+        }
+
         return true;
     }
 }
