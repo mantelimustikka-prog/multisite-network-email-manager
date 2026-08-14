@@ -106,15 +106,22 @@ $provider_field_defs = array(
                 <tr>
                     <th scope="row"><label for="mnem-<?php echo esc_attr($ptype . '-' . $field_key); ?>"><?php echo esc_html($field_label); ?></label></th>
                     <td>
-                        <input
-                            name="provider_config[<?php echo esc_attr($ptype); ?>][<?php echo esc_attr($field_key); ?>]"
-                            id="mnem-<?php echo esc_attr($ptype . '-' . $field_key); ?>"
-                            type="password"
-                            class="regular-text"
-                            value="<?php echo !empty($pconfig[$field_key]) ? '••••••••' : ''; ?>"
-                            placeholder="<?php echo !empty($pconfig[$field_key]) ? esc_attr__('Leave blank to keep current value', 'multisite-network-email-manager') : ''; ?>"
-                            autocomplete="new-password"
-                        />
+                        <div class="mnem-input-group">
+                            <input
+                                name="provider_config[<?php echo esc_attr($ptype); ?>][<?php echo esc_attr($field_key); ?>]"
+                                id="mnem-<?php echo esc_attr($ptype . '-' . $field_key); ?>"
+                                type="password"
+                                class="regular-text mnem-api-key-input"
+                                value="<?php echo !empty($pconfig[$field_key]) ? '••••••••' : ''; ?>"
+                                placeholder="<?php echo !empty($pconfig[$field_key]) ? esc_attr__('Leave blank to keep current value', 'multisite-network-email-manager') : ''; ?>"
+                                autocomplete="new-password"
+                            />
+                            <?php if (!empty($pconfig[$field_key])) : ?>
+                            <button type="button" class="button button-secondary mnem-toggle-api-key" title="<?php esc_attr_e('Show/hide API key', 'multisite-network-email-manager'); ?>" data-input-id="mnem-<?php echo esc_attr($ptype . '-' . $field_key); ?>" data-encoded="<?php echo esc_attr($pconfig[$field_key]); ?>">
+                                <span class="dashicons dashicons-visibility"></span>
+                            </button>
+                            <?php endif; ?>
+                        </div>
                         <?php if (!empty($pconfig[$field_key])) : ?>
                             <p class="description"><?php esc_html_e('Saved. Leave blank to keep current value.', 'multisite-network-email-manager'); ?></p>
                         <?php else : ?>
