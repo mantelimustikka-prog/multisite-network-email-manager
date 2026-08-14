@@ -30,6 +30,26 @@ defined('ABSPATH') || exit;
                         <th scope="row">Campaign Sending</th>
                         <td><?php echo esc_html($campaign_sends_paused ? 'Paused' : 'Active'); ?></td>
                     </tr>
+                    <tr>
+                        <th scope="row">Cron Last Run</th>
+                        <td><?php echo esc_html($cron_status['last_run'] !== '' ? $cron_status['last_run'] : 'Never'); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cron Next Run</th>
+                        <td><?php echo esc_html($cron_status['next_run'] !== '' ? $cron_status['next_run'] : 'Not scheduled'); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cron Failures</th>
+                        <td><?php echo esc_html((string) $cron_status['failed_runs']); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">User Event Rule Failures</th>
+                        <td><?php echo esc_html((string) $failed_rule_triggers); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">SMTP Connection Status</th>
+                        <td><?php echo esc_html($smtp_status); ?></td>
+                    </tr>
                 </tbody>
             </table>
         </div>

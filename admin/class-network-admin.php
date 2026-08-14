@@ -12,11 +12,15 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
+        add_action('admin_init', array($this, 'handle_user_event_rule_action'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
         add_action('wp_ajax_mnem_dashboard_stats', array($this, 'ajax_dashboard_stats'));
         add_action('wp_ajax_mnem_process_queue', array($this, 'ajax_process_queue'));
+        add_action('wp_ajax_mnem_process_queue_now', array($this, 'ajax_process_queue_now'));
         add_action('wp_ajax_mnem_retry_failed_queue', array($this, 'ajax_retry_failed_queue'));
         add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));
+        add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -24,7 +28,7 @@ class NetworkAdmin
 
     public function handle_smtp_save()
     {
-        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email'), true)) {
+        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email', 'save_cron_settings'), true)) {
             return;
         }
 
@@ -39,7 +43,14 @@ class NetworkAdmin
         if ($_POST['mnem_action'] === 'send_test_email') {
             $email = isset($_POST['test_email']) ? sanitize_email(wp_unslash($_POST['test_email'])) : '';
             $result = \MNEM\SmtpDiagnostics::send_test_email($email);
-            $this->redirect_with_notice('mnem-smtp-settings', $result['success'] ? 'test_sent' : 'test_failed');
+            $this->redirect_with_notice('mnem-smtp-settings', $result['success'] ? 'smtp_test_sent' : 'smtp_test_failed');
+            return;
+        }
+
+        if ($_POST['mnem_action'] === 'save_cron_settings') {
+            $interval = isset($_POST['cron_interval']) ? sanitize_text_field(wp_unslash($_POST['cron_interval'])) : \MNEM\Cron::DEFAULT_INTERVAL;
+            \MNEM\Cron::set_interval($interval);
+            $this->redirect_with_notice('mnem-smtp-settings', 'cron_settings_saved');
             return;
         }
 
@@ -152,7 +163,7 @@ class NetworkAdmin
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
 
         if ($_POST['mnem_action'] === 'process_queue_now') {
-            $processed = \MNEM\Queue::process_batch(50);
+            $processed = \MNEM\Cron::process_queue_batch();
             \MNEM\Logger::info('Manual queue processing triggered.', array('site_id' => $site_id, 'processed' => $processed));
             $this->redirect_with_notice($page, 'queue_processed', array('processed' => $processed));
         }
@@ -205,6 +216,7 @@ class NetworkAdmin
                 'queue' => \MNEM\Queue::get_stats($site_id),
                 'campaigns' => \MNEM\Campaigns::get_list($site_id, '', 10, 0),
                 'paused' => (int) get_site_option('mnem_campaign_sends_paused', 0) === 1,
+                'cron' => \MNEM\Cron::get_status(),
             )
         );
     }
@@ -212,7 +224,13 @@ class NetworkAdmin
     public function ajax_process_queue()
     {
         $this->ensure_ajax_permissions();
-        wp_send_json_success(array('processed' => \MNEM\Queue::process_batch(50)));
+        wp_send_json_success(array('processed' => \MNEM\Cron::process_queue_batch()));
+    }
+
+    public function ajax_process_queue_now()
+    {
+        $this->ensure_ajax_permissions();
+        wp_send_json_success(array('processed' => \MNEM\Cron::process_queue_batch()));
     }
 
     public function ajax_retry_failed_queue()
@@ -228,6 +246,59 @@ class NetworkAdmin
         $paused = (int) get_site_option('mnem_campaign_sends_paused', 0) === 1 ? 0 : 1;
         update_site_option('mnem_campaign_sends_paused', $paused);
         wp_send_json_success(array('paused' => (bool) $paused));
+    }
+
+    public function ajax_test_connection()
+    {
+        $this->ensure_ajax_permissions();
+        wp_send_json_success(\MNEM\SmtpDiagnostics::test_connection());
+    }
+
+    public function ajax_send_test_email()
+    {
+        $this->ensure_ajax_permissions();
+        $to_email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
+        wp_send_json_success(\MNEM\SmtpDiagnostics::send_test_email($to_email));
+    }
+
+    public function handle_user_event_rule_action()
+    {
+        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_user_event_rule', 'delete_user_event_rule'), true)) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_user_event_rules')) {
+            $this->redirect_with_notice('mnem-user-event-rules', 'rule_nonce_failed');
+        }
+
+        if ($_POST['mnem_action'] === 'delete_user_event_rule') {
+            $rule_id = isset($_POST['rule_id']) ? sanitize_text_field(wp_unslash($_POST['rule_id'])) : '';
+            \MNEM\UserEventsCampaign::delete_rule($rule_id);
+            $this->redirect_with_notice('mnem-user-event-rules', 'rule_deleted');
+        }
+
+        $rule = array(
+            'id' => isset($_POST['rule_id']) ? sanitize_text_field(wp_unslash($_POST['rule_id'])) : '',
+            'event_type' => isset($_POST['event_type']) ? sanitize_text_field(wp_unslash($_POST['event_type'])) : '',
+            'campaign_id' => isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0,
+            'enabled' => isset($_POST['enabled']) && (int) $_POST['enabled'] === 1,
+            'conditions' => array(
+                'role' => isset($_POST['role']) ? sanitize_text_field(wp_unslash($_POST['role'])) : 'any',
+                'site_id' => isset($_POST['site_id']) ? sanitize_text_field(wp_unslash($_POST['site_id'])) : 'any',
+            ),
+        );
+
+        if (isset($_POST['mnem_dry_run'])) {
+            $matches = \MNEM\UserEventsCampaign::dry_run($rule);
+            $this->redirect_with_notice('mnem-user-event-rules', 'rule_saved', array('dry_run_matches' => count($matches)));
+        }
+
+        $result = \MNEM\UserEventsCampaign::upsert_rule($rule);
+        $this->redirect_with_notice('mnem-user-event-rules', $result ? 'rule_saved' : 'rule_save_failed');
     }
 
     private function current_user_can_manage_network()

@@ -39,6 +39,7 @@ if (!defined('MNEM_PLUGIN_FILE')) {
 
 $GLOBALS['mnem_site_options'] = array();
 $GLOBALS['mnem_hooks'] = array();
+$GLOBALS['mnem_cron_events'] = array();
 $GLOBALS['wpdb'] = null;
 
 if (!function_exists('wp_json_encode')) {
@@ -154,6 +155,17 @@ if (!function_exists('get_users')) {
     }
 }
 
+if (!function_exists('get_userdata')) {
+    function get_userdata($user_id)
+    {
+        if (!isset($GLOBALS['mnem_user_data']) || !is_array($GLOBALS['mnem_user_data'])) {
+            return null;
+        }
+
+        return isset($GLOBALS['mnem_user_data'][$user_id]) ? $GLOBALS['mnem_user_data'][$user_id] : null;
+    }
+}
+
 if (!function_exists('current_time')) {
     function current_time($type, $gmt = false)
     {
@@ -165,6 +177,13 @@ if (!function_exists('wp_mail')) {
     function wp_mail($to, $subject, $message)
     {
         return true;
+    }
+}
+
+if (!function_exists('get_current_user_id')) {
+    function get_current_user_id()
+    {
+        return 1;
     }
 }
 
@@ -232,6 +251,13 @@ if (!function_exists('check_ajax_referer')) {
     }
 }
 
+if (!function_exists('wp_generate_uuid4')) {
+    function wp_generate_uuid4()
+    {
+        return '00000000-0000-4000-8000-000000000001';
+    }
+}
+
 if (!function_exists('wp_send_json_success')) {
     function wp_send_json_success($data = null)
     {
@@ -250,6 +276,74 @@ if (!function_exists('network_admin_url')) {
     function network_admin_url($path = '')
     {
         return 'http://example.org/wp-admin/network/' . ltrim($path, '/');
+    }
+}
+
+if (!function_exists('wp_schedule_event')) {
+    function wp_schedule_event($timestamp, $recurrence, $hook)
+    {
+        $GLOBALS['mnem_cron_events'][$hook] = array(
+            'timestamp' => (int) $timestamp,
+            'recurrence' => (string) $recurrence,
+        );
+        return true;
+    }
+}
+
+if (!function_exists('wp_next_scheduled')) {
+    function wp_next_scheduled($hook)
+    {
+        if (!isset($GLOBALS['mnem_cron_events'][$hook])) {
+            return false;
+        }
+
+        return (int) $GLOBALS['mnem_cron_events'][$hook]['timestamp'];
+    }
+}
+
+if (!function_exists('wp_get_scheduled_event')) {
+    function wp_get_scheduled_event($hook)
+    {
+        if (!isset($GLOBALS['mnem_cron_events'][$hook])) {
+            return false;
+        }
+
+        return (object) array(
+            'hook' => $hook,
+            'timestamp' => $GLOBALS['mnem_cron_events'][$hook]['timestamp'],
+            'schedule' => $GLOBALS['mnem_cron_events'][$hook]['recurrence'],
+        );
+    }
+}
+
+if (!function_exists('wp_unschedule_event')) {
+    function wp_unschedule_event($timestamp, $hook)
+    {
+        unset($GLOBALS['mnem_cron_events'][$hook]);
+        return true;
+    }
+}
+
+if (!function_exists('wp_clear_scheduled_hook')) {
+    function wp_clear_scheduled_hook($hook)
+    {
+        unset($GLOBALS['mnem_cron_events'][$hook]);
+        return true;
+    }
+}
+
+if (!function_exists('wp_get_schedules')) {
+    function wp_get_schedules()
+    {
+        return array(
+            'hourly' => array('interval' => 3600, 'display' => 'Once Hourly'),
+            'daily' => array('interval' => 86400, 'display' => 'Once Daily'),
+            'mnem_5_minutes' => array('interval' => 300, 'display' => 'Every 5 Minutes'),
+            'mnem_15_minutes' => array('interval' => 900, 'display' => 'Every 15 Minutes'),
+            'mnem_30_minutes' => array('interval' => 1800, 'display' => 'Every 30 Minutes'),
+            'mnem_6_hours' => array('interval' => 21600, 'display' => 'Every 6 Hours'),
+            'mnem_12_hours' => array('interval' => 43200, 'display' => 'Every 12 Hours'),
+        );
     }
 }
 
@@ -393,6 +487,10 @@ require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-suppression.php';
 require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
+require_once __DIR__ . '/../includes/class-cron.php';
+require_once __DIR__ . '/../includes/class-user-events-campaign.php';
+require_once __DIR__ . '/../includes/class-user-events.php';
+require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';
 require_once __DIR__ . '/../includes/class-rest-api.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';

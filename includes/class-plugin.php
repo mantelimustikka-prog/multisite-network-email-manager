@@ -37,5 +37,12 @@ class Plugin
         } catch (\Throwable $throwable) {
             error_log('MNEM user events loader failed: ' . $throwable->getMessage());
         }
+
+        try {
+            $cron = new Cron();
+            $cron->init();
+        } catch (\Throwable $throwable) {
+            error_log('MNEM cron loader failed: ' . $throwable->getMessage());
+        }
     }
 }

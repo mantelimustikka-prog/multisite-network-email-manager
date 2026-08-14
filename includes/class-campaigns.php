@@ -183,7 +183,7 @@ class Campaigns
         );
     }
 
-    public static function send_campaign(int $id)
+    public static function send_campaign(int $id, array $override_recipients = array())
     {
         $campaign = self::get($id);
         if (!$campaign) {
@@ -210,7 +210,9 @@ class Campaigns
 
         self::mark_as_sending($id);
         $campaign = self::get($id);
-        $recipients = self::get_recipients($campaign);
+        $recipients = !empty($override_recipients)
+            ? self::parse_recipient_list($override_recipients)
+            : self::get_recipients($campaign);
         $queued = 0;
         $enqueue_failed = 0;
 

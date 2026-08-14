@@ -25,7 +25,9 @@ class AdminMenu
 
         add_submenu_page('mnem-dashboard', 'Dashboard', 'Dashboard', 'manage_network_options', 'mnem-dashboard', array($this, 'render_dashboard'));
         add_submenu_page('mnem-dashboard', 'SMTP Settings', 'SMTP Settings', 'manage_network_options', 'mnem-smtp-settings', array($this, 'render_smtp_settings'));
+        add_submenu_page('mnem-dashboard', 'SMTP Diagnostics', 'SMTP Diagnostics', 'manage_network_options', 'mnem-smtp-diagnostics', array($this, 'render_smtp_diagnostics'));
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
+        add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Queue', 'Queue', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
@@ -49,16 +51,32 @@ class AdminMenu
         $campaign_sends_paused = (int) get_site_option('mnem_campaign_sends_paused', 0) === 1;
         $processed = isset($_GET['processed']) ? (int) $_GET['processed'] : 0;
         $retried = isset($_GET['retried']) ? (int) $_GET['retried'] : 0;
+        $cron_status = \MNEM\Cron::get_status();
+        $failed_rule_triggers = (int) get_site_option(\MNEM\UserEventsCampaign::OPTION_FAILED_RULE_TRIGGERS, 0);
+        $smtp_last_result = \MNEM\SmtpDiagnostics::get_last_result();
+        $smtp_status = !empty($smtp_last_result) && !empty($smtp_last_result['success']) ? 'Connected' : 'Unknown';
 
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried'));
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status'));
     }
 
     public function render_smtp_settings()
     {
         $settings = \MNEM\SmtpSettings::get_all();
+        $cron_status = \MNEM\Cron::get_status();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('smtp-settings.php', compact('settings', 'notice'));
+        $this->render_view('smtp-settings.php', compact('settings', 'notice', 'notice_message', 'notice_class', 'cron_status'));
+    }
+
+    public function render_smtp_diagnostics()
+    {
+        $settings = \MNEM\SmtpSettings::get_all();
+        $connection = \MNEM\SmtpDiagnostics::validate_settings();
+        $last_result = \MNEM\SmtpDiagnostics::get_last_result();
+
+        $this->render_view('smtp-diagnostics.php', compact('settings', 'connection', 'last_result'));
     }
 
     public function render_campaigns()
@@ -124,6 +142,32 @@ class AdminMenu
         $this->render_view('logs.php', compact('logs'));
     }
 
+    public function render_user_event_rules()
+    {
+        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        $rules = \MNEM\UserEventsCampaign::get_rules();
+        $campaigns = \MNEM\Campaigns::get_list($site_id, '', 100, 0);
+        $eligible_campaigns = array_values(array_filter($campaigns, static function ($campaign) {
+            return isset($campaign['status']) && in_array($campaign['status'], array('draft', 'scheduled'), true);
+        }));
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+        $dry_run_matches = isset($_GET['dry_run_matches']) ? (int) $_GET['dry_run_matches'] : 0;
+        $preview_campaign_id = isset($_GET['preview_campaign']) ? (int) $_GET['preview_campaign'] : 0;
+        $preview_campaign = $preview_campaign_id > 0 ? \MNEM\Campaigns::get($preview_campaign_id) : null;
+        $edit_rule_id = isset($_GET['edit_rule']) ? sanitize_text_field(wp_unslash($_GET['edit_rule'])) : '';
+        $edit_rule = null;
+        foreach ($rules as $rule) {
+            if (isset($rule['id']) && (string) $rule['id'] === $edit_rule_id) {
+                $edit_rule = $rule;
+                break;
+            }
+        }
+
+        $this->render_view('user-event-rules.php', compact('rules', 'eligible_campaigns', 'notice', 'notice_message', 'notice_class', 'dry_run_matches', 'preview_campaign', 'edit_rule'));
+    }
+
     private function render_view($view, array $variables)
     {
         $file = MNEM_PLUGIN_DIR . 'admin/views/' . $view;
@@ -152,6 +196,16 @@ class AdminMenu
             'campaign_send_failed' => 'Campaign send failed.',
             'campaign_save_failed' => 'Campaign could not be saved.',
             'campaign_delete_failed' => 'Campaign could not be deleted.',
+            'smtp_saved' => 'SMTP settings saved.',
+            'smtp_failed' => 'SMTP settings could not be saved.',
+            'cron_settings_saved' => 'Cron settings saved.',
+            'rule_saved' => 'User event rule saved.',
+            'rule_deleted' => 'User event rule deleted.',
+            'rule_save_failed' => 'User event rule is invalid.',
+            'rule_nonce_failed' => 'User event rule security check failed.',
+            'diagnostics_nonce_failed' => 'SMTP diagnostics security check failed.',
+            'smtp_test_sent' => 'SMTP test email was sent.',
+            'smtp_test_failed' => 'SMTP test email failed.',
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -159,7 +213,7 @@ class AdminMenu
 
     private function get_notice_class($notice)
     {
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed'), true)) {
             return 'notice notice-error';
         }
 
