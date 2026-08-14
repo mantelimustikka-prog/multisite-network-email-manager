@@ -56,6 +56,8 @@ class Installer
         $queue_table = $wpdb->prefix . 'mnem_queue';
         $suppression_table = $wpdb->prefix . 'mnem_suppression';
         $campaigns_table = $wpdb->prefix . 'mnem_campaigns';
+        $subscriber_lists_table = $wpdb->prefix . 'mnem_subscriber_lists';
+        $list_subscribers_table = $wpdb->prefix . 'mnem_list_subscribers';
 
         $sql = array(
             "CREATE TABLE {$logs_table} (
@@ -115,10 +117,13 @@ class Installer
                 name varchar(190) NOT NULL,
                 subject text NOT NULL,
                 body longtext NOT NULL,
+                body_type enum('html') NOT NULL DEFAULT 'html',
+                template_id varchar(190) NOT NULL DEFAULT '',
                 status enum('draft','scheduled','sending','sent','cancelled') NOT NULL DEFAULT 'draft',
                 scheduled_at datetime NULL,
                 recipient_scope varchar(20) NOT NULL DEFAULT 'all_users',
                 recipient_list longtext NULL,
+                target_lists longtext NULL,
                 total_recipients int(11) NOT NULL DEFAULT 0,
                 sent_count int(11) NOT NULL DEFAULT 0,
                 failed_count int(11) NOT NULL DEFAULT 0,
@@ -129,6 +134,29 @@ class Installer
                 updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY  (id),
                 KEY site_status (site_id, status)
+            ) {$charset_collate};",
+            "CREATE TABLE {$subscriber_lists_table} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                name varchar(255) NOT NULL,
+                description longtext NULL,
+                created_at datetime NOT NULL,
+                updated_at datetime NOT NULL,
+                PRIMARY KEY  (id),
+                KEY created_at (created_at)
+            ) {$charset_collate};",
+            "CREATE TABLE {$list_subscribers_table} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                list_id bigint(20) unsigned NOT NULL,
+                user_id bigint(20) unsigned NOT NULL,
+                subscription_status enum('subscribed','unsubscribed') NOT NULL DEFAULT 'subscribed',
+                subscribed_at datetime NOT NULL,
+                unsubscribed_at datetime NULL,
+                unsubscribed_reason varchar(255) NULL,
+                PRIMARY KEY  (id),
+                KEY list_id (list_id),
+                KEY user_id (user_id),
+                KEY subscription_status (subscription_status),
+                UNIQUE KEY list_user (list_id, user_id)
             ) {$charset_collate};",
         );
 

@@ -22,7 +22,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '3');
+    define('MNEM_DB_VERSION', '4');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -621,6 +621,28 @@ if (!function_exists('wp_kses_post')) {
     {
         return strip_tags((string) $content, '<a><p><br><strong><em><u><img><ul><ol><li><h1><h2><h3><h4><h5><h6><blockquote><hr><span><div>');
     }
+
+    if (!function_exists('wp_editor')) {
+        function wp_editor($content, $editor_id, $settings = array())
+        {
+            $name = isset($settings['textarea_name']) ? (string) $settings['textarea_name'] : (string) $editor_id;
+            echo '<textarea name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" id="' . htmlspecialchars((string) $editor_id, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars((string) $content, ENT_QUOTES, 'UTF-8') . '</textarea>';
+        }
+    }
+
+    if (!function_exists('esc_url')) {
+        function esc_url($url)
+        {
+            return (string) $url;
+        }
+    }
+
+    if (!function_exists('esc_html_e')) {
+        function esc_html_e($text, $domain = '')
+        {
+            echo htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+        }
+    }
 }
 
 if (!function_exists('get_bloginfo')) {
@@ -695,6 +717,8 @@ require_once __DIR__ . '/../includes/class-user-events-campaign.php';
 require_once __DIR__ . '/../includes/class-user-events.php';
 require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';
 require_once __DIR__ . '/../includes/class-rest-api.php';
+require_once __DIR__ . '/../includes/class-subscriber-lists.php';
+require_once __DIR__ . '/../includes/class-email-templates.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';
 require_once __DIR__ . '/../admin/class-admin.php';
