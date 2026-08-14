@@ -24,6 +24,7 @@ class Campaigns
         $table = $wpdb->prefix . 'mnem_campaigns';
         $now = self::current_time_mysql();
         $recipient_list = self::sanitize_recipient_list(isset($args['recipient_list']) ? $args['recipient_list'] : array());
+        $target_lists = self::sanitize_target_lists(isset($args['target_lists']) ? $args['target_lists'] : array());
         $status = isset($args['status']) && in_array($args['status'], self::VALID_STATUSES, true)
             ? $args['status']
             : 'draft';
@@ -33,15 +34,18 @@ class Campaigns
 
         $result = $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, name, subject, body, status, scheduled_at, recipient_scope, recipient_list, total_recipients, sent_count, failed_count, enqueue_failed_count, last_send_attempt_at, sent_at, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %s, %s, %s, %s)",
+                "INSERT INTO {$table} (site_id, name, subject, body, body_type, template_id, status, scheduled_at, recipient_scope, recipient_list, target_lists, total_recipients, sent_count, failed_count, enqueue_failed_count, last_send_attempt_at, sent_at, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %s, %s, %s, %s)",
                 $site_id,
                 sanitize_text_field($name),
                 $subject,
                 $body,
+                'html',
+                isset($args['template_id']) ? sanitize_text_field((string) $args['template_id']) : '',
                 $status,
                 $scheduled_at,
                 self::normalize_recipient_scope(isset($args['recipient_scope']) ? (string) $args['recipient_scope'] : 'all_users'),
                 $recipient_list,
+                $target_lists,
                 0,
                 0,
                 0,
@@ -125,17 +129,21 @@ class Campaigns
         $status = isset($data['status']) && in_array($data['status'], self::VALID_STATUSES, true)
             ? $data['status']
             : $campaign['status'];
+        $target_lists = self::sanitize_target_lists(isset($data['target_lists']) ? $data['target_lists'] : (isset($campaign['target_lists']) ? $campaign['target_lists'] : ''));
 
         return $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET name = %s, subject = %s, body = %s, status = %s, scheduled_at = %s, recipient_scope = %s, recipient_list = %s, updated_at = %s WHERE id = %d",
+                "UPDATE {$table} SET name = %s, subject = %s, body = %s, body_type = %s, template_id = %s, status = %s, scheduled_at = %s, recipient_scope = %s, recipient_list = %s, target_lists = %s, updated_at = %s WHERE id = %d",
                 sanitize_text_field(isset($data['name']) ? (string) $data['name'] : (string) $campaign['name']),
                 isset($data['subject']) ? (string) $data['subject'] : (string) $campaign['subject'],
                 isset($data['body']) ? (string) $data['body'] : (string) $campaign['body'],
+                'html',
+                isset($data['template_id']) ? sanitize_text_field((string) $data['template_id']) : (isset($campaign['template_id']) ? (string) $campaign['template_id'] : ''),
                 $status,
                 $scheduled_at,
                 self::normalize_recipient_scope(isset($data['recipient_scope']) ? (string) $data['recipient_scope'] : (string) $campaign['recipient_scope']),
                 $recipient_list,
+                $target_lists,
                 self::current_time_mysql(),
                 $id
             )
@@ -183,7 +191,7 @@ class Campaigns
         );
     }
 
-    public static function send_campaign(int $id, array $override_recipients = array())
+    public static function send_campaign(int $id, array $list_ids = array())
     {
         $campaign = self::get($id);
         if (!$campaign) {
@@ -210,9 +218,17 @@ class Campaigns
 
         self::mark_as_sending($id);
         $campaign = self::get($id);
-        $recipients = !empty($override_recipients)
-            ? self::parse_recipient_list($override_recipients)
-            : self::get_recipients($campaign);
+        $recipients = array();
+        if (!empty($list_ids)) {
+            $recipients = self::get_recipient_emails_from_lists($list_ids);
+        } else {
+            $target_lists = isset($campaign['target_lists']) ? json_decode((string) $campaign['target_lists'], true) : array();
+            if (is_array($target_lists) && !empty($target_lists)) {
+                $recipients = self::get_recipient_emails_from_lists($target_lists);
+            } else {
+                $recipients = self::get_recipients($campaign);
+            }
+        }
         $queued = 0;
         $enqueue_failed = 0;
 
@@ -250,6 +266,7 @@ class Campaigns
                 'queued' => $queued,
                 'enqueue_failed' => $enqueue_failed,
                 'recipient_scope' => isset($campaign['recipient_scope']) ? $campaign['recipient_scope'] : 'all_users',
+                'target_lists' => isset($campaign['target_lists']) ? $campaign['target_lists'] : '[]',
             )
         );
 
@@ -443,5 +460,119 @@ class Campaigns
     private static function current_time_mysql()
     {
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
+    }
+
+    public static function cancel_campaign(int $id)
+    {
+        $campaign = self::get($id);
+        if (!$campaign || !self::can_cancel($id)) {
+            return false;
+        }
+
+        global $wpdb;
+        $queue_table = $wpdb->prefix . 'mnem_queue';
+        $deleted = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$queue_table} WHERE campaign_id = %d AND status IN (%s, %s)",
+                $id,
+                'pending',
+                'processing'
+            )
+        );
+
+        $updated = self::update_status($id, 'cancelled');
+        if ($updated !== false) {
+            Logger::info('Campaign cancelled', array(
+                'campaign_id' => $id,
+                'queued_items_removed' => (int) $deleted,
+                'cancelled_by' => get_current_user_id(),
+            ));
+        }
+
+        return $updated !== false;
+    }
+
+    public static function can_cancel(int $id)
+    {
+        $campaign = self::get($id);
+
+        return is_array($campaign)
+            && isset($campaign['status'])
+            && in_array((string) $campaign['status'], array('draft', 'scheduled', 'sending'), true);
+    }
+
+    public static function get_target_recipients(int $campaign_id)
+    {
+        $campaign = self::get($campaign_id);
+        if (!$campaign) {
+            return array();
+        }
+
+        $target_lists = isset($campaign['target_lists']) ? json_decode((string) $campaign['target_lists'], true) : array();
+        if (!is_array($target_lists) || empty($target_lists)) {
+            return array();
+        }
+
+        return self::get_recipients_from_lists($target_lists);
+    }
+
+    private static function get_recipients_from_lists(array $list_ids)
+    {
+        global $wpdb;
+        $list_table = $wpdb->prefix . 'mnem_list_subscribers';
+        $list_ids = array_values(array_filter(array_map('intval', $list_ids), static function ($id) {
+            return $id > 0;
+        }));
+
+        if (empty($list_ids)) {
+            return array();
+        }
+
+        $placeholders = implode(',', array_fill(0, count($list_ids), '%d'));
+        $query = $wpdb->prepare(
+            "SELECT DISTINCT user_id FROM {$list_table} WHERE list_id IN ({$placeholders}) AND subscription_status = %s",
+            ...array_merge($list_ids, array('subscribed'))
+        );
+        $users = array_map('intval', (array) $wpdb->get_col($query));
+
+        return array_values(array_unique($users));
+    }
+
+    private static function get_recipient_emails_from_lists(array $list_ids)
+    {
+        $user_ids = self::get_recipients_from_lists($list_ids);
+        $emails = array();
+
+        foreach ($user_ids as $user_id) {
+            $user = function_exists('get_userdata') ? get_userdata((int) $user_id) : null;
+            if (is_object($user) && isset($user->user_email)) {
+                $email = strtolower(trim(sanitize_email((string) $user->user_email)));
+                if ($email !== '' && is_email($email)) {
+                    $emails[] = $email;
+                }
+            }
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    private static function sanitize_target_lists($target_lists)
+    {
+        if (is_string($target_lists)) {
+            $decoded = json_decode($target_lists, true);
+            if (is_array($decoded)) {
+                $target_lists = $decoded;
+            } elseif ($target_lists !== '') {
+                $target_lists = preg_split('/[\s,]+/', $target_lists);
+            } else {
+                $target_lists = array();
+            }
+        }
+
+        $target_lists = array_values(array_unique(array_filter(array_map('intval', (array) $target_lists), static function ($id) {
+            return $id > 0;
+        })));
+
+        return wp_json_encode($target_lists);
     }
 }

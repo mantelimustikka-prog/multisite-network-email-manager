@@ -13,6 +13,8 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_save_header_footer_settings'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
+        add_action('admin_init', array($this, 'handle_subscriber_list_action'));
+        add_action('admin_init', array($this, 'handle_email_template_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
         add_action('admin_init', array($this, 'handle_user_event_rule_action'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
@@ -163,7 +165,7 @@ class NetworkAdmin
 
     public function handle_campaign_action()
     {
-        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_campaign', 'send_campaign', 'delete_campaign'), true)) {
+        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_campaign', 'send_campaign', 'delete_campaign', 'cancel_campaign'), true)) {
             return;
         }
 
@@ -182,22 +184,39 @@ class NetworkAdmin
             $result = \MNEM\Campaigns::send_campaign($campaign_id);
             $notice = !empty($result['success']) ? 'campaign_sent' : 'campaign_send_failed';
             $this->redirect_with_notice($page, $notice);
+            return;
+        }
+
+        if ($_POST['mnem_action'] === 'cancel_campaign') {
+            $result = \MNEM\Campaigns::cancel_campaign($campaign_id);
+            $this->redirect_with_notice($page, $result ? 'campaign_cancelled' : 'campaign_send_failed');
+            return;
         }
 
         if ($_POST['mnem_action'] === 'delete_campaign') {
             $result = \MNEM\Campaigns::delete($campaign_id);
             $this->redirect_with_notice($page, $result ? 'campaign_deleted' : 'campaign_delete_failed');
+            return;
+        }
+
+        if ($campaign_id > 0) {
+            $campaign = \MNEM\Campaigns::get($campaign_id);
+            if (is_array($campaign) && isset($campaign['status']) && $campaign['status'] === 'cancelled') {
+                $this->redirect_with_notice($page, 'campaign_save_failed');
+            }
         }
 
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
         $data = array(
             'name' => isset($_POST['name']) ? wp_unslash($_POST['name']) : '',
             'subject' => isset($_POST['subject']) ? wp_unslash($_POST['subject']) : '',
-            'body' => isset($_POST['body']) ? wp_unslash($_POST['body']) : '',
+            'body' => isset($_POST['body']) ? wp_kses_post(wp_unslash($_POST['body'])) : '',
             'status' => isset($_POST['status']) ? wp_unslash($_POST['status']) : 'draft',
             'scheduled_at' => isset($_POST['scheduled_at']) ? wp_unslash($_POST['scheduled_at']) : '',
             'recipient_scope' => isset($_POST['recipient_scope']) ? wp_unslash($_POST['recipient_scope']) : 'all_users',
             'recipient_list' => isset($_POST['recipient_list']) ? wp_unslash($_POST['recipient_list']) : '',
+            'template_id' => isset($_POST['template_id']) ? sanitize_text_field(wp_unslash($_POST['template_id'])) : '',
+            'target_lists' => isset($_POST['target_lists']) ? array_map('intval', (array) wp_unslash($_POST['target_lists'])) : array(),
         );
 
         if ($campaign_id > 0) {
@@ -207,6 +226,128 @@ class NetworkAdmin
 
         $result = \MNEM\Campaigns::create($site_id, $data['name'], $data['subject'], $data['body'], $data);
         $this->redirect_with_notice($page, $result ? 'campaign_created' : 'campaign_save_failed');
+    }
+
+    public function handle_subscriber_list_action()
+    {
+        if (!isset($_POST['mnem_action']) || strpos((string) $_POST['mnem_action'], 'subscriber_') !== 0) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_subscriber_lists')) {
+            $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_operation_failed');
+        }
+
+        $action = sanitize_text_field(wp_unslash($_POST['mnem_action']));
+        $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
+        $redirect_args = array();
+        if ($list_id > 0) {
+            $redirect_args['list_id'] = $list_id;
+        }
+
+        if ($action === 'subscriber_save_list') {
+            $name = isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '';
+            $description = isset($_POST['description']) ? wp_kses_post(wp_unslash($_POST['description'])) : '';
+            $result = $list_id > 0
+                ? \MNEM\SubscriberLists::update($list_id, $name, $description)
+                : \MNEM\SubscriberLists::create($name, $description);
+            if (is_int($result)) {
+                $redirect_args['list_id'] = $result;
+            }
+            $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_list_saved' : 'subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'subscriber_delete_list') {
+            $result = \MNEM\SubscriberLists::delete($list_id);
+            $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_list_deleted' : 'subscriber_operation_failed');
+        }
+
+        if ($action === 'subscriber_add_user') {
+            $identifier = isset($_POST['user_identifier']) ? trim((string) wp_unslash($_POST['user_identifier'])) : '';
+            $user_id = ctype_digit($identifier) ? (int) $identifier : 0;
+            if ($user_id <= 0 && function_exists('get_users')) {
+                $users = get_users(array(
+                    'search' => $identifier,
+                    'search_columns' => array('user_login'),
+                    'number' => 1,
+                    'fields' => array('ID'),
+                ));
+                $user = isset($users[0]) ? $users[0] : null;
+                $user_id = is_object($user) && isset($user->ID) ? (int) $user->ID : (is_array($user) && isset($user['ID']) ? (int) $user['ID'] : 0);
+            }
+            if ($user_id <= 0) {
+                $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_operation_failed', $redirect_args);
+            }
+
+            $result = \MNEM\SubscriberLists::add_subscriber($list_id, $user_id);
+            if ($result instanceof \WP_Error) {
+                $redirect_args['mnem_alert'] = $result->get_error_message();
+                $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_operation_failed', $redirect_args);
+            }
+            $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_added' : 'subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'subscriber_remove_user') {
+            $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+            $result = \MNEM\SubscriberLists::remove_subscriber($list_id, $user_id);
+            $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_removed' : 'subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'subscriber_restore_user') {
+            $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+            $result = \MNEM\SubscriberLists::resubscribe_user($list_id, $user_id);
+            $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_restored' : 'subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'subscriber_import_csv') {
+            $csv_content = isset($_POST['csv_content']) ? (string) wp_unslash($_POST['csv_content']) : '';
+            if ($csv_content === '' && isset($_FILES['csv_file']['tmp_name']) && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
+                $csv_content = (string) file_get_contents($_FILES['csv_file']['tmp_name']);
+            }
+            $result = \MNEM\SubscriberLists::import_from_csv($list_id, $csv_content);
+            \MNEM\Logger::info('Subscriber CSV imported.', array('list_id' => $list_id, 'result' => $result));
+            $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_csv_imported', $redirect_args);
+        }
+    }
+
+    public function handle_email_template_action()
+    {
+        if (!isset($_POST['mnem_action']) || strpos((string) $_POST['mnem_action'], 'template_') !== 0) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_email_templates')) {
+            $this->redirect_with_notice('mnem-email-templates', 'email_template_failed');
+        }
+
+        $action = sanitize_text_field(wp_unslash($_POST['mnem_action']));
+        $template_id = isset($_POST['template_id']) ? sanitize_text_field(wp_unslash($_POST['template_id'])) : '';
+
+        if ($action === 'template_save') {
+            $name = isset($_POST['template_name']) ? sanitize_text_field(wp_unslash($_POST['template_name'])) : '';
+            $subject = isset($_POST['template_subject']) ? sanitize_text_field(wp_unslash($_POST['template_subject'])) : '';
+            $body = isset($_POST['template_body']) ? wp_kses_post(wp_unslash($_POST['template_body'])) : '';
+            $result = \MNEM\EmailTemplates::save_template($template_id, $name, $subject, $body);
+            $this->redirect_with_notice('mnem-email-templates', $result ? 'email_template_saved' : 'email_template_failed');
+        }
+
+        if ($action === 'template_delete') {
+            $result = \MNEM\EmailTemplates::delete_custom_template($template_id);
+            $this->redirect_with_notice('mnem-email-templates', $result ? 'email_template_deleted' : 'email_template_failed');
+        }
+
+        if ($action === 'template_reset') {
+            $result = \MNEM\EmailTemplates::reset_to_default($template_id);
+            $this->redirect_with_notice('mnem-email-templates', $result ? 'email_template_reset' : 'email_template_failed');
+        }
     }
 
     public function handle_queue_action()

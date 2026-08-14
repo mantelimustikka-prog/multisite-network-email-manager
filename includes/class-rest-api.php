@@ -105,6 +105,80 @@ class RestApi
 
         register_rest_route(
             self::NAMESPACE,
+            '/campaigns/(?P<id>\d+)/cancel',
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'cancel_campaign'),
+                'permission_callback' => array($this, 'permission_check'),
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            '/subscriber-lists',
+            array(
+                array(
+                    'methods' => 'GET',
+                    'callback' => array($this, 'get_subscriber_lists'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+                array(
+                    'methods' => 'POST',
+                    'callback' => array($this, 'save_subscriber_list'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+                array(
+                    'methods' => 'DELETE',
+                    'callback' => array($this, 'delete_subscriber_list'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            '/subscriber-lists/(?P<id>\d+)/subscribers',
+            array(
+                array(
+                    'methods' => 'GET',
+                    'callback' => array($this, 'get_list_subscribers'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+                array(
+                    'methods' => 'POST',
+                    'callback' => array($this, 'add_list_subscriber'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+                array(
+                    'methods' => 'DELETE',
+                    'callback' => array($this, 'remove_list_subscriber'),
+                    'permission_callback' => array($this, 'permission_check'),
+                ),
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            '/subscriber-lists/(?P<id>\d+)/search-users',
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'search_network_users'),
+                'permission_callback' => array($this, 'permission_check'),
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            '/subscriber-lists/(?P<id>\d+)/check-unsubscribed',
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'check_unsubscribed'),
+                'permission_callback' => array($this, 'permission_check'),
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             '/suppression',
             array(
                 array(
@@ -250,6 +324,132 @@ class RestApi
         $campaign_id = isset($params['id']) ? (int) $params['id'] : 0;
 
         return Campaigns::send_campaign($campaign_id);
+    }
+
+    public function cancel_campaign($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $campaign_id = isset($params['id']) ? (int) $params['id'] : 0;
+        $nonce = isset($params['_wpnonce']) ? (string) $params['_wpnonce'] : '';
+
+        if (function_exists('wp_verify_nonce') && !wp_verify_nonce($nonce, 'wp_rest')) {
+            return array('success' => false, 'message' => 'Invalid nonce.');
+        }
+
+        $result = Campaigns::cancel_campaign($campaign_id);
+
+        return array(
+            'success' => (bool) $result,
+            'message' => $result ? 'Campaign cancelled.' : 'Campaign could not be cancelled.',
+        );
+    }
+
+    public function get_subscriber_lists()
+    {
+        return array('items' => SubscriberLists::get_all());
+    }
+
+    public function save_subscriber_list($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+        $name = isset($params['name']) ? (string) $params['name'] : '';
+        $description = isset($params['description']) ? (string) $params['description'] : '';
+
+        if ($list_id > 0) {
+            $updated = SubscriberLists::update($list_id, $name, $description);
+            return array('success' => (bool) $updated, 'id' => $list_id);
+        }
+
+        $created = SubscriberLists::create($name, $description);
+        return array('success' => (bool) $created, 'id' => (int) $created);
+    }
+
+    public function delete_subscriber_list($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+        return array('success' => SubscriberLists::delete($list_id));
+    }
+
+    public function get_list_subscribers($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+        $status = isset($params['status']) ? (string) $params['status'] : 'subscribed';
+
+        if ($status === 'unsubscribed') {
+            return array('items' => SubscriberLists::get_unsubscribed($list_id, 1000, 0));
+        }
+
+        return array('items' => SubscriberLists::get_subscribers($list_id, 1000, 0));
+    }
+
+    public function add_list_subscriber($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+
+        if (!empty($params['csv_content'])) {
+            return SubscriberLists::import_from_csv($list_id, (string) $params['csv_content']);
+        }
+
+        $user_id = isset($params['user_id']) ? (int) $params['user_id'] : 0;
+        $result = SubscriberLists::add_subscriber($list_id, $user_id);
+        if ($result instanceof \WP_Error) {
+            return array('success' => false, 'message' => $result->get_error_message());
+        }
+
+        return array('success' => (bool) $result);
+    }
+
+    public function remove_list_subscriber($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+        $user_id = isset($params['user_id']) ? (int) $params['user_id'] : 0;
+        $result = SubscriberLists::remove_subscriber($list_id, $user_id);
+
+        return array('success' => (bool) $result);
+    }
+
+    public function search_network_users($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $query = isset($params['q']) ? sanitize_text_field((string) $params['q']) : '';
+        if (!function_exists('get_users')) {
+            return array('items' => array());
+        }
+
+        $users = get_users(array(
+            'search' => '*' . $query . '*',
+            'search_columns' => array('user_login', 'user_email', 'display_name'),
+            'number' => 20,
+        ));
+
+        $items = array();
+        foreach ((array) $users as $user) {
+            $items[] = array(
+                'id' => isset($user->ID) ? (int) $user->ID : (isset($user['ID']) ? (int) $user['ID'] : 0),
+                'login' => isset($user->user_login) ? (string) $user->user_login : (isset($user['user_login']) ? (string) $user['user_login'] : ''),
+                'email' => isset($user->user_email) ? (string) $user->user_email : (isset($user['user_email']) ? (string) $user['user_email'] : ''),
+            );
+        }
+
+        return array('items' => $items);
+    }
+
+    public function check_unsubscribed($request)
+    {
+        $params = method_exists($request, 'get_params') ? $request->get_params() : (array) $request;
+        $list_id = isset($params['id']) ? (int) $params['id'] : 0;
+        $user_id = isset($params['user_id']) ? (int) $params['user_id'] : 0;
+        $blocked = SubscriberLists::is_unsubscribed($list_id, $user_id);
+
+        return array(
+            'can_add' => !$blocked,
+            'message' => $blocked ? 'User is in unsubscribed list. Cannot add.' : 'User can be added.',
+        );
     }
 
     public function get_suppression_list()
