@@ -229,7 +229,7 @@ class RestApi
         return array(
             'plugin_version' => defined('MNEM_VERSION') ? MNEM_VERSION : '1.0.0',
             'db_version' => get_site_option('mnem_db_version', ''),
-            'smtp_configured' => SmtpSettings::get('host', '') !== '',
+            'smtp_configured' => SmtpSettings::is_active_provider_configured(),
             'campaign_sends_paused' => (int) get_site_option('mnem_campaign_sends_paused', 0) === 1,
             'queue_stats' => Queue::get_stats($site_id),
         );
@@ -507,68 +507,93 @@ class RestApi
 
         Logger::info('Webhook received.', array('provider' => $provider, 'event_count' => is_array($data) ? count($data) : 1));
 
-        // Extract event type and recipient from payload depending on provider.
-        $event_type    = '';
-        $recipient     = '';
-        $message_id    = '';
+        $events = $this->extract_webhook_events($provider, $data);
+        foreach ($events as $event) {
+            $event_type = isset($event['event_type']) ? (string) $event['event_type'] : '';
+            $recipient = isset($event['recipient']) ? (string) $event['recipient'] : '';
+            $message_id = isset($event['message_id']) ? (string) $event['message_id'] : '';
+
+            Logger::info('Webhook event processed.', array(
+                'provider'   => $provider,
+                'event_type' => $event_type,
+                'recipient'  => $recipient,
+                'message_id' => $message_id,
+            ));
+
+            EmailTracking::handle_webhook_event($provider, $event_type, $recipient, $message_id);
+
+            // Auto-suppress on hard bounce events.
+            $bounce_events = array(
+                'mailgun'  => array('failed', 'bounced'),
+                'sendgrid' => array('bounce'),
+                'brevo'    => array('hard_bounce'),
+                'postmark' => array('Bounce', 'HardBounce'),
+                'smtp2go'  => array('bounce', 'failed'),
+            );
+
+            if ($recipient !== '' && isset($bounce_events[$provider]) && in_array($event_type, $bounce_events[$provider], true)) {
+                $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+                Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' bounce: ' . $event_type);
+                Logger::info('Auto-suppressed bounced address.', array('email' => $recipient, 'provider' => $provider, 'event' => $event_type));
+            }
+        }
+
+        return array('success' => true, 'provider' => $provider, 'event_count' => count($events));
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     * @return array<int,array<string,string>>
+     */
+    private function extract_webhook_events(string $provider, array $data): array
+    {
+        $events = array();
 
         switch ($provider) {
             case 'mailgun':
                 $event_data = isset($data['event-data']) && is_array($data['event-data']) ? $data['event-data'] : $data;
-                $event_type = isset($event_data['event']) ? (string) $event_data['event'] : '';
-                $recipient  = isset($event_data['recipient']) ? (string) $event_data['recipient'] : '';
-                $message_id = isset($event_data['message']['headers']['message-id']) ? (string) $event_data['message']['headers']['message-id'] : '';
+                $events[] = array(
+                    'event_type' => isset($event_data['event']) ? (string) $event_data['event'] : '',
+                    'recipient' => isset($event_data['recipient']) ? (string) $event_data['recipient'] : '',
+                    'message_id' => isset($event_data['message']['headers']['message-id']) ? (string) $event_data['message']['headers']['message-id'] : '',
+                );
                 break;
-
             case 'sendgrid':
-                $events = is_array($data) && isset($data[0]) ? $data : array($data);
-                $event_data = $events[0];
-                $event_type = isset($event_data['event']) ? (string) $event_data['event'] : '';
-                $recipient  = isset($event_data['email']) ? (string) $event_data['email'] : '';
-                $message_id = isset($event_data['sg_message_id']) ? (string) $event_data['sg_message_id'] : '';
+                $items = is_array($data) && isset($data[0]) ? $data : array($data);
+                foreach ($items as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $events[] = array(
+                        'event_type' => isset($item['event']) ? (string) $item['event'] : '',
+                        'recipient' => isset($item['email']) ? (string) $item['email'] : '',
+                        'message_id' => isset($item['sg_message_id']) ? (string) $item['sg_message_id'] : '',
+                    );
+                }
                 break;
-
             case 'brevo':
-                $event_type = isset($data['event']) ? (string) $data['event'] : '';
-                $recipient  = isset($data['email']) ? (string) $data['email'] : '';
-                $message_id = isset($data['message-id']) ? (string) $data['message-id'] : '';
+                $events[] = array(
+                    'event_type' => isset($data['event']) ? (string) $data['event'] : '',
+                    'recipient' => isset($data['email']) ? (string) $data['email'] : '',
+                    'message_id' => isset($data['message-id']) ? (string) $data['message-id'] : '',
+                );
                 break;
-
             case 'postmark':
-                $event_type = isset($data['RecordType']) ? (string) $data['RecordType'] : '';
-                $recipient  = isset($data['Recipient']) ? (string) $data['Recipient'] : (isset($data['Email']) ? (string) $data['Email'] : '');
-                $message_id = isset($data['MessageID']) ? (string) $data['MessageID'] : '';
+                $events[] = array(
+                    'event_type' => isset($data['RecordType']) ? (string) $data['RecordType'] : '',
+                    'recipient' => isset($data['Recipient']) ? (string) $data['Recipient'] : (isset($data['Email']) ? (string) $data['Email'] : ''),
+                    'message_id' => isset($data['MessageID']) ? (string) $data['MessageID'] : '',
+                );
                 break;
-
             case 'smtp2go':
-                $event_type = isset($data['type']) ? (string) $data['type'] : '';
-                $recipient  = isset($data['recipient']) ? (string) $data['recipient'] : '';
-                $message_id = isset($data['request_id']) ? (string) $data['request_id'] : '';
+                $events[] = array(
+                    'event_type' => isset($data['type']) ? (string) $data['type'] : '',
+                    'recipient' => isset($data['recipient']) ? (string) $data['recipient'] : '',
+                    'message_id' => isset($data['request_id']) ? (string) $data['request_id'] : '',
+                );
                 break;
         }
 
-        Logger::info('Webhook event processed.', array(
-            'provider'   => $provider,
-            'event_type' => $event_type,
-            'recipient'  => $recipient,
-            'message_id' => $message_id,
-        ));
-
-        // Auto-suppress on hard bounce events.
-        $bounce_events = array(
-            'mailgun'  => array('failed', 'bounced'),
-            'sendgrid' => array('bounce'),
-            'brevo'    => array('hard_bounce'),
-            'postmark' => array('Bounce', 'HardBounce'),
-            'smtp2go'  => array('bounce', 'failed'),
-        );
-
-        if ($recipient !== '' && isset($bounce_events[$provider]) && in_array($event_type, $bounce_events[$provider], true)) {
-            $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-            Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' bounce: ' . $event_type);
-            Logger::info('Auto-suppressed bounced address.', array('email' => $recipient, 'provider' => $provider, 'event' => $event_type));
-        }
-
-        return array('success' => true, 'provider' => $provider, 'event' => $event_type);
+        return $events;
     }
 }

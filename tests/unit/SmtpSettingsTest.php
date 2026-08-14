@@ -39,4 +39,39 @@ class SmtpSettingsTest extends TestCase
 
         $this->assertSame('plain-text-secret', SmtpSettings::get_password_decoded());
     }
+
+    public function test_is_active_provider_configured_for_smtp()
+    {
+        SmtpSettings::save(array(
+            'provider_type' => 'smtp',
+            'host' => 'smtp.example.com',
+        ));
+
+        $this->assertTrue(SmtpSettings::is_active_provider_configured());
+    }
+
+    public function test_is_active_provider_configured_for_api_provider()
+    {
+        SmtpSettings::save(array(
+            'provider_type' => 'brevo',
+            'provider_config' => array(
+                'brevo' => array(
+                    'api_key' => 'abc123',
+                ),
+            ),
+        ));
+
+        $this->assertTrue(SmtpSettings::is_active_provider_configured());
+    }
+
+    public function test_is_active_provider_not_configured_when_active_provider_credentials_missing()
+    {
+        SmtpSettings::save(array(
+            'provider_type' => 'sendgrid',
+            'host' => 'smtp.example.com',
+            'provider_config' => array(),
+        ));
+
+        $this->assertFalse(SmtpSettings::is_active_provider_configured());
+    }
 }

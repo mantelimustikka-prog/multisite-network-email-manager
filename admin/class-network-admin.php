@@ -33,7 +33,7 @@ class NetworkAdmin
 
     public function handle_smtp_save()
     {
-        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email', 'save_cron_settings'), true)) {
+        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email', 'save_cron_settings', 'save_email_tracking_settings'), true)) {
             return;
         }
 
@@ -57,6 +57,14 @@ class NetworkAdmin
             $interval = isset($_POST['cron_interval']) ? sanitize_text_field(wp_unslash($_POST['cron_interval'])) : \MNEM\Cron::DEFAULT_INTERVAL;
             \MNEM\Cron::set_interval($interval);
             $this->redirect_with_notice('mnem-settings', 'cron_settings_saved', array('tab' => 'smtp'));
+            return;
+        }
+
+        if ($_POST['mnem_action'] === 'save_email_tracking_settings') {
+            $enabled = isset($_POST['keep_email_previews']) && (int) $_POST['keep_email_previews'] === 1;
+            $retention_days = isset($_POST['email_preview_retention_days']) ? max(1, (int) $_POST['email_preview_retention_days']) : 30;
+            \MNEM\EmailTracking::save_settings($enabled, $retention_days);
+            $this->redirect_with_notice('mnem-settings', 'email_tracking_saved', array('tab' => 'email-tracking'));
             return;
         }
 

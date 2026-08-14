@@ -29,6 +29,7 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Queue', 'Queue', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
+        add_submenu_page('mnem-dashboard', 'Email History', 'Email History', 'manage_network_options', 'mnem-email-history', array($this, 'render_email_history'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
@@ -43,7 +44,7 @@ class AdminMenu
         $queue_stats = \MNEM\Queue::get_stats(null);
         $suppression_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->prefix}mnem_suppression WHERE site_id >= %d", 0));
         $recent_logs = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, level, message, created_at FROM {$logs_table} ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
-        $smtp_configured = \MNEM\SmtpSettings::get('host', '') !== '';
+        $smtp_configured = \MNEM\SmtpSettings::is_active_provider_configured();
         $campaigns = (array) $wpdb->get_results($wpdb->prepare("SELECT id, site_id, name, subject, status, total_recipients, sent_count, failed_count, last_send_attempt_at FROM {$wpdb->prefix}mnem_campaigns ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
         $site_breakdown = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, status, COUNT(1) AS total FROM {$wpdb->prefix}mnem_queue GROUP BY blog_id, status ORDER BY blog_id ASC LIMIT %d", 200), ARRAY_A);
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
@@ -63,7 +64,7 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'email-tracking');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'smtp';
         }
@@ -145,6 +146,15 @@ class AdminMenu
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
 
         $this->render_view('suppression.php', compact('suppression_entries', 'site_id', 'notice'));
+    }
+
+    public function render_email_history()
+    {
+        $search = isset($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '';
+        $history = \MNEM\EmailTracking::get_history($search, 200);
+        $items = isset($history['items']) && is_array($history['items']) ? $history['items'] : array();
+
+        $this->render_view('email-history.php', compact('items', 'search'));
     }
 
     public function render_logs()
@@ -229,6 +239,7 @@ class AdminMenu
             'campaign_save_failed' => 'Campaign could not be saved.',
             'campaign_delete_failed' => 'Campaign could not be deleted.',
             'smtp_saved' => 'SMTP settings saved.',
+            'email_tracking_saved' => 'Email tracking settings saved.',
             'smtp_failed' => 'SMTP settings could not be saved.',
             'cron_settings_saved' => 'Cron settings saved.',
             'sender_settings_saved' => 'Sender settings saved.',
