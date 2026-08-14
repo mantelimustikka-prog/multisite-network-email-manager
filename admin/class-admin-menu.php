@@ -55,6 +55,12 @@ class AdminMenu
         $retried = isset($_GET['retried']) ? (int) $_GET['retried'] : 0;
         $cron_status = \MNEM\Cron::get_status();
         $failed_rule_triggers = (int) get_site_option(\MNEM\UserEventsCampaign::OPTION_FAILED_RULE_TRIGGERS, 0);
+        $sender_email = \MNEM\SmtpSettings::get_sender_email();
+        $smtp_warnings = array();
+        if ($sender_email === '') {
+            $smtp_warnings[] = 'Sender email is not configured. Please configure it in <a href="' . esc_url(network_admin_url('admin.php?page=mnem-settings&tab=sender')) . '">Settings > Sender Settings</a>.';
+        }
+
         $smtp_provider_type = \MNEM\SmtpSettings::get('provider_type', 'smtp');
         $smtp_provider      = \MNEM\ProviderManager::get_provider((string) $smtp_provider_type);
         if ($smtp_provider === null) {
@@ -73,7 +79,7 @@ class AdminMenu
             $smtp_status = 'Not Configured';
         }
 
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status'));
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings'));
     }
 
     public function render_settings()

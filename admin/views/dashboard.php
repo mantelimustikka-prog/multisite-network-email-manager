@@ -13,6 +13,12 @@ defined('ABSPATH') || exit;
         <div class="notice notice-warning"><p>SMTP is not configured yet.</p></div>
     <?php endif; ?>
 
+    <?php if (!empty($smtp_warnings)) : ?>
+        <?php foreach ($smtp_warnings as $smtp_warning) : ?>
+            <div class="notice notice-warning"><p><?php echo wp_kses($smtp_warning, array('a' => array('href' => array()))); ?></p></div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
     <div class="mnem-grid">
         <div class="mnem-panel">
             <h2>Overview</h2>

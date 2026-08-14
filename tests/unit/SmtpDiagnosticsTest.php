@@ -26,6 +26,8 @@ class SmtpDiagnosticsTest extends TestCase
         $GLOBALS['mnem_site_options'][SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
         $GLOBALS['mnem_site_options']['mnem_keep_email_previews'] = 1;
         $GLOBALS['mnem_site_options']['mnem_email_preview_retention_days'] = 30;
+        $GLOBALS['mnem_site_options']['mnem_sender_email'] = 'noreply@example.com';
+        $GLOBALS['mnem_site_options']['mnem_sender_name']  = 'Mailer';
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_var($query)
             {
@@ -111,6 +113,59 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('sending failed', strtolower($result['message']));
     }
+
+    public function test_send_test_email_fails_when_sender_email_not_configured()
+    {
+        $settings = $GLOBALS['mnem_site_options']['mnem_smtp_settings'];
+        $settings['from_email'] = '';
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = $settings;
+        $GLOBALS['mnem_site_options']['mnem_sender_email'] = '';
+        $GLOBALS['mnem_site_options']['admin_email'] = '';
+
+        $result = SmtpDiagnostics::send_test_email('admin@example.com');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Sender email address is not configured', $result['message']);
+        $this->assertStringContainsString('Sender Settings', $result['message']);
+    }
+
+    public function test_send_test_email_fails_when_provider_not_configured()
+    {
+        $settings = $GLOBALS['mnem_site_options']['mnem_smtp_settings'];
+        $settings['provider_type'] = 'brevo';
+        $settings['provider_config'] = array('brevo' => array('api_key' => ''));
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = $settings;
+
+        $result = SmtpDiagnostics::send_test_email('admin@example.com');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('not properly configured', $result['message']);
+        $this->assertStringContainsString('brevo', $result['message']);
+    }
+
+    public function test_send_test_email_error_message_includes_hint_for_auth_failure()
+    {
+        // Use brevo provider with a valid-format API key so it passes the "configured" check,
+        // then wire up the HTTP mock to return a 401 response so the provider fails.
+        $settings = $GLOBALS['mnem_site_options']['mnem_smtp_settings'];
+        $settings['provider_type'] = 'brevo';
+        $api_key = base64_encode('xkeysib-test-key-12345678901234567890');
+        $settings['provider_config'] = array('brevo' => array('api_key' => $api_key));
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = $settings;
+        $GLOBALS['mnem_http_response'] = array(
+            'response' => array('code' => 401),
+            'body'     => '{"message":"Key not found","code":"unauthorized"}',
+            'headers'  => array(),
+        );
+
+        $result = SmtpDiagnostics::send_test_email('admin@example.com');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('API key', $result['message']);
+
+        unset($GLOBALS['mnem_http_response']);
+    }
+
 
     public function test_send_test_email_uses_provider_tracking_and_global_header_footer()
     {
