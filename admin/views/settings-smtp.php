@@ -111,11 +111,12 @@ $provider_field_defs = array(
                             id="mnem-<?php echo esc_attr($ptype . '-' . $field_key); ?>"
                             type="password"
                             class="regular-text"
-                            value=""
+                            value="<?php echo !empty($pconfig[$field_key]) ? '••••••••' : ''; ?>"
+                            placeholder="<?php echo !empty($pconfig[$field_key]) ? esc_attr__('Leave blank to keep current value', 'multisite-network-email-manager') : ''; ?>"
                             autocomplete="new-password"
                         />
                         <?php if (!empty($pconfig[$field_key])) : ?>
-                            <span class="description">&#10003; <?php esc_html_e('Saved. Leave blank to keep current value.', 'multisite-network-email-manager'); ?></span>
+                            <p class="description"><?php esc_html_e('Saved. Leave blank to keep current value.', 'multisite-network-email-manager'); ?></p>
                         <?php else : ?>
                             <p class="description"><?php printf(esc_html__('Enter your %1$s %2$s.', 'multisite-network-email-manager'), esc_html($provider_labels[$ptype]), esc_html($field_label)); ?></p>
                         <?php endif; ?>
