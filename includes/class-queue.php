@@ -398,19 +398,26 @@ class Queue
         global $wpdb;
 
         $status = sanitize_text_field($status);
-        if ($site_id <= 0 || !in_array($status, self::DELETABLE_STATUSES, true)) {
+        if (!in_array($status, self::DELETABLE_STATUSES, true)) {
             Logger::warning('Queue deletion by status was rejected.', array('site_id' => $site_id, 'status' => $status, 'deleted_by' => get_current_user_id()));
             return 0;
         }
 
         $table = $wpdb->prefix . 'mnem_queue';
-        $deleted = $wpdb->query(
-            $wpdb->prepare(
+        if ($site_id > 0) {
+            $delete_query = $wpdb->prepare(
                 "DELETE FROM {$table} WHERE site_id = %d AND status = %s",
                 $site_id,
                 $status
-            )
-        );
+            );
+        } else {
+            $delete_query = $wpdb->prepare(
+                "DELETE FROM {$table} WHERE status = %s",
+                $status
+            );
+        }
+
+        $deleted = $wpdb->query($delete_query);
 
         if ($deleted === false) {
             Logger::error('Queue deletion by status failed.', array('site_id' => $site_id, 'status' => $status, 'deleted_by' => get_current_user_id()));
@@ -513,12 +520,22 @@ class Queue
         return '';
     }
 
-    private static function prepare_delete_query(string $query, array $args)
+    private static function prepare_delete_query(string $query, array $args, bool $add_status_filter = true)
     {
         global $wpdb;
 
-        $query .= ' AND status IN (' . implode(', ', array_fill(0, count(self::DELETABLE_STATUSES), '%s')) . ')';
+        if ($add_status_filter) {
+            $has_where = preg_match('/\bWHERE\b/i', $query) === 1;
+            $query_ends_with_where = preg_match('/\bWHERE\s*$/i', rtrim($query)) === 1;
+            if ($has_where) {
+                $query .= $query_ends_with_where ? ' ' : ' AND ';
+            } else {
+                $query .= ' WHERE ';
+            }
+            $query .= 'status IN (' . implode(', ', array_fill(0, count(self::DELETABLE_STATUSES), '%s')) . ')';
+            $args = array_merge($args, self::DELETABLE_STATUSES);
+        }
 
-        return $wpdb->prepare($query, ...array_merge($args, self::DELETABLE_STATUSES));
+        return call_user_func_array(array($wpdb, 'prepare'), array_merge(array($query), $args));
     }
 }

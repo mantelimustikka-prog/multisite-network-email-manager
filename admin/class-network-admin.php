@@ -406,6 +406,14 @@ class NetworkAdmin
             }
         }
 
+        if ($action === 'delete_pending') {
+            $action = 'delete_queue_by_status';
+            $status = 'pending';
+        } elseif ($action === 'delete_failed') {
+            $action = 'delete_queue_by_status';
+            $status = 'failed';
+        }
+
         if (!in_array($action, array('delete_queue_item', 'delete_queue_items', 'delete_queue_by_status'), true)) {
             return;
         }
@@ -450,8 +458,8 @@ class NetworkAdmin
             return;
         }
 
-        $deleted = \MNEM\Queue::delete_by_status($site_id, $status);
-        \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
+        $deleted = \MNEM\Queue::delete_by_status(0, $status);
+        \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => 0, 'requested_site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
         $this->redirect_with_notice($page, $deleted > 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
     }
 
