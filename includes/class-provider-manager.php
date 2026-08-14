@@ -109,7 +109,13 @@ class ProviderManager
             return $result;
         }
 
-        Logger::warning('Primary provider failed.', array('provider' => $primary_type, 'error' => $result['message'], 'to' => $to));
+        Logger::warning('Primary provider failed.', array(
+            'provider_type'    => $primary_type,
+            'provider_message' => $result['message'],
+            'http_code'        => isset($result['metadata']['http_code']) ? $result['metadata']['http_code'] : '',
+            'recipient'        => $to,
+            'success'          => false,
+        ));
 
         // Try fallback provider if configured.
         if ($fallback_enabled && $fallback_type !== '' && $fallback_type !== $primary_type) {
@@ -123,7 +129,7 @@ class ProviderManager
                 if ($fallback_result['success']) {
                     Logger::info('Fallback provider succeeded.', array('provider' => $fallback_type, 'to' => $to));
                 } else {
-                    Logger::error('Fallback provider also failed.', array('provider' => $fallback_type, 'error' => $fallback_result['message'], 'to' => $to));
+                    Logger::error('Fallback provider also failed.', array('provider_type' => $fallback_type, 'provider_message' => $fallback_result['message'], 'recipient' => $to));
                 }
 
                 return $fallback_result;

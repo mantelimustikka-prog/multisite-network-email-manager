@@ -106,7 +106,23 @@ class PostmarkProvider extends EmailProvider
                 return $this->success_result('Email accepted by Postmark.', $msg_id, array('response' => $data));
             }
 
-            return $this->error_result('Postmark returned HTTP ' . $code . '.', array('body' => $data));
+            $http_labels = array(
+                401 => 'Unauthorized - Check your Server Token',
+                403 => 'Forbidden - Sender signature not found or inactive',
+                422 => 'Unprocessable Entity - Check sender email is a verified Signature',
+            );
+            $http_label = isset($http_labels[$code]) ? $http_labels[$code] : '';
+            $provider_detail = isset($data['Message']) ? $data['Message'] : substr($raw, 0, 200);
+            $error_msg = 'Postmark returned HTTP ' . $code . ($http_label !== '' ? ' ' . $http_label : '') . '. ' . $provider_detail;
+
+            Logger::error('Postmark send failed', array(
+                'recipient'          => $to,
+                'http_code'          => $code,
+                'response_body'      => substr($raw, 0, 500),
+                'server_token_length' => strlen((string) $this->config('server_token')),
+            ));
+
+            return $this->error_result($error_msg, array('http_code' => $code, 'body' => $data));
         } catch (\Exception $e) {
             return $this->error_result('Exception: ' . $e->getMessage());
         }
