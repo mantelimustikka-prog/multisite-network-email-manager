@@ -9,13 +9,19 @@ class SmtpSettings
     public const OPTION_KEY = 'mnem_smtp_settings';
 
     public const DEFAULT_SETTINGS = array(
-        'host' => '',
-        'port' => 587,
-        'encryption' => 'tls',
-        'username' => '',
-        'password' => '',
-        'from_email' => '',
-        'from_name' => '',
+        // Legacy SMTP fields (also used when provider_type = 'smtp').
+        'host'             => '',
+        'port'             => 587,
+        'encryption'       => 'tls',
+        'username'         => '',
+        'password'         => '',
+        'from_email'       => '',
+        'from_name'        => '',
+        // Multi-provider fields.
+        'provider_type'    => 'smtp',
+        'provider_config'  => array(),
+        'fallback_provider' => '',
+        'fallback_enabled'  => false,
     );
 
     public static function get_all()
@@ -58,6 +64,56 @@ class SmtpSettings
 
         $sanitized['from_email'] = isset($data['from_email']) ? sanitize_email($data['from_email']) : $current['from_email'];
         $sanitized['from_name'] = isset($data['from_name']) ? sanitize_text_field($data['from_name']) : $current['from_name'];
+
+        // Multi-provider fields.
+        $valid_providers = array('smtp', 'mailgun', 'sendgrid', 'brevo', 'postmark', 'smtp2go');
+        $provider_type = isset($data['provider_type']) ? sanitize_text_field($data['provider_type']) : $current['provider_type'];
+        if (!in_array($provider_type, $valid_providers, true)) {
+            $provider_type = 'smtp';
+        }
+        $sanitized['provider_type'] = $provider_type;
+
+        $fallback_provider = isset($data['fallback_provider']) ? sanitize_text_field($data['fallback_provider']) : $current['fallback_provider'];
+        if (!in_array($fallback_provider, array_merge($valid_providers, array('')), true)) {
+            $fallback_provider = '';
+        }
+        $sanitized['fallback_provider'] = $fallback_provider;
+        $sanitized['fallback_enabled'] = !empty($data['fallback_enabled']);
+
+        // Provider-specific configs (API keys stored base64 for obfuscation).
+        $current_provider_config = is_array($current['provider_config']) ? $current['provider_config'] : array();
+        $new_provider_config = isset($data['provider_config']) && is_array($data['provider_config']) ? $data['provider_config'] : array();
+        $sanitized_provider_config = $current_provider_config;
+
+        foreach ($valid_providers as $ptype) {
+            if (!isset($new_provider_config[$ptype])) {
+                continue;
+            }
+            $pdata = is_array($new_provider_config[$ptype]) ? $new_provider_config[$ptype] : array();
+            $current_pdata = isset($current_provider_config[$ptype]) && is_array($current_provider_config[$ptype]) ? $current_provider_config[$ptype] : array();
+
+            // api_key.
+            if (isset($pdata['api_key']) && $pdata['api_key'] !== '') {
+                $sanitized_provider_config[$ptype]['api_key'] = base64_encode((string) $pdata['api_key']);
+            } elseif (isset($current_pdata['api_key'])) {
+                $sanitized_provider_config[$ptype]['api_key'] = $current_pdata['api_key'];
+            }
+
+            // server_token (Postmark).
+            if (isset($pdata['server_token']) && $pdata['server_token'] !== '') {
+                $sanitized_provider_config[$ptype]['server_token'] = base64_encode((string) $pdata['server_token']);
+            } elseif (isset($current_pdata['server_token'])) {
+                $sanitized_provider_config[$ptype]['server_token'] = $current_pdata['server_token'];
+            }
+
+            // domain (Mailgun).
+            if (isset($pdata['domain'])) {
+                $sanitized_provider_config[$ptype]['domain'] = sanitize_text_field($pdata['domain']);
+            } elseif (isset($current_pdata['domain'])) {
+                $sanitized_provider_config[$ptype]['domain'] = $current_pdata['domain'];
+            }
+        }
+        $sanitized['provider_config'] = $sanitized_provider_config;
 
         return update_site_option(self::OPTION_KEY, $sanitized);
     }

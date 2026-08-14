@@ -100,40 +100,50 @@ class Queue
                 continue;
             }
 
-            $sent = wp_mail($row['recipient_email'], $row['subject'], $row['body']);
+            $result = ProviderManager::send_email($row['recipient_email'], $row['subject'], $row['body']);
             $attempts = (int) $row['attempts'] + 1;
             $processed_at = self::current_time_mysql();
+            $provider_type = isset($result['provider']) ? (string) $result['provider'] : '';
+            $provider_message_id = isset($result['message_id']) ? (string) $result['message_id'] : '';
+            $provider_metadata = !empty($result['metadata']) ? wp_json_encode($result['metadata']) : null;
+            $sent = !empty($result['success']);
 
             if ($sent) {
                 $wpdb->query(
                     $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s WHERE id = %d",
+                        "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
                         'sent',
                         $attempts,
                         $processed_at,
+                        $provider_type,
+                        $provider_message_id,
+                        $provider_metadata,
                         (int) $id
                     )
                 );
-                Logger::info('Queue email sent.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email']));
+                Logger::info('Queue email sent.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type));
             } else {
                 $next_status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
                 $next_scheduled = $attempts >= self::MAX_ATTEMPTS ? $processed_at : self::calculate_next_attempt($attempts);
 
                 $wpdb->query(
                     $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s WHERE id = %d",
+                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
                         $next_status,
                         $attempts,
                         $next_scheduled,
                         $processed_at,
+                        $provider_type,
+                        $provider_message_id,
+                        $provider_metadata,
                         (int) $id
                     )
                 );
 
                 if ($next_status === 'failed') {
-                    Logger::error('Queue email permanently failed.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts));
+                    Logger::error('Queue email permanently failed.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'provider' => $provider_type, 'error' => $result['message']));
                 } else {
-                    Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled));
+                    Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => (int) $id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled, 'provider' => $provider_type));
                 }
             }
 

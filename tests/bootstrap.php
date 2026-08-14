@@ -411,6 +411,16 @@ if (!class_exists('WP_Error')) {
             $this->message = $message;
             $this->data = $data;
         }
+
+        public function get_error_message()
+        {
+            return (string) $this->message;
+        }
+
+        public function get_error_code()
+        {
+            return $this->code;
+        }
     }
 }
 
@@ -481,10 +491,89 @@ if ($GLOBALS['wpdb'] === null) {
     $GLOBALS['wpdb'] = new wpdb();
 }
 
+if (!function_exists('wp_remote_get')) {
+    function wp_remote_get($url, $args = array())
+    {
+        return isset($GLOBALS['mnem_http_response']) ? $GLOBALS['mnem_http_response'] : new WP_Error('http_request_failed', 'Mock not set.');
+    }
+}
+
+if (!function_exists('wp_remote_post')) {
+    function wp_remote_post($url, $args = array())
+    {
+        return isset($GLOBALS['mnem_http_response']) ? $GLOBALS['mnem_http_response'] : new WP_Error('http_request_failed', 'Mock not set.');
+    }
+}
+
+if (!function_exists('wp_remote_retrieve_response_code')) {
+    function wp_remote_retrieve_response_code($response)
+    {
+        if (is_array($response) && isset($response['response']['code'])) {
+            return $response['response']['code'];
+        }
+        return 0;
+    }
+}
+
+if (!function_exists('wp_remote_retrieve_body')) {
+    function wp_remote_retrieve_body($response)
+    {
+        if (is_array($response) && isset($response['body'])) {
+            return $response['body'];
+        }
+        return '';
+    }
+}
+
+if (!function_exists('wp_remote_retrieve_header')) {
+    function wp_remote_retrieve_header($response, $header)
+    {
+        if (is_array($response) && isset($response['headers'][$header])) {
+            return $response['headers'][$header];
+        }
+        return '';
+    }
+}
+
+if (!function_exists('is_wp_error')) {
+    function is_wp_error($thing)
+    {
+        return $thing instanceof WP_Error;
+    }
+}
+
+if (!function_exists('wp_strip_all_tags')) {
+    function wp_strip_all_tags($text)
+    {
+        return strip_tags((string) $text);
+    }
+}
+
+if (!function_exists('checked')) {
+    function checked($current, $value = true, $echo = true)
+    {
+        if ((string) $current === (string) $value) {
+            if ($echo) {
+                echo 'checked="checked"';
+            }
+            return 'checked="checked"';
+        }
+        return '';
+    }
+}
+
 require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-suppression.php';
+require_once __DIR__ . '/../includes/class-email-provider.php';
+require_once __DIR__ . '/../includes/class-smtp-provider.php';
+require_once __DIR__ . '/../includes/class-mailgun-provider.php';
+require_once __DIR__ . '/../includes/class-sendgrid-provider.php';
+require_once __DIR__ . '/../includes/class-brevo-provider.php';
+require_once __DIR__ . '/../includes/class-postmark-provider.php';
+require_once __DIR__ . '/../includes/class-smtp2go-provider.php';
+require_once __DIR__ . '/../includes/class-provider-manager.php';
 require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
 require_once __DIR__ . '/../includes/class-cron.php';
