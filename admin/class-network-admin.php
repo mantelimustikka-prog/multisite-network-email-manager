@@ -9,6 +9,8 @@ class NetworkAdmin
     public function init()
     {
         add_action('admin_init', array($this, 'handle_smtp_save'));
+        add_action('admin_init', array($this, 'handle_save_sender_settings'));
+        add_action('admin_init', array($this, 'handle_save_header_footer_settings'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
@@ -66,6 +68,68 @@ class NetworkAdmin
 
         $saved = \MNEM\SmtpSettings::save($data);
         $this->redirect_with_notice('mnem-smtp-settings', $saved ? 'smtp_saved' : 'smtp_failed');
+    }
+
+    public function handle_save_sender_settings()
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'save_sender_settings') {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sender_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'sender_settings_failed');
+            return;
+        }
+
+        $sender_name  = isset($_POST['sender_name'])  ? sanitize_text_field(wp_unslash($_POST['sender_name']))  : '';
+        $sender_email = isset($_POST['sender_email']) ? sanitize_email(wp_unslash($_POST['sender_email'])) : '';
+
+        update_site_option('mnem_sender_name', $sender_name);
+        update_site_option('mnem_sender_email', $sender_email);
+
+        \MNEM\Logger::info('Sender settings updated');
+
+        $this->redirect_with_notice('mnem-settings', 'sender_settings_saved', array('tab' => 'sender'));
+    }
+
+    public function handle_save_header_footer_settings()
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'save_header_footer_settings') {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_header_footer_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'header_footer_failed');
+            return;
+        }
+
+        $force = isset($_POST['force_global_header_footer']) ? 1 : 0;
+
+        $header = isset($_POST['global_header']) ? wp_unslash($_POST['global_header']) : '';
+        $footer = isset($_POST['global_footer']) ? wp_unslash($_POST['global_footer']) : '';
+
+        if (function_exists('wp_kses_post')) {
+            $header = wp_kses_post($header);
+            $footer = wp_kses_post($footer);
+        }
+
+        update_site_option('mnem_force_global_header_footer', $force);
+        update_site_option('mnem_global_header', $header);
+        update_site_option('mnem_global_footer', $footer);
+
+        \MNEM\Logger::info('Global header/footer settings updated');
+
+        $this->redirect_with_notice('mnem-settings', 'header_footer_saved', array('tab' => 'header-footer'));
     }
 
     public function handle_suppression_action()

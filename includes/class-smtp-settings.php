@@ -130,4 +130,42 @@ class SmtpSettings
 
         return $decoded === false ? '' : $decoded;
     }
+
+    /**
+     * Get the sender name. Falls back to the site name if not set.
+     */
+    public static function get_sender_name()
+    {
+        $name = (string) get_site_option('mnem_sender_name', '');
+        if ($name !== '') {
+            return $name;
+        }
+
+        return function_exists('get_bloginfo') ? (string) get_bloginfo('name') : '';
+    }
+
+    /**
+     * Get the sender email. Falls back to admin_email if not set.
+     */
+    public static function get_sender_email()
+    {
+        $email = (string) get_site_option('mnem_sender_email', '');
+        if ($email !== '') {
+            return $email;
+        }
+
+        if (function_exists('get_option')) {
+            return (string) get_option('admin_email', '');
+        }
+
+        return '';
+    }
+
+    /**
+     * Whether the global header/footer feature is enabled.
+     */
+    public static function is_global_header_footer_enabled()
+    {
+        return (int) get_site_option('mnem_force_global_header_footer', 0) === 1;
+    }
 }

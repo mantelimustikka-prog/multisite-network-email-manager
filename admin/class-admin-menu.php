@@ -24,6 +24,7 @@ class AdminMenu
         );
 
         add_submenu_page('mnem-dashboard', 'Dashboard', 'Dashboard', 'manage_network_options', 'mnem-dashboard', array($this, 'render_dashboard'));
+        add_submenu_page('mnem-dashboard', 'Settings', 'Settings', 'manage_network_options', 'mnem-settings', array($this, 'render_settings'));
         add_submenu_page('mnem-dashboard', 'SMTP Settings', 'SMTP Settings', 'manage_network_options', 'mnem-smtp-settings', array($this, 'render_smtp_settings'));
         add_submenu_page('mnem-dashboard', 'SMTP Diagnostics', 'SMTP Diagnostics', 'manage_network_options', 'mnem-smtp-diagnostics', array($this, 'render_smtp_diagnostics'));
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
@@ -57,6 +58,23 @@ class AdminMenu
         $smtp_status = !empty($smtp_last_result) && !empty($smtp_last_result['success']) ? 'Connected' : 'Unknown';
 
         $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status'));
+    }
+
+    public function render_settings()
+    {
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
+        $allowed_tabs = array('smtp', 'sender', 'header-footer');
+        if (!in_array($active_tab, $allowed_tabs, true)) {
+            $active_tab = 'smtp';
+        }
+
+        $settings = \MNEM\SmtpSettings::get_all();
+        $cron_status = \MNEM\Cron::get_status();
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_smtp_settings()
@@ -199,6 +217,10 @@ class AdminMenu
             'smtp_saved' => 'SMTP settings saved.',
             'smtp_failed' => 'SMTP settings could not be saved.',
             'cron_settings_saved' => 'Cron settings saved.',
+            'sender_settings_saved' => 'Sender settings saved.',
+            'sender_settings_failed' => 'Sender settings could not be saved.',
+            'header_footer_saved' => 'Global header/footer settings saved.',
+            'header_footer_failed' => 'Global header/footer settings could not be saved.',
             'rule_saved' => 'User event rule saved.',
             'rule_deleted' => 'User event rule deleted.',
             'rule_save_failed' => 'User event rule is invalid.',
@@ -213,7 +235,7 @@ class AdminMenu
 
     private function get_notice_class($notice)
     {
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed'), true)) {
             return 'notice notice-error';
         }
 
