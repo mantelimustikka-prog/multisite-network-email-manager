@@ -122,11 +122,24 @@ class SmtpDiagnostics
                 return $result;
             }
 
-            $sent = wp_mail($to, 'MNEM SMTP Test Email', 'This is a test email from Multisite Network Email Manager.');
+            $send = static function () use ($to) {
+                return wp_mail($to, 'MNEM SMTP Test Email', 'This is a test email from Multisite Network Email Manager.');
+            };
+            $sent = class_exists(__NAMESPACE__ . '\\MailInterceptor')
+                ? MailInterceptor::run_without_interception($send)
+                : $send();
+
+            $message = 'Test email sent successfully.';
+            if (!$sent) {
+                $message = 'Failed to send test email.';
+                if (isset($GLOBALS['phpmailer']) && is_object($GLOBALS['phpmailer']) && !empty($GLOBALS['phpmailer']->ErrorInfo)) {
+                    $message .= ' ' . (string) $GLOBALS['phpmailer']->ErrorInfo;
+                }
+            }
 
             $result = array(
                 'success' => (bool) $sent,
-                'message' => $sent ? 'Test email sent successfully.' : 'Failed to send test email.',
+                'message' => $message,
                 'details' => array('to' => $to),
             );
             self::store_result('send_test_email', $result, $user_id);

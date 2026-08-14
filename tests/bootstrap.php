@@ -22,7 +22,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '3');
+    define('MNEM_DB_VERSION', '4');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -35,6 +35,10 @@ if (!defined('MNEM_PLUGIN_URL')) {
 
 if (!defined('MNEM_PLUGIN_FILE')) {
     define('MNEM_PLUGIN_FILE', dirname(__DIR__) . '/multisite-network-email-manager.php');
+}
+
+if (!defined('MNEM_TESTING')) {
+    define('MNEM_TESTING', true);
 }
 
 $GLOBALS['mnem_site_options'] = array();
@@ -123,6 +127,10 @@ if (!function_exists('register_rest_route')) {
 if (!function_exists('current_user_can')) {
     function current_user_can($capability)
     {
+        if (array_key_exists('mnem_current_user_can', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_current_user_can'];
+        }
+
         return in_array($capability, array('manage_network', 'manage_network_options'), true);
     }
 }
@@ -183,6 +191,9 @@ if (!function_exists('wp_mail')) {
             'headers' => $headers,
             'attachments' => $attachments,
         );
+        if (array_key_exists('mnem_wp_mail_return', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_wp_mail_return'];
+        }
         return true;
     }
 }
@@ -190,7 +201,7 @@ if (!function_exists('wp_mail')) {
 if (!function_exists('get_current_user_id')) {
     function get_current_user_id()
     {
-        return 1;
+        return isset($GLOBALS['mnem_current_user_id']) ? (int) $GLOBALS['mnem_current_user_id'] : 1;
     }
 }
 
@@ -204,6 +215,10 @@ if (!function_exists('wp_nonce_field')) {
 if (!function_exists('wp_verify_nonce')) {
     function wp_verify_nonce($nonce, $action)
     {
+        if (array_key_exists('mnem_verify_nonce', $GLOBALS)) {
+            return (bool) $GLOBALS['mnem_verify_nonce'];
+        }
+
         return true;
     }
 }
@@ -268,14 +283,16 @@ if (!function_exists('wp_generate_uuid4')) {
 if (!function_exists('wp_send_json_success')) {
     function wp_send_json_success($data = null)
     {
-        return array('success' => true, 'data' => $data);
+        $GLOBALS['mnem_last_json_response'] = array('success' => true, 'data' => $data);
+        return $GLOBALS['mnem_last_json_response'];
     }
 }
 
 if (!function_exists('wp_send_json_error')) {
     function wp_send_json_error($data = null, $status_code = null)
     {
-        return array('success' => false, 'data' => $data, 'status_code' => $status_code);
+        $GLOBALS['mnem_last_json_response'] = array('success' => false, 'data' => $data, 'status_code' => $status_code);
+        return $GLOBALS['mnem_last_json_response'];
     }
 }
 
@@ -452,15 +469,17 @@ if (!function_exists('esc_textarea')) {
 }
 
 if (!function_exists('add_menu_page')) {
-    function add_menu_page()
+    function add_menu_page($page_title = '', $menu_title = '', $capability = '', $menu_slug = '', $callback = null, $icon_url = '', $position = null)
     {
+        $GLOBALS['mnem_menu_pages'][] = array($page_title, $menu_title, $capability, $menu_slug, $callback, $icon_url, $position);
         return true;
     }
 }
 
 if (!function_exists('add_submenu_page')) {
-    function add_submenu_page()
+    function add_submenu_page($parent_slug = '', $page_title = '', $menu_title = '', $capability = '', $menu_slug = '', $callback = null, $position = null)
     {
+        $GLOBALS['mnem_submenu_pages'][] = array($parent_slug, $page_title, $menu_title, $capability, $menu_slug, $callback, $position);
         return true;
     }
 }
@@ -621,6 +640,28 @@ if (!function_exists('wp_kses_post')) {
     {
         return strip_tags((string) $content, '<a><p><br><strong><em><u><img><ul><ol><li><h1><h2><h3><h4><h5><h6><blockquote><hr><span><div>');
     }
+
+    if (!function_exists('wp_editor')) {
+        function wp_editor($content, $editor_id, $settings = array())
+        {
+            $name = isset($settings['textarea_name']) ? (string) $settings['textarea_name'] : (string) $editor_id;
+            echo '<textarea name="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" id="' . htmlspecialchars((string) $editor_id, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars((string) $content, ENT_QUOTES, 'UTF-8') . '</textarea>';
+        }
+    }
+
+    if (!function_exists('esc_url')) {
+        function esc_url($url)
+        {
+            return (string) $url;
+        }
+    }
+
+    if (!function_exists('esc_html_e')) {
+        function esc_html_e($text, $domain = '')
+        {
+            echo htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+        }
+    }
 }
 
 if (!function_exists('get_bloginfo')) {
@@ -695,6 +736,8 @@ require_once __DIR__ . '/../includes/class-user-events-campaign.php';
 require_once __DIR__ . '/../includes/class-user-events.php';
 require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';
 require_once __DIR__ . '/../includes/class-rest-api.php';
+require_once __DIR__ . '/../includes/class-subscriber-lists.php';
+require_once __DIR__ . '/../includes/class-email-templates.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';
 require_once __DIR__ . '/../admin/class-admin.php';

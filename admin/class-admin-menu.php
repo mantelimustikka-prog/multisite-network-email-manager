@@ -15,7 +15,7 @@ class AdminMenu
     {
         add_menu_page(
             'MNEM Dashboard',
-            'Email Manager',
+            'Network Email Manager',
             'manage_network_options',
             'mnem-dashboard',
             array($this, 'render_dashboard'),
@@ -25,13 +25,13 @@ class AdminMenu
 
         add_submenu_page('mnem-dashboard', 'Dashboard', 'Dashboard', 'manage_network_options', 'mnem-dashboard', array($this, 'render_dashboard'));
         add_submenu_page('mnem-dashboard', 'Settings', 'Settings', 'manage_network_options', 'mnem-settings', array($this, 'render_settings'));
-        add_submenu_page('mnem-dashboard', 'SMTP Settings', 'SMTP Settings', 'manage_network_options', 'mnem-smtp-settings', array($this, 'render_smtp_settings'));
-        add_submenu_page('mnem-dashboard', 'SMTP Diagnostics', 'SMTP Diagnostics', 'manage_network_options', 'mnem-smtp-diagnostics', array($this, 'render_smtp_diagnostics'));
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
+        add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Queue', 'Queue', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
+        add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
     }
 
     public function render_dashboard()
@@ -77,26 +77,6 @@ class AdminMenu
         $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'notice', 'notice_message', 'notice_class'));
     }
 
-    public function render_smtp_settings()
-    {
-        $settings = \MNEM\SmtpSettings::get_all();
-        $cron_status = \MNEM\Cron::get_status();
-        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
-        $notice_message = $this->get_notice_message($notice);
-        $notice_class = $this->get_notice_class($notice);
-
-        $this->render_view('smtp-settings.php', compact('settings', 'notice', 'notice_message', 'notice_class', 'cron_status'));
-    }
-
-    public function render_smtp_diagnostics()
-    {
-        $settings = \MNEM\SmtpSettings::get_all();
-        $connection = \MNEM\SmtpDiagnostics::validate_settings();
-        $last_result = \MNEM\SmtpDiagnostics::get_last_result();
-
-        $this->render_view('smtp-diagnostics.php', compact('settings', 'connection', 'last_result'));
-    }
-
     public function render_campaigns()
     {
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
@@ -107,7 +87,34 @@ class AdminMenu
         $edit_campaign_id = isset($_GET['mnem_campaign']) ? (int) $_GET['mnem_campaign'] : 0;
         $edit_campaign = $edit_campaign_id > 0 ? \MNEM\Campaigns::get($edit_campaign_id) : null;
 
-        $this->render_view('campaigns.php', compact('campaigns', 'notice', 'notice_message', 'notice_class', 'edit_campaign'));
+        $subscriber_lists = \MNEM\SubscriberLists::get_all();
+        $templates = \MNEM\EmailTemplates::get_all_templates();
+        $this->render_view('campaigns.php', compact('campaigns', 'notice', 'notice_message', 'notice_class', 'edit_campaign', 'subscriber_lists', 'templates'));
+    }
+
+    public function render_subscriber_lists()
+    {
+        $lists = \MNEM\SubscriberLists::get_all();
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+        $active_list_id = isset($_GET['list_id']) ? (int) $_GET['list_id'] : 0;
+        $active_list = $active_list_id > 0 ? \MNEM\SubscriberLists::get($active_list_id) : null;
+        $subscribers = $active_list_id > 0 ? \MNEM\SubscriberLists::get_subscribers($active_list_id, 1000, 0) : array();
+        $unsubscribed = $active_list_id > 0 ? \MNEM\SubscriberLists::get_unsubscribed($active_list_id, 1000, 0) : array();
+        $alert_message = isset($_GET['mnem_alert']) ? sanitize_text_field(wp_unslash($_GET['mnem_alert'])) : '';
+
+        $this->render_view('subscriber-lists.php', compact('lists', 'notice', 'notice_message', 'notice_class', 'active_list', 'active_list_id', 'subscribers', 'unsubscribed', 'alert_message'));
+    }
+
+    public function render_email_templates()
+    {
+        $templates = \MNEM\EmailTemplates::get_all_templates();
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+
+        $this->render_view('email-templates.php', compact('templates', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_queue()
@@ -196,15 +203,26 @@ class AdminMenu
 
     private function get_notice_message($notice)
     {
+        $count = isset($_GET['count']) ? (int) $_GET['count'] : 0;
+        $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
+        if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
+            $status = 'queue';
+        }
         $messages = array(
             'campaign_created' => 'Campaign created successfully.',
             'campaign_updated' => 'Campaign updated successfully.',
             'campaign_sent' => 'Campaign send has been queued.',
             'campaign_deleted' => 'Campaign deleted successfully.',
+            'campaign_cancelled' => 'Campaign cancelled successfully.',
             'campaign_paused' => 'Campaign sending is now paused.',
             'campaign_resumed' => 'Campaign sending has resumed.',
             'queue_processed' => 'Queue processed successfully.',
             'queue_retried' => 'Failed queue items were rescheduled.',
+            'queue_item_deleted' => 'Queue item deleted.',
+            'queue_items_deleted' => $count === 1 ? '1 queue item deleted.' : sprintf('%d queue items deleted.', $count),
+            'queue_deleted_by_status' => sprintf('%d %s item%s deleted.', $count, $status, $count === 1 ? '' : 's'),
+            'queue_delete_failed' => 'Failed to delete queue item.',
+            'queue_nothing_selected' => 'No items selected for deletion.',
             'campaign_nonce_failed' => 'Campaign security check failed.',
             'queue_nonce_failed' => 'Queue security check failed.',
             'campaign_send_failed' => 'Campaign send failed.',
@@ -217,6 +235,17 @@ class AdminMenu
             'sender_settings_failed' => 'Sender settings could not be saved.',
             'header_footer_saved' => 'Global header/footer settings saved.',
             'header_footer_failed' => 'Global header/footer settings could not be saved.',
+            'subscriber_list_saved' => 'Subscriber list saved.',
+            'subscriber_list_deleted' => 'Subscriber list deleted.',
+            'subscriber_added' => 'Subscriber added successfully.',
+            'subscriber_removed' => 'Subscriber removed successfully.',
+            'subscriber_restored' => 'Subscriber restored successfully.',
+            'subscriber_csv_imported' => 'Subscriber CSV import processed.',
+            'subscriber_operation_failed' => 'Subscriber list operation failed.',
+            'email_template_saved' => 'Email template saved.',
+            'email_template_deleted' => 'Email template deleted.',
+            'email_template_reset' => 'Template reset to default.',
+            'email_template_failed' => 'Template action failed.',
             'rule_saved' => 'User event rule saved.',
             'rule_deleted' => 'User event rule deleted.',
             'rule_save_failed' => 'User event rule is invalid.',
@@ -231,7 +260,11 @@ class AdminMenu
 
     private function get_notice_class($notice)
     {
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed'), true)) {
+        if ($notice === 'queue_nothing_selected') {
+            return 'notice notice-warning';
+        }
+
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed'), true)) {
             return 'notice notice-error';
         }
 
