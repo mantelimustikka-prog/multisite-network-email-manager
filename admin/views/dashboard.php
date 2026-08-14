@@ -13,6 +13,10 @@ defined('ABSPATH') || exit;
         <div class="notice notice-warning"><p>SMTP is not configured yet.</p></div>
     <?php endif; ?>
 
+    <?php if (!$tracking_enabled) : ?>
+        <div class="notice notice-warning"><p>Email tracking is disabled &mdash; Email History will not record any emails. <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email_tracking')); ?>">Enable in Settings &gt; Email Tracking</a>.</p></div>
+    <?php endif; ?>
+
     <div class="mnem-grid">
         <div class="mnem-panel">
             <h2>Overview</h2>

@@ -12,7 +12,15 @@ class EmailTracking
 
     public static function is_enabled(): bool
     {
-        return (int) get_site_option(self::OPTION_KEEP_PREVIEWS, 1) === 1;
+        $keep_previews = get_site_option(self::OPTION_KEEP_PREVIEWS);
+
+        // Default to enabled if option has never been set.
+        if ($keep_previews === false) {
+            update_site_option(self::OPTION_KEEP_PREVIEWS, 1);
+            return true;
+        }
+
+        return (int) $keep_previews === 1;
     }
 
     public static function get_retention_days(): int
@@ -65,14 +73,30 @@ class EmailTracking
      */
     public static function store_sent_email(int $queue_id, array $queue_row, array $send_result, array $headers): void
     {
-        if (!self::is_enabled()) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'mnem_email_tracking';
+
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists !== $table) {
+            Logger::warning('Email tracking table does not exist', array(
+                'table'     => $table,
+                'recipient' => isset($queue_row['recipient_email']) ? $queue_row['recipient_email'] : '',
+            ));
             return;
         }
 
-        global $wpdb;
-        $table = $wpdb->prefix . 'mnem_email_tracking';
+        if (!self::is_enabled()) {
+            Logger::info('Email tracking is disabled - email not recorded', array(
+                'setting'   => self::OPTION_KEEP_PREVIEWS,
+                'value'     => get_site_option(self::OPTION_KEEP_PREVIEWS),
+                'recipient' => isset($queue_row['recipient_email']) ? $queue_row['recipient_email'] : '',
+            ));
+            return;
+        }
+
         $now = gmdate('Y-m-d H:i:s');
         $provider_message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+        $delivery_status = !empty($send_result['success']) ? 'pending' : 'failed';
 
         $wpdb->query(
             $wpdb->prepare(
@@ -83,7 +107,7 @@ class EmailTracking
                 isset($queue_row['subject']) ? (string) $queue_row['subject'] : '',
                 isset($queue_row['body']) ? (string) $queue_row['body'] : '',
                 wp_json_encode(array_values($headers)),
-                'pending',
+                $delivery_status,
                 0,
                 wp_json_encode(array()),
                 0,
@@ -92,6 +116,13 @@ class EmailTracking
                 $now
             )
         );
+
+        if ($wpdb->last_error !== '') {
+            Logger::error('Failed to insert email tracking record', array(
+                'db_error'  => $wpdb->last_error,
+                'recipient' => isset($queue_row['recipient_email']) ? $queue_row['recipient_email'] : '',
+            ));
+        }
 
         self::cleanup_old_records();
     }

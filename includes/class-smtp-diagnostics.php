@@ -177,24 +177,26 @@ class SmtpDiagnostics
 
             $send_result = ProviderManager::send_email($to, $subject, $body, $headers);
 
-            $sent       = !empty($send_result['success']);
-            $provider   = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
-            $message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+            $sent           = !empty($send_result['success']);
+            $provider       = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
+            $message_id     = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+            $settings       = SmtpSettings::get_all();
+            $provider_label = $provider !== '' ? $provider : (isset($settings['provider_type']) && (string) $settings['provider_type'] !== '' ? (string) $settings['provider_type'] : 'provider');
 
             if ($sent) {
                 Logger::info('Test email sent successfully.', array('to' => $to, 'provider' => $provider, 'message_id' => $message_id, 'user_id' => $user_id));
-                $tracking_row = array(
-                    'recipient_email' => $to,
-                    'subject'         => $subject,
-                    'body'            => $body,
-                );
-                EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
             } else {
                 $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
-                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider, 'error' => $error, 'user_id' => $user_id));
+                Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider, 'provider_error' => $error, 'user_id' => $user_id));
             }
 
-            $provider_label = $provider !== '' ? $provider : 'provider';
+            $tracking_row = array(
+                'recipient_email' => $to,
+                'subject'         => $subject,
+                'body'            => $body,
+            );
+            EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
+
             $message = $sent
                 ? 'Test email sent successfully via ' . $provider_label . '.'
                 : 'Test email sending failed via ' . $provider_label . '.';
