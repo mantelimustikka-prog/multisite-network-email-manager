@@ -55,8 +55,23 @@ class AdminMenu
         $retried = isset($_GET['retried']) ? (int) $_GET['retried'] : 0;
         $cron_status = \MNEM\Cron::get_status();
         $failed_rule_triggers = (int) get_site_option(\MNEM\UserEventsCampaign::OPTION_FAILED_RULE_TRIGGERS, 0);
-        $smtp_last_result = \MNEM\SmtpDiagnostics::get_last_result();
-        $smtp_status = !empty($smtp_last_result) && !empty($smtp_last_result['success']) ? 'Connected' : 'Unknown';
+        $smtp_provider_type = \MNEM\SmtpSettings::get('provider_type', 'smtp');
+        $smtp_provider      = \MNEM\ProviderManager::get_provider((string) $smtp_provider_type);
+        if ($smtp_provider === null) {
+            $smtp_status = 'Unknown';
+        } elseif (\MNEM\SmtpSettings::is_active_provider_configured()) {
+            $smtp_status_cache_key = 'mnem_smtp_conn_status_' . md5((string) $smtp_provider_type);
+            $smtp_status_cached    = get_site_transient($smtp_status_cache_key);
+            if ($smtp_status_cached !== false) {
+                $smtp_status = (string) $smtp_status_cached;
+            } else {
+                $smtp_test   = $smtp_provider->test_connection();
+                $smtp_status = !empty($smtp_test['success']) ? 'Connected' : 'Not Connected';
+                set_site_transient($smtp_status_cache_key, $smtp_status, 5 * MINUTE_IN_SECONDS);
+            }
+        } else {
+            $smtp_status = 'Not Configured';
+        }
 
         $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status'));
     }
