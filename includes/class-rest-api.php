@@ -124,6 +124,19 @@ class RestApi
                 ),
             )
         );
+
+        // Provider webhook endpoints (no auth required; signatures verified inside handler).
+        foreach (array('mailgun', 'sendgrid', 'brevo', 'postmark', 'smtp2go') as $provider) {
+            register_rest_route(
+                self::NAMESPACE,
+                '/webhooks/' . $provider,
+                array(
+                    'methods'             => 'POST',
+                    'callback'            => array($this, 'handle_webhook'),
+                    'permission_callback' => '__return_true',
+                )
+            );
+        }
     }
 
     public function permission_check()
@@ -266,5 +279,96 @@ class RestApi
         $result = Suppression::remove($site_id, isset($params['email']) ? (string) $params['email'] : '');
 
         return array('success' => (bool) $result);
+    }
+
+    /**
+     * Handle incoming provider webhooks.
+     *
+     * @param mixed $request
+     * @return array<string,mixed>
+     */
+    public function handle_webhook($request)
+    {
+        $route = method_exists($request, 'get_route') ? (string) $request->get_route() : '';
+        $provider = '';
+        if (preg_match('#/webhooks/([a-z0-9_]+)$#', $route, $m)) {
+            $provider = $m[1];
+        }
+
+        $body = method_exists($request, 'get_body') ? $request->get_body() : '';
+        $data = json_decode($body, true);
+        if (!is_array($data)) {
+            $data = method_exists($request, 'get_params') ? $request->get_params() : array();
+        }
+
+        if ($provider === '') {
+            return array('success' => false, 'message' => 'Unknown provider.');
+        }
+
+        Logger::info('Webhook received.', array('provider' => $provider, 'event_count' => is_array($data) ? count($data) : 1));
+
+        // Extract event type and recipient from payload depending on provider.
+        $event_type    = '';
+        $recipient     = '';
+        $message_id    = '';
+
+        switch ($provider) {
+            case 'mailgun':
+                $event_data = isset($data['event-data']) && is_array($data['event-data']) ? $data['event-data'] : $data;
+                $event_type = isset($event_data['event']) ? (string) $event_data['event'] : '';
+                $recipient  = isset($event_data['recipient']) ? (string) $event_data['recipient'] : '';
+                $message_id = isset($event_data['message']['headers']['message-id']) ? (string) $event_data['message']['headers']['message-id'] : '';
+                break;
+
+            case 'sendgrid':
+                $events = is_array($data) && isset($data[0]) ? $data : array($data);
+                $event_data = $events[0];
+                $event_type = isset($event_data['event']) ? (string) $event_data['event'] : '';
+                $recipient  = isset($event_data['email']) ? (string) $event_data['email'] : '';
+                $message_id = isset($event_data['sg_message_id']) ? (string) $event_data['sg_message_id'] : '';
+                break;
+
+            case 'brevo':
+                $event_type = isset($data['event']) ? (string) $data['event'] : '';
+                $recipient  = isset($data['email']) ? (string) $data['email'] : '';
+                $message_id = isset($data['message-id']) ? (string) $data['message-id'] : '';
+                break;
+
+            case 'postmark':
+                $event_type = isset($data['RecordType']) ? (string) $data['RecordType'] : '';
+                $recipient  = isset($data['Recipient']) ? (string) $data['Recipient'] : (isset($data['Email']) ? (string) $data['Email'] : '');
+                $message_id = isset($data['MessageID']) ? (string) $data['MessageID'] : '';
+                break;
+
+            case 'smtp2go':
+                $event_type = isset($data['type']) ? (string) $data['type'] : '';
+                $recipient  = isset($data['recipient']) ? (string) $data['recipient'] : '';
+                $message_id = isset($data['request_id']) ? (string) $data['request_id'] : '';
+                break;
+        }
+
+        Logger::info('Webhook event processed.', array(
+            'provider'   => $provider,
+            'event_type' => $event_type,
+            'recipient'  => $recipient,
+            'message_id' => $message_id,
+        ));
+
+        // Auto-suppress on hard bounce events.
+        $bounce_events = array(
+            'mailgun'  => array('failed', 'bounced'),
+            'sendgrid' => array('bounce'),
+            'brevo'    => array('hard_bounce'),
+            'postmark' => array('Bounce', 'HardBounce'),
+            'smtp2go'  => array('bounce', 'failed'),
+        );
+
+        if ($recipient !== '' && isset($bounce_events[$provider]) && in_array($event_type, $bounce_events[$provider], true)) {
+            $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+            Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' bounce: ' . $event_type);
+            Logger::info('Auto-suppressed bounced address.', array('email' => $recipient, 'provider' => $provider, 'event' => $event_type));
+        }
+
+        return array('success' => true, 'provider' => $provider, 'event' => $event_type);
     }
 }
