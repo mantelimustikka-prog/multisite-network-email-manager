@@ -39,6 +39,10 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_toggle_campaign_pause', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_test_connection', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_send_test_email', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_get_error_details', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_delete_error_log', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_export_error_logs', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_clear_old_errors', $GLOBALS['mnem_hooks']);
         $admin_init_callbacks = array_map(static function ($hook) {
             return is_array($hook['callback']) ? $hook['callback'][1] : null;
         }, $GLOBALS['mnem_hooks']['admin_init']);

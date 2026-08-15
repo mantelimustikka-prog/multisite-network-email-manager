@@ -28,6 +28,6 @@ class AdminMenuTest extends TestCase
 
         $this->assertNotContains('mnem-smtp-settings', $submenu_slugs);
         $this->assertNotContains('mnem-smtp-diagnostics', $submenu_slugs);
+        $this->assertNotContains('mnem-error-logs', $submenu_slugs);
     }
 }
-

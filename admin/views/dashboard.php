@@ -121,50 +121,6 @@ defined('ABSPATH') || exit;
             <?php endif; ?>
         </div>
 
-        <div class="mnem-panel">
-            <h2><?php esc_html_e('Error Summary', 'multisite-network-email-manager'); ?>
-                <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-error-logs')); ?>" style="font-size:13px;font-weight:normal;margin-left:8px;"><?php esc_html_e('View All', 'multisite-network-email-manager'); ?></a>
-            </h2>
-            <?php $table_size = \MNEM\ErrorLog::get_table_size_formatted(); ?>
-            <table class="widefat striped">
-                <tbody>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Errors (last 24h)', 'multisite-network-email-manager'); ?></th>
-                        <td><?php echo esc_html((string) $error_summary['errors_24h']); ?>
-                            <?php if ($error_summary['errors_24h'] > 0) : ?>
-                                <span style="color:#a00;font-weight:bold;">&#x26a0;</span>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Most Common Error', 'multisite-network-email-manager'); ?></th>
-                        <td><?php echo $error_summary['most_common_type'] !== '' ? esc_html(str_replace('_', ' ', ucfirst($error_summary['most_common_type']))) : esc_html__('None', 'multisite-network-email-manager'); ?></td>
-                    </tr>
-                    <?php if (!empty($error_summary['most_recent'])) : ?>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Most Recent Error', 'multisite-network-email-manager'); ?></th>
-                        <td>
-                            <?php echo esc_html($error_summary['most_recent']['created_at']); ?><br />
-                            <span class="description"><?php echo esc_html(mb_strlen($error_summary['most_recent']['error_message']) > 60 ? mb_substr($error_summary['most_recent']['error_message'], 0, 60) . '…' : $error_summary['most_recent']['error_message']); ?></span>
-                        </td>
-                    </tr>
-                    <?php endif; ?>
-                    <tr>
-                        <th scope="row"><?php esc_html_e('Error Log DB Size', 'multisite-network-email-manager'); ?></th>
-                        <td>
-                            <?php echo esc_html($table_size); ?>
-                            <span class="description">(<?php echo esc_html(sprintf(__('auto-cleanup after %d days', 'multisite-network-email-manager'), (int) \MNEM\ErrorLog::ERROR_LOG_RETENTION_DAYS)); ?>)</span>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <?php if ($error_summary['errors_24h'] > 0) : ?>
-                <div class="mnem-actions">
-                    <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-error-logs')); ?>" class="button"><?php esc_html_e('View Errors', 'multisite-network-email-manager'); ?></a>
-                </div>
-            <?php endif; ?>
-        </div>
-
     <div class="mnem-grid">
         <div class="mnem-panel mnem-panel-wide">
             <h2>Campaign Management</h2>

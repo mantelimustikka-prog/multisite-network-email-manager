@@ -172,12 +172,6 @@ class SmtpDiagnostics
                         'message' => 'Force sender is enabled but sender email is not configured. Please configure it in Settings > Sender Settings.',
                         'details' => array(),
                     );
-                    ErrorLog::log_validation_error(
-                        'Force sender enabled but sender email is not configured.',
-                        'from_email',
-                        '',
-                        array('recipient' => $to)
-                    );
                     self::store_result('send_test_email', $result, $user_id);
                     return $result;
                 }
@@ -203,12 +197,6 @@ class SmtpDiagnostics
                     'success' => false,
                     'message' => 'Email provider is not properly configured. Please configure ' . $provider_type . ' settings.',
                     'details' => array('provider' => $provider_type),
-                );
-                ErrorLog::log_validation_error(
-                    'Email provider is not properly configured.',
-                    'provider_type',
-                    $provider_type,
-                    array('recipient' => $to)
                 );
                 self::store_result('send_test_email', $result, $user_id);
                 return $result;
@@ -255,21 +243,6 @@ class SmtpDiagnostics
                         'result'            => $send_result,
                     ));
                 }
-
-                ErrorLog::log_send_failure(
-                    0,
-                    $to,
-                    $from_email,
-                    $subject,
-                    $provider !== '' ? $provider : $provider_type,
-                    $error,
-                    array(
-                        'http_status'            => isset($send_result['metadata']['http_code']) ? (int) $send_result['metadata']['http_code'] : 0,
-                        'api_response'           => isset($send_result['metadata']['api_response']) ? (string) $send_result['metadata']['api_response'] : '',
-                        'provider_error_message' => $error,
-                        'test_email'             => true,
-                    )
-                );
             }
 
             // Always record the attempt - success or failure.
@@ -308,12 +281,6 @@ class SmtpDiagnostics
             self::store_result('send_test_email', $result, $user_id);
             return $result;
         } catch (\Throwable $throwable) {
-            ErrorLog::log_system_error(
-                'Exception during test email send: ' . $throwable->getMessage(),
-                $throwable,
-                ErrorLog::TYPE_SEND_FAILED,
-                array('test_email' => true)
-            );
             $result = array(
                 'success' => false,
                 'message' => $throwable->getMessage(),
