@@ -125,6 +125,7 @@ defined('ABSPATH') || exit;
             <h2><?php esc_html_e('Error Summary', 'multisite-network-email-manager'); ?>
                 <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-error-logs')); ?>" style="font-size:13px;font-weight:normal;margin-left:8px;"><?php esc_html_e('View All', 'multisite-network-email-manager'); ?></a>
             </h2>
+            <?php $table_size = \MNEM\ErrorLog::get_table_size_formatted(); ?>
             <table class="widefat striped">
                 <tbody>
                     <tr>
@@ -148,6 +149,13 @@ defined('ABSPATH') || exit;
                         </td>
                     </tr>
                     <?php endif; ?>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Error Log DB Size', 'multisite-network-email-manager'); ?></th>
+                        <td>
+                            <?php echo esc_html($table_size); ?>
+                            <span class="description">(<?php echo esc_html(sprintf(__('auto-cleanup after %d days', 'multisite-network-email-manager'), (int) \MNEM\ErrorLog::ERROR_LOG_RETENTION_DAYS)); ?>)</span>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
             <?php if ($error_summary['errors_24h'] > 0) : ?>

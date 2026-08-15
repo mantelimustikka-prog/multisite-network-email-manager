@@ -15,6 +15,20 @@ class ErrorLog
     public const LEVEL_WARNING  = 'warning';
     public const LEVEL_CRITICAL = 'critical';
 
+    // Size limits (in bytes / characters)
+    public const MAX_ERROR_MESSAGE = 5000;
+    public const MAX_SYSTEM_ERROR  = 3000;
+    public const MAX_STACK_TRACE   = 10000;
+    public const MAX_PROVIDER_ERROR = 2000;
+    public const MAX_API_RESPONSE   = 20000;
+    public const MAX_CONTEXT_JSON   = 10000;
+    public const MAX_SUBJECT        = 1000;
+    public const MAX_RECIPIENT_EMAIL = 255;
+    public const MAX_SENDER_EMAIL    = 255;
+
+    // Retention policy
+    public const ERROR_LOG_RETENTION_DAYS = 30;
+
     // Error types
     public const TYPE_SEND_FAILED       = 'send_failed';
     public const TYPE_PROVIDER_ERROR    = 'provider_error';
@@ -466,6 +480,67 @@ class ErrorLog
     }
 
     /**
+     * Get the error log table size in bytes.
+     *
+     * @return int
+     */
+    public static function get_table_size(): int
+    {
+        global $wpdb;
+
+        $table = self::get_table_name();
+
+        $result = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT SUM(data_length + index_length) as size FROM information_schema.tables WHERE table_schema = %s AND table_name = %s",
+                DB_NAME,
+                $table
+            )
+        );
+
+        return isset($result->size) ? (int) $result->size : 0;
+    }
+
+    /**
+     * Get the error log table size as a human-readable string.
+     *
+     * @return string
+     */
+    public static function get_table_size_formatted(): string
+    {
+        $bytes = self::get_table_size();
+        $units = array('B', 'KB', 'MB', 'GB');
+        $bytes = max($bytes, 0);
+        $pow   = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow   = min($pow, count($units) - 1);
+        $bytes /= (1 << (10 * $pow));
+
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    /**
+     * Truncate a string to a maximum byte length, appending a truncation marker.
+     *
+     * @param string $value
+     * @param int    $max_length
+     * @return string
+     */
+    private static function truncate_string(string $value, int $max_length): string
+    {
+        if (strlen($value) <= $max_length) {
+            return $value;
+        }
+
+        $truncated = substr($value, 0, $max_length);
+
+        if ($max_length > 20) {
+            $truncated = substr($truncated, 0, -20) . '... [TRUNCATED]';
+        }
+
+        return $truncated;
+    }
+
+    /**
      * @param array<string,mixed> $data
      */
     private static function insert(array $data): void
@@ -479,28 +554,28 @@ class ErrorLog
             return;
         }
 
-        $now   = current_time('mysql', true);
+        $now = current_time('mysql', true);
 
         $row = array(
             'site_id'                => function_exists('get_current_network_id') ? (int) get_current_network_id() : (isset($wpdb->siteid) ? (int) $wpdb->siteid : 0),
             'blog_id'                => function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 0,
             'error_level'            => isset($data['error_level']) ? (string) $data['error_level'] : self::LEVEL_ERROR,
             'error_type'             => isset($data['error_type']) ? (string) $data['error_type'] : self::TYPE_SYSTEM_ERROR,
-            'error_code'             => isset($data['error_code']) ? (string) $data['error_code'] : null,
-            'error_message'          => isset($data['error_message']) ? (string) $data['error_message'] : '',
-            'system_error'           => isset($data['system_error']) ? (string) $data['system_error'] : null,
-            'stack_trace'            => isset($data['stack_trace']) ? (string) $data['stack_trace'] : null,
+            'error_code'             => isset($data['error_code']) ? self::truncate_string((string) $data['error_code'], 50) : null,
+            'error_message'          => isset($data['error_message']) ? self::truncate_string((string) $data['error_message'], self::MAX_ERROR_MESSAGE) : '',
+            'system_error'           => isset($data['system_error']) ? self::truncate_string((string) $data['system_error'], self::MAX_SYSTEM_ERROR) : null,
+            'stack_trace'            => isset($data['stack_trace']) ? self::truncate_string((string) $data['stack_trace'], self::MAX_STACK_TRACE) : null,
             'queue_id'               => isset($data['queue_id']) && (int) $data['queue_id'] > 0 ? (int) $data['queue_id'] : null,
             'campaign_id'            => isset($data['campaign_id']) && (int) $data['campaign_id'] > 0 ? (int) $data['campaign_id'] : null,
-            'recipient_email'        => isset($data['recipient_email']) ? (string) $data['recipient_email'] : null,
-            'sender_email'           => isset($data['sender_email']) ? (string) $data['sender_email'] : null,
-            'subject'                => isset($data['subject']) ? (string) $data['subject'] : null,
+            'recipient_email'        => isset($data['recipient_email']) ? self::truncate_string((string) $data['recipient_email'], self::MAX_RECIPIENT_EMAIL) : null,
+            'sender_email'           => isset($data['sender_email']) ? self::truncate_string((string) $data['sender_email'], self::MAX_SENDER_EMAIL) : null,
+            'subject'                => isset($data['subject']) ? self::truncate_string((string) $data['subject'], self::MAX_SUBJECT) : null,
             'provider_type'          => isset($data['provider_type']) ? (string) $data['provider_type'] : null,
-            'provider_error_code'    => isset($data['provider_error_code']) ? (string) $data['provider_error_code'] : null,
-            'provider_error_message' => isset($data['provider_error_message']) ? (string) $data['provider_error_message'] : null,
+            'provider_error_code'    => isset($data['provider_error_code']) ? self::truncate_string((string) $data['provider_error_code'], 50) : null,
+            'provider_error_message' => isset($data['provider_error_message']) ? self::truncate_string((string) $data['provider_error_message'], self::MAX_PROVIDER_ERROR) : null,
             'http_status_code'       => isset($data['http_status_code']) && (int) $data['http_status_code'] > 0 ? (int) $data['http_status_code'] : null,
-            'api_response'           => isset($data['api_response']) ? (string) $data['api_response'] : null,
-            'context'                => !empty($data['context']) ? wp_json_encode($data['context']) : null,
+            'api_response'           => isset($data['api_response']) ? self::truncate_string((string) $data['api_response'], self::MAX_API_RESPONSE) : null,
+            'context'                => !empty($data['context']) ? self::truncate_string((string) wp_json_encode($data['context']), self::MAX_CONTEXT_JSON) : null,
             'created_at'             => $now,
             'updated_at'             => $now,
         );
@@ -525,6 +600,11 @@ class ErrorLog
                     'error_message' => $data['error_message'] ?? '',
                 ));
             }
+        }
+
+        // Schedule daily cleanup if not already scheduled.
+        if (function_exists('wp_next_scheduled') && !wp_next_scheduled('mnem_cleanup_error_logs')) {
+            wp_schedule_event(time(), 'daily', 'mnem_cleanup_error_logs');
         }
     }
 }

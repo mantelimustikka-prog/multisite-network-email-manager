@@ -18,6 +18,7 @@ class Cron
     {
         add_filter('cron_schedules', array($this, 'register_intervals'));
         add_action(self::HOOK, array($this, 'process_queue_batch'));
+        add_action('mnem_cleanup_error_logs', array(static::class, 'cleanup_error_logs'));
 
         self::schedule_queue_processing();
     }
@@ -121,9 +122,18 @@ class Cron
     {
         if (function_exists('wp_clear_scheduled_hook')) {
             wp_clear_scheduled_hook(self::HOOK);
+            wp_clear_scheduled_hook('mnem_cleanup_error_logs');
         }
 
         update_site_option(self::OPTION_LOCK_UNTIL, 0);
+    }
+
+    public static function cleanup_error_logs(): void
+    {
+        $deleted = ErrorLog::cleanup_old_logs(ErrorLog::ERROR_LOG_RETENTION_DAYS);
+        if ($deleted > 0) {
+            Logger::info('Cleaned up error logs', array('deleted_count' => $deleted, 'days' => ErrorLog::ERROR_LOG_RETENTION_DAYS));
+        }
     }
 
     private static function is_valid_interval(string $interval)
