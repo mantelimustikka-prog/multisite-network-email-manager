@@ -413,6 +413,9 @@ class EmailTracking
 
         $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
         if ($table_exists === $table) {
+            if (class_exists(__NAMESPACE__ . '\\Installer') && method_exists(__NAMESPACE__ . '\\Installer', 'run_migrations')) {
+                Installer::run_migrations();
+            }
             self::$resolved_table_name = $table;
             return $table;
         }
