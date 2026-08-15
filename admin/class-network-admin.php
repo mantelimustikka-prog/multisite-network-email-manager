@@ -28,9 +28,16 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
+        add_action('wp_ajax_mnem_table_diagnostics_recreate', array($this, 'ajax_table_diagnostics_recreate'));
+        add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
+        add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
+        add_action('wp_ajax_mnem_table_diagnostics_export', array($this, 'ajax_table_diagnostics_export'));
 
         $menu = new AdminMenu();
         $menu->init();
+
+        $table_diagnostics = new TableDiagnostics();
+        $table_diagnostics->init();
     }
 
     public function handle_smtp_save()
@@ -611,6 +618,41 @@ class NetworkAdmin
         }
 
         wp_send_json_success($email);
+    }
+
+    public function ajax_table_diagnostics_recreate()
+    {
+        $this->ensure_ajax_permissions();
+        wp_send_json_success(TableDiagnostics::recreate_missing_tables());
+    }
+
+    public function ajax_table_diagnostics_optimize()
+    {
+        $this->ensure_ajax_permissions();
+        wp_send_json_success(TableDiagnostics::optimize_tables());
+    }
+
+    public function ajax_table_diagnostics_repair()
+    {
+        $this->ensure_ajax_permissions();
+        wp_send_json_success(TableDiagnostics::repair_tables());
+    }
+
+    public function ajax_table_diagnostics_export()
+    {
+        $this->ensure_ajax_permissions();
+        $format = isset($_POST['format']) ? sanitize_text_field(wp_unslash($_POST['format'])) : 'json';
+        if (!in_array($format, array('json', 'text'), true)) {
+            $format = 'json';
+        }
+
+        wp_send_json_success(
+            array(
+                'format' => $format,
+                'report' => TableDiagnostics::export_report($format),
+                'generated_at' => gmdate('c'),
+            )
+        );
     }
 
     public function handle_user_event_rule_action()

@@ -338,4 +338,75 @@
     $(document).on('click', '.mnem-modal__close, .mnem-modal__backdrop', function(){
         $('#mnem-email-preview-modal').hide();
     });
+
+    function renderTableDiagnosticsOutput(payload) {
+        var $output = $('#mnem-table-diagnostics-output');
+        if (!$output.length) {
+            return;
+        }
+        $output.text(JSON.stringify(payload || {}, null, 2));
+    }
+
+    function runTableDiagnosticsAction(action) {
+        var actionMap = {
+            recreate: 'mnem_table_diagnostics_recreate',
+            optimize: 'mnem_table_diagnostics_optimize',
+            repair: 'mnem_table_diagnostics_repair'
+        };
+        var ajaxAction = actionMap[action];
+        if (!ajaxAction) {
+            return;
+        }
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: ajaxAction,
+            nonce: mnemAdmin.nonce
+        }).done(function(response){
+            if (!response || !response.success) {
+                renderTableDiagnosticsOutput({ success: false, message: 'Request failed.' });
+                return;
+            }
+            renderTableDiagnosticsOutput(response.data || {});
+        }).fail(function(jqXHR){
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            renderTableDiagnosticsOutput({ success: false, error: data });
+        });
+    }
+
+    function downloadTableDiagnosticsReport(format, report) {
+        var extension = format === 'text' ? 'txt' : 'json';
+        var mimeType = format === 'text' ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8';
+        var blob = new Blob([String(report || '')], { type: mimeType });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'mnem-table-diagnostics-' + (new Date().toISOString().replace(/[:.]/g, '-')) + '.' + extension;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    $(document).on('click', '[data-mnem-table-action]', function(){
+        runTableDiagnosticsAction($(this).data('mnem-table-action'));
+    });
+
+    $(document).on('click', '[data-mnem-table-export]', function(){
+        var format = ($(this).data('mnem-table-export') || 'json').toString();
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_table_diagnostics_export',
+            nonce: mnemAdmin.nonce,
+            format: format
+        }).done(function(response){
+            if (!response || !response.success || !response.data) {
+                renderTableDiagnosticsOutput({ success: false, message: 'Export failed.' });
+                return;
+            }
+            renderTableDiagnosticsOutput(response.data);
+            downloadTableDiagnosticsReport(response.data.format || 'json', response.data.report || '');
+        }).fail(function(jqXHR){
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            renderTableDiagnosticsOutput({ success: false, error: data });
+        });
+    });
 })(jQuery);
