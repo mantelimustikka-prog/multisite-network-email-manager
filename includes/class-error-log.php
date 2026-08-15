@@ -601,10 +601,5 @@ class ErrorLog
                 ));
             }
         }
-
-        // Schedule daily cleanup if not already scheduled.
-        if (function_exists('wp_next_scheduled') && !wp_next_scheduled('mnem_cleanup_error_logs')) {
-            wp_schedule_event(time(), 'daily', 'mnem_cleanup_error_logs');
-        }
     }
 }

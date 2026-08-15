@@ -57,15 +57,16 @@ class Cron
         if (!$next) {
             wp_schedule_event(time() + 60, $interval, self::HOOK);
             Logger::info('Scheduled queue cron worker.', array('interval' => $interval));
-            return true;
-        }
-
-        if (function_exists('wp_get_scheduled_event') && function_exists('wp_unschedule_event')) {
+        } elseif (function_exists('wp_get_scheduled_event') && function_exists('wp_unschedule_event')) {
             $event = wp_get_scheduled_event(self::HOOK);
             if (is_object($event) && isset($event->schedule) && $event->schedule !== $interval) {
                 wp_unschedule_event($next, self::HOOK);
                 wp_schedule_event(time() + 60, $interval, self::HOOK);
             }
+        }
+
+        if (!wp_next_scheduled('mnem_cleanup_error_logs')) {
+            wp_schedule_event(time(), 'daily', 'mnem_cleanup_error_logs');
         }
 
         return true;
