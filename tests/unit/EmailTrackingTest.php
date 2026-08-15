@@ -30,6 +30,17 @@ class EmailTrackingTest extends TestCase
     public function test_handle_webhook_event_updates_record_status_and_counts()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_email_tracking';
+                }
+
+                return null;
+            }
+
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;

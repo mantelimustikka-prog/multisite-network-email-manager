@@ -11,6 +11,7 @@ class EmailTracking
     public const OPTION_LAST_CLEANUP_AT = 'mnem_email_preview_last_cleanup_at';
 
     private const TABLE_SUFFIX = 'mnem_email_tracking';
+    private static $resolved_table_name = null;
 
     public static function is_enabled(): bool
     {
@@ -355,29 +356,59 @@ class EmailTracking
 
     private static function get_table_name(): string
     {
+        if (self::$resolved_table_name !== null) {
+            return self::$resolved_table_name;
+        }
+
         global $wpdb;
 
         if (!isset($wpdb) || !is_object($wpdb) || !property_exists($wpdb, 'prefix')) {
+            self::$resolved_table_name = '';
             return '';
         }
 
         $table = $wpdb->prefix . self::TABLE_SUFFIX;
+        $candidates = array($table);
+        if (property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix)) {
+            $network_table = $wpdb->base_prefix . self::TABLE_SUFFIX;
+            if ($network_table !== $table) {
+                $candidates[] = $network_table;
+            }
+        }
+
         if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
+            self::$resolved_table_name = $table;
             return $table;
         }
 
-        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
-        if ($table_exists === $table) {
-            return $table;
+        foreach ($candidates as $candidate) {
+            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $candidate));
+            if ($table_exists === $candidate) {
+                self::$resolved_table_name = $candidate;
+                return $candidate;
+            }
         }
 
-        Installer::install();
-
-        if (!function_exists('dbDelta')) {
-            return $table;
+        if (!class_exists(__NAMESPACE__ . '\\Installer') && defined('MNEM_PLUGIN_DIR')) {
+            $installer_file = MNEM_PLUGIN_DIR . 'includes/class-installer.php';
+            if (file_exists($installer_file)) {
+                require_once $installer_file;
+            }
         }
 
-        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
-        return $table_exists === $table ? $table : '';
+        if (class_exists(__NAMESPACE__ . '\\Installer') && method_exists(__NAMESPACE__ . '\\Installer', 'install')) {
+            Installer::install();
+        }
+
+        foreach ($candidates as $candidate) {
+            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $candidate));
+            if ($table_exists === $candidate) {
+                self::$resolved_table_name = $candidate;
+                return $candidate;
+            }
+        }
+
+        self::$resolved_table_name = '';
+        return '';
     }
 }
