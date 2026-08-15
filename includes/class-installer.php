@@ -120,7 +120,7 @@ class Installer
 
         // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
         if (function_exists('get_sites')) {
-            $sites = get_sites(array('number' => 500, 'fields' => 'ids'));
+            $sites = get_sites(array('number' => 0, 'fields' => 'ids'));
             foreach ((array) $sites as $blog_id) {
                 $blog_id = (int) $blog_id;
                 if ($blog_id <= 1) {
@@ -134,10 +134,11 @@ class Installer
                     if ($old_exists !== $old_table) {
                         continue;
                     }
+                    // Set site_id on the old table's rows first, then copy into the central table.
                     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                    $wpdb->query("INSERT IGNORE INTO `{$new_table}` SELECT * FROM `{$old_table}` WHERE site_id = 0");
+                    $wpdb->query("UPDATE `{$old_table}` SET site_id = {$blog_id} WHERE site_id = 0 OR site_id IS NULL");
                     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                    $wpdb->query("UPDATE `{$new_table}` SET site_id = {$blog_id} WHERE site_id = 0 AND id IN (SELECT id FROM `{$old_table}`)");
+                    $wpdb->query("INSERT IGNORE INTO `{$new_table}` SELECT * FROM `{$old_table}`");
                     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $wpdb->query("DROP TABLE IF EXISTS `{$old_table}`");
                     Logger::info('Migrated old site-based table to central table.', array('old_table' => $old_table, 'new_table' => $new_table, 'blog_id' => $blog_id));
