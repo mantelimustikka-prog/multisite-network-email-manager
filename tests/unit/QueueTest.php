@@ -102,7 +102,7 @@ class QueueTest extends TestCase
         $this->assertSame(2, $stats['next_retry_attempts']);
     }
 
-    public function test_process_batch_switches_blog_context_and_restores()
+    public function test_process_batch_does_not_switch_blog_context()
     {
         $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
             'host' => 'smtp.example.test',
@@ -167,8 +167,9 @@ class QueueTest extends TestCase
         $processed = Queue::process_batch(1);
 
         $this->assertSame(1, $processed);
-        $this->assertSame(array(2), $GLOBALS['mnem_switched_blogs']);
-        $this->assertSame(1, $GLOBALS['mnem_restore_blog_calls']);
+        // Network plugin: no blog switching required since all tables are centralized.
+        $this->assertSame(array(), $GLOBALS['mnem_switched_blogs']);
+        $this->assertSame(0, $GLOBALS['mnem_restore_blog_calls']);
         $this->assertSame('user@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
     }
 

@@ -29,7 +29,7 @@ class Queue
             return false;
         }
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $scheduled_at = self::current_time_mysql();
         $created_at = self::current_time_mysql();
         $from_email = isset($options['from_email']) ? sanitize_email((string) $options['from_email']) : '';
@@ -81,7 +81,7 @@ class Queue
     {
         global $wpdb;
 
-        $table     = $wpdb->prefix . 'mnem_queue';
+        $table     = $wpdb->base_prefix . 'mnem_queue';
         $threshold = gmdate('Y-m-d H:i:s', time() - (defined('HOUR_IN_SECONDS') ? HOUR_IN_SECONDS : 3600));
 
         $recovered = (int) $wpdb->query(
@@ -106,7 +106,7 @@ class Queue
 
         self::recover_stuck_processing_rows();
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $now = self::current_time_mysql();
         $limit = max(1, $limit);
 
@@ -143,7 +143,7 @@ class Queue
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $claim_time = self::current_time_mysql();
         $claimed = $wpdb->query(
             $wpdb->prepare(
@@ -190,10 +190,6 @@ class Queue
         $blog_id = isset($row['blog_id']) ? (int) $row['blog_id'] : (int) $row['site_id'];
         if ($blog_id <= 0) {
             $blog_id = (int) $row['site_id'];
-        }
-
-        if ($blog_id > 0 && function_exists('switch_to_blog')) {
-            switch_to_blog($blog_id);
         }
 
         $sent = false;
@@ -338,9 +334,6 @@ class Queue
                 )
             );
         } finally {
-            if ($blog_id > 0 && function_exists('restore_current_blog')) {
-                restore_current_blog();
-            }
         }
 
         if (!empty($row['campaign_id'])) {
@@ -362,7 +355,7 @@ class Queue
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         if ($site_id === null) {
             $pending = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'pending'));
             $processing = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'processing'));
@@ -408,7 +401,7 @@ class Queue
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $campaign_ids = $wpdb->get_col(
             $wpdb->prepare(
                 "SELECT DISTINCT campaign_id FROM {$table} WHERE site_id = %d AND status = %s AND campaign_id > %d",
@@ -448,7 +441,7 @@ class Queue
             return false;
         }
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $item = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT id, site_id, campaign_id, recipient_email, status FROM {$table} WHERE id = %d",
@@ -534,7 +527,7 @@ class Queue
             return 0;
         }
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         if ($site_id > 0) {
             $delete_query = $wpdb->prepare(
                 "DELETE FROM {$table} WHERE site_id = %d AND status = %s",
@@ -573,7 +566,7 @@ class Queue
             return 0;
         }
 
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $deleted = $wpdb->query(
             self::prepare_delete_query(
                 "DELETE FROM {$table} WHERE campaign_id = %d",
@@ -606,7 +599,7 @@ class Queue
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
         $email = strtolower(trim(sanitize_email($email)));
         $found = $wpdb->get_var(
             $wpdb->prepare(

@@ -518,6 +518,7 @@ if (!class_exists('wpdb')) {
     class wpdb
     {
         public $prefix = 'wp_';
+        public $base_prefix = 'wp_';
         public $insert_id = 0;
         public $queries = array();
         public $results = array();

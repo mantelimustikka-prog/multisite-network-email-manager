@@ -92,7 +92,7 @@ class Logger
             return;
         }
 
-        $table = $wpdb->prefix . 'mnem_logs';
+        $table = $wpdb->base_prefix . 'mnem_logs';
 
         if (method_exists($wpdb, 'get_var')) {
             $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));

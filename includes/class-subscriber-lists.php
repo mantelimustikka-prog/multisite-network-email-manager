@@ -10,7 +10,7 @@ class SubscriberLists
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_subscriber_lists';
+        $table = $wpdb->base_prefix . 'mnem_subscriber_lists';
         $now = self::current_time_mysql();
         $result = $wpdb->query(
             $wpdb->prepare(
@@ -35,7 +35,7 @@ class SubscriberLists
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_subscriber_lists';
+        $table = $wpdb->base_prefix . 'mnem_subscriber_lists';
         $row = $wpdb->get_row(
             $wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $id),
             ARRAY_A
@@ -47,7 +47,7 @@ class SubscriberLists
     public static function get_all()
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_subscriber_lists';
+        $table = $wpdb->base_prefix . 'mnem_subscriber_lists';
 
         return (array) $wpdb->get_results(
             $wpdb->prepare("SELECT * FROM {$table} ORDER BY created_at DESC LIMIT %d", 500),
@@ -58,7 +58,7 @@ class SubscriberLists
     public static function update(int $id, string $name, string $description)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_subscriber_lists';
+        $table = $wpdb->base_prefix . 'mnem_subscriber_lists';
         $result = $wpdb->query(
             $wpdb->prepare(
                 "UPDATE {$table} SET name = %s, description = %s, updated_at = %s WHERE id = %d",
@@ -79,8 +79,8 @@ class SubscriberLists
     public static function delete(int $id)
     {
         global $wpdb;
-        $lists_table = $wpdb->prefix . 'mnem_subscriber_lists';
-        $subs_table = $wpdb->prefix . 'mnem_list_subscribers';
+        $lists_table = $wpdb->base_prefix . 'mnem_subscriber_lists';
+        $subs_table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $wpdb->query($wpdb->prepare("DELETE FROM {$subs_table} WHERE list_id = %d", $id));
         $result = $wpdb->query($wpdb->prepare("DELETE FROM {$lists_table} WHERE id = %d", $id));
 
@@ -94,7 +94,7 @@ class SubscriberLists
     public static function add_subscriber(int $list_id, int $user_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $existing = $wpdb->get_row(
             $wpdb->prepare("SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d", $list_id, $user_id),
             ARRAY_A
@@ -138,7 +138,7 @@ class SubscriberLists
     public static function remove_subscriber(int $list_id, int $user_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $result = $wpdb->query(
             $wpdb->prepare("DELETE FROM {$table} WHERE list_id = %d AND user_id = %d", $list_id, $user_id)
         );
@@ -153,7 +153,7 @@ class SubscriberLists
     public static function unsubscribe_user(int $list_id, int $user_id, string $reason = '')
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $existing = $wpdb->get_var(
             $wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND user_id = %d", $list_id, $user_id)
         );
@@ -194,7 +194,7 @@ class SubscriberLists
     public static function resubscribe_user(int $list_id, int $user_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $result = $wpdb->query(
             $wpdb->prepare(
                 "UPDATE {$table} SET subscription_status = %s, subscribed_at = %s, unsubscribed_at = %s, unsubscribed_reason = %s WHERE list_id = %d AND user_id = %d",
@@ -227,7 +227,7 @@ class SubscriberLists
     public static function get_list_subscribers_count(int $list_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         return (int) $wpdb->get_var(
             $wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND subscription_status = %s", $list_id, 'subscribed')
         );
@@ -236,7 +236,7 @@ class SubscriberLists
     public static function is_unsubscribed(int $list_id, int $user_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $count = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND user_id = %d AND subscription_status = %s",
@@ -252,7 +252,7 @@ class SubscriberLists
     public static function get_user_lists(int $user_id)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         return (array) $wpdb->get_results(
             $wpdb->prepare("SELECT * FROM {$table} WHERE user_id = %d ORDER BY list_id ASC", $user_id),
             ARRAY_A
@@ -350,7 +350,7 @@ class SubscriberLists
     private static function get_users_by_status(int $list_id, string $status, int $limit, int $offset)
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'mnem_list_subscribers';
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $rows = (array) $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT * FROM {$table} WHERE list_id = %d AND subscription_status = %s ORDER BY id DESC LIMIT %d OFFSET %d",
