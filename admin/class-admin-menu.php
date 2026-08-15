@@ -32,6 +32,7 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Email History', 'Email History', 'manage_network_options', 'mnem-email-history', array($this, 'render_email_history'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
+        add_submenu_page('mnem-dashboard', 'Email Errors', 'Email Errors', 'manage_network_options', 'mnem-error-logs', array($this, 'render_error_logs'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
     }
 
@@ -80,8 +81,9 @@ class AdminMenu
         }
 
         $tracking_enabled = \MNEM\EmailTracking::is_enabled();
+        $error_summary    = \MNEM\ErrorLog::get_summary();
 
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings', 'tracking_enabled'));
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings', 'tracking_enabled', 'error_summary'));
     }
 
     public function render_settings()
@@ -220,6 +222,74 @@ class AdminMenu
         }
 
         $this->render_view('user-event-rules.php', compact('rules', 'eligible_campaigns', 'notice', 'notice_message', 'notice_class', 'dry_run_matches', 'preview_campaign', 'edit_rule'));
+    }
+
+    public function render_error_logs()
+    {
+        $filters = array();
+        $allowed_levels = array(\MNEM\ErrorLog::LEVEL_ERROR, \MNEM\ErrorLog::LEVEL_WARNING, \MNEM\ErrorLog::LEVEL_CRITICAL);
+        $allowed_types  = array(
+            \MNEM\ErrorLog::TYPE_SEND_FAILED,
+            \MNEM\ErrorLog::TYPE_PROVIDER_ERROR,
+            \MNEM\ErrorLog::TYPE_QUEUE_ERROR,
+            \MNEM\ErrorLog::TYPE_SYSTEM_ERROR,
+            \MNEM\ErrorLog::TYPE_VALIDATION_ERROR,
+            \MNEM\ErrorLog::TYPE_DB_ERROR,
+        );
+
+        if (!empty($_GET['error_level']) && in_array($_GET['error_level'], $allowed_levels, true)) {
+            $filters['error_level'] = sanitize_text_field(wp_unslash($_GET['error_level']));
+        }
+
+        if (!empty($_GET['error_type']) && in_array($_GET['error_type'], $allowed_types, true)) {
+            $filters['error_type'] = sanitize_text_field(wp_unslash($_GET['error_type']));
+        }
+
+        if (!empty($_GET['provider_type'])) {
+            $filters['provider_type'] = sanitize_text_field(wp_unslash($_GET['provider_type']));
+        }
+
+        if (!empty($_GET['recipient_email'])) {
+            $filters['recipient_email'] = sanitize_email(wp_unslash($_GET['recipient_email']));
+        }
+
+        if (!empty($_GET['queue_id'])) {
+            $filters['queue_id'] = (int) $_GET['queue_id'];
+        }
+
+        if (!empty($_GET['campaign_id'])) {
+            $filters['campaign_id'] = (int) $_GET['campaign_id'];
+        }
+
+        if (!empty($_GET['date_from'])) {
+            $filters['date_from'] = sanitize_text_field(wp_unslash($_GET['date_from']));
+        }
+
+        if (!empty($_GET['date_to'])) {
+            $filters['date_to'] = sanitize_text_field(wp_unslash($_GET['date_to']));
+        }
+
+        if (!empty($_GET['s'])) {
+            $filters['search'] = sanitize_text_field(wp_unslash($_GET['s']));
+        }
+
+        $per_page     = 50;
+        $current_page = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
+        $offset       = ($current_page - 1) * $per_page;
+
+        $total_items = \MNEM\ErrorLog::count_logs($filters);
+        $items       = \MNEM\ErrorLog::get_logs($filters, $per_page, $offset);
+        $total_pages = $total_items > 0 ? (int) ceil($total_items / $per_page) : 1;
+
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+
+        $this->render_view('error-logs.php', compact(
+            'items', 'filters', 'total_items', 'total_pages', 'current_page', 'per_page',
+            'notice', 'notice_message', 'notice_class',
+            'allowed_levels', 'allowed_types'
+        ));
     }
 
     private function render_view($view, array $variables)

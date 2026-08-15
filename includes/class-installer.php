@@ -59,6 +59,7 @@ class Installer
         $subscriber_lists_table = $wpdb->prefix . 'mnem_subscriber_lists';
         $list_subscribers_table = $wpdb->prefix . 'mnem_list_subscribers';
         $email_tracking_table = $wpdb->prefix . 'mnem_email_tracking';
+        $error_logs_table = $wpdb->prefix . 'mnem_error_logs';
 
         $sql = array(
             "CREATE TABLE {$logs_table} (
@@ -180,6 +181,39 @@ class Installer
                 KEY provider_message_id (provider_message_id),
                 KEY delivery_status (delivery_status),
                 KEY created_at (created_at)
+            ) {$charset_collate};",
+            "CREATE TABLE {$error_logs_table} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                error_level varchar(20) NOT NULL DEFAULT 'error',
+                error_type varchar(100) NOT NULL,
+                error_code varchar(50) NULL,
+                error_message longtext NOT NULL,
+                system_error longtext NULL,
+                stack_trace longtext NULL,
+                queue_id bigint(20) unsigned NULL,
+                campaign_id bigint(20) unsigned NULL,
+                recipient_email varchar(255) NULL,
+                sender_email varchar(255) NULL,
+                subject varchar(255) NULL,
+                provider_type varchar(50) NULL,
+                provider_error_code varchar(50) NULL,
+                provider_error_message longtext NULL,
+                http_status_code int(11) NULL,
+                api_response longtext NULL,
+                context longtext NULL,
+                created_at datetime NOT NULL,
+                updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY  (id),
+                KEY site_id (site_id),
+                KEY error_level (error_level),
+                KEY error_type (error_type),
+                KEY created_at (created_at),
+                KEY recipient_email (recipient_email),
+                KEY queue_id (queue_id),
+                KEY campaign_id (campaign_id),
+                KEY provider_type (provider_type)
             ) {$charset_collate};",
         );
 
