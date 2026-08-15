@@ -196,7 +196,7 @@ class Installer
                 campaign_id bigint(20) unsigned NULL,
                 recipient_email varchar(255) NULL,
                 sender_email varchar(255) NULL,
-                subject varchar(255) NULL,
+                subject text NULL,
                 provider_type varchar(50) NULL,
                 provider_error_code varchar(50) NULL,
                 provider_error_message longtext NULL,
