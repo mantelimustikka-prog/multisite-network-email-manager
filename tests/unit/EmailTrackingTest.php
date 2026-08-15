@@ -30,6 +30,17 @@ class EmailTrackingTest extends TestCase
     public function test_handle_webhook_event_updates_record_status_and_counts()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_email_tracking';
+                }
+
+                return null;
+            }
+
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
@@ -54,9 +65,10 @@ class EmailTrackingTest extends TestCase
 
         $queries = $GLOBALS['wpdb']->queries;
         $this->assertNotEmpty($queries);
-        $this->assertStringContainsString("SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $queries[0]);
-        $this->assertStringContainsString("open_count = 2", $queries[1]);
-        $this->assertStringContainsString("delivery_status = 'pending'", $queries[1]);
+        $joined_queries = implode("\n", $queries);
+        $this->assertStringContainsString("SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
+        $this->assertStringContainsString("open_count = 2", $joined_queries);
+        $this->assertStringContainsString("delivery_status = 'pending'", $joined_queries);
     }
 
     public function test_save_settings_allows_zero_day_retention()
