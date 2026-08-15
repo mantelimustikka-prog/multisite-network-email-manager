@@ -17,6 +17,10 @@ if (!defined('OBJECT')) {
     define('OBJECT', 'OBJECT');
 }
 
+if (!defined('DAY_IN_SECONDS')) {
+    define('DAY_IN_SECONDS', 86400);
+}
+
 if (!defined('MNEM_VERSION')) {
     define('MNEM_VERSION', '1.0.0');
 }
@@ -570,6 +574,24 @@ if (!class_exists('wpdb')) {
         {
             return '';
         }
+
+        public function insert($table, $data)
+        {
+            $this->queries[] = 'INSERT INTO ' . $table;
+            $this->insert_id  = isset($this->insert_id) ? (int) $this->insert_id + 1 : 1;
+            return 1;
+        }
+
+        public function delete($table, $where, $where_format = null)
+        {
+            $this->queries[] = 'DELETE FROM ' . $table;
+            return 1;
+        }
+
+        public function esc_like($text)
+        {
+            return addcslashes((string) $text, '_%\\');
+        }
     }
 }
 
@@ -717,6 +739,7 @@ if (!function_exists('checked')) {
 
 require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
+require_once __DIR__ . '/../includes/class-error-log.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-email-formatter.php';
 require_once __DIR__ . '/../includes/class-mail-interceptor.php';

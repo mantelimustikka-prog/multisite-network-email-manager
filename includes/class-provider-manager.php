@@ -117,6 +117,17 @@ class ProviderManager
             'success'          => false,
         ));
 
+        ErrorLog::log_provider_error(
+            $primary_type,
+            isset($result['message']) ? (string) $result['message'] : 'Provider send failed without error message',
+            isset($result['metadata']['http_code']) ? (int) $result['metadata']['http_code'] : 0,
+            isset($result['metadata']['api_response']) ? (string) $result['metadata']['api_response'] : '',
+            $to,
+            array(
+                'provider_error_message' => isset($result['message']) ? (string) $result['message'] : '',
+            )
+        );
+
         // Try fallback provider if configured.
         if ($fallback_enabled && $fallback_type !== '' && $fallback_type !== $primary_type) {
             $fallback = self::get_provider($fallback_type);
@@ -130,6 +141,17 @@ class ProviderManager
                     Logger::info('Fallback provider succeeded.', array('provider' => $fallback_type, 'to' => $to));
                 } else {
                     Logger::error('Fallback provider also failed.', array('provider_type' => $fallback_type, 'provider_message' => $fallback_result['message'], 'recipient' => $to));
+                    ErrorLog::log_provider_error(
+                        $fallback_type,
+                        isset($fallback_result['message']) ? (string) $fallback_result['message'] : 'Fallback provider failed without error message',
+                        isset($fallback_result['metadata']['http_code']) ? (int) $fallback_result['metadata']['http_code'] : 0,
+                        isset($fallback_result['metadata']['api_response']) ? (string) $fallback_result['metadata']['api_response'] : '',
+                        $to,
+                        array(
+                            'provider_error_message' => isset($fallback_result['message']) ? (string) $fallback_result['message'] : '',
+                            'primary_provider'       => $primary_type,
+                        )
+                    );
                 }
 
                 return $fallback_result;
