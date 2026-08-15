@@ -197,58 +197,9 @@ class ErrorLog
         global $wpdb;
 
         $table  = $wpdb->prefix . 'mnem_error_logs';
-        $where  = array('1=1');
-        $params = array();
-
-        if (!empty($filters['error_level'])) {
-            $where[]  = 'error_level = %s';
-            $params[] = $filters['error_level'];
-        }
-
-        if (!empty($filters['error_type'])) {
-            $where[]  = 'error_type = %s';
-            $params[] = $filters['error_type'];
-        }
-
-        if (!empty($filters['provider_type'])) {
-            $where[]  = 'provider_type = %s';
-            $params[] = $filters['provider_type'];
-        }
-
-        if (!empty($filters['recipient_email'])) {
-            $where[]  = 'recipient_email LIKE %s';
-            $params[] = '%' . $wpdb->esc_like($filters['recipient_email']) . '%';
-        }
-
-        if (isset($filters['queue_id']) && (int) $filters['queue_id'] > 0) {
-            $where[]  = 'queue_id = %d';
-            $params[] = (int) $filters['queue_id'];
-        }
-
-        if (isset($filters['campaign_id']) && (int) $filters['campaign_id'] > 0) {
-            $where[]  = 'campaign_id = %d';
-            $params[] = (int) $filters['campaign_id'];
-        }
-
-        if (!empty($filters['date_from'])) {
-            $where[]  = 'created_at >= %s';
-            $params[] = $filters['date_from'];
-        }
-
-        if (!empty($filters['date_to'])) {
-            $where[]  = 'created_at <= %s';
-            $params[] = $filters['date_to'];
-        }
-
-        if (!empty($filters['search'])) {
-            $like     = '%' . $wpdb->esc_like($filters['search']) . '%';
-            $where[]  = '(error_message LIKE %s OR recipient_email LIKE %s OR subject LIKE %s)';
-            $params[] = $like;
-            $params[] = $like;
-            $params[] = $like;
-        }
-
-        $where_sql = implode(' AND ', $where);
+        $clause = self::build_where_clause($filters);
+        $where_sql = implode(' AND ', $clause['where']);
+        $params    = $clause['params'];
         $params[]  = max(1, $limit);
         $params[]  = max(0, $offset);
 
@@ -299,59 +250,11 @@ class ErrorLog
     {
         global $wpdb;
 
-        $table  = $wpdb->prefix . 'mnem_error_logs';
-        $where  = array('1=1');
-        $params = array();
+        $table     = $wpdb->prefix . 'mnem_error_logs';
+        $clause    = self::build_where_clause($filters);
+        $where_sql = implode(' AND ', $clause['where']);
+        $params    = $clause['params'];
 
-        if (!empty($filters['error_level'])) {
-            $where[]  = 'error_level = %s';
-            $params[] = $filters['error_level'];
-        }
-
-        if (!empty($filters['error_type'])) {
-            $where[]  = 'error_type = %s';
-            $params[] = $filters['error_type'];
-        }
-
-        if (!empty($filters['provider_type'])) {
-            $where[]  = 'provider_type = %s';
-            $params[] = $filters['provider_type'];
-        }
-
-        if (!empty($filters['recipient_email'])) {
-            $where[]  = 'recipient_email LIKE %s';
-            $params[] = '%' . $wpdb->esc_like($filters['recipient_email']) . '%';
-        }
-
-        if (isset($filters['queue_id']) && (int) $filters['queue_id'] > 0) {
-            $where[]  = 'queue_id = %d';
-            $params[] = (int) $filters['queue_id'];
-        }
-
-        if (isset($filters['campaign_id']) && (int) $filters['campaign_id'] > 0) {
-            $where[]  = 'campaign_id = %d';
-            $params[] = (int) $filters['campaign_id'];
-        }
-
-        if (!empty($filters['date_from'])) {
-            $where[]  = 'created_at >= %s';
-            $params[] = $filters['date_from'];
-        }
-
-        if (!empty($filters['date_to'])) {
-            $where[]  = 'created_at <= %s';
-            $params[] = $filters['date_to'];
-        }
-
-        if (!empty($filters['search'])) {
-            $like     = '%' . $wpdb->esc_like($filters['search']) . '%';
-            $where[]  = '(error_message LIKE %s OR recipient_email LIKE %s OR subject LIKE %s)';
-            $params[] = $like;
-            $params[] = $like;
-            $params[] = $like;
-        }
-
-        $where_sql = implode(' AND ', $where);
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $sql = "SELECT COUNT(1) FROM {$table} WHERE {$where_sql}";
 
@@ -470,6 +373,70 @@ class ErrorLog
     // -------------------------------------------------------------------------
 
     /**
+     * Build a reusable WHERE clause array from filters.
+     *
+     * @param array<string,mixed> $filters
+     * @return array{where:string[],params:mixed[]}
+     */
+    private static function build_where_clause(array $filters): array
+    {
+        $where  = array('1=1');
+        $params = array();
+
+        if (!empty($filters['error_level'])) {
+            $where[]  = 'error_level = %s';
+            $params[] = $filters['error_level'];
+        }
+
+        if (!empty($filters['error_type'])) {
+            $where[]  = 'error_type = %s';
+            $params[] = $filters['error_type'];
+        }
+
+        if (!empty($filters['provider_type'])) {
+            $where[]  = 'provider_type = %s';
+            $params[] = $filters['provider_type'];
+        }
+
+        if (!empty($filters['recipient_email'])) {
+            global $wpdb;
+            $where[]  = 'recipient_email LIKE %s';
+            $params[] = '%' . $wpdb->esc_like($filters['recipient_email']) . '%';
+        }
+
+        if (isset($filters['queue_id']) && (int) $filters['queue_id'] > 0) {
+            $where[]  = 'queue_id = %d';
+            $params[] = (int) $filters['queue_id'];
+        }
+
+        if (isset($filters['campaign_id']) && (int) $filters['campaign_id'] > 0) {
+            $where[]  = 'campaign_id = %d';
+            $params[] = (int) $filters['campaign_id'];
+        }
+
+        if (!empty($filters['date_from'])) {
+            $where[]  = 'created_at >= %s';
+            $params[] = $filters['date_from'];
+        }
+
+        if (!empty($filters['date_to'])) {
+            $where[]  = 'created_at <= %s';
+            $params[] = $filters['date_to'];
+        }
+
+        if (!empty($filters['search'])) {
+            global $wpdb;
+            $like     = '%' . $wpdb->esc_like($filters['search']) . '%';
+            $where[]  = '(error_message LIKE %s OR recipient_email LIKE %s OR subject LIKE %s)';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        return array('where' => $where, 'params' => $params);
+    }
+
+    /**
      * @param array<string,mixed> $data
      */
     private static function insert(array $data): void
@@ -480,7 +447,7 @@ class ErrorLog
         $now   = current_time('mysql', true);
 
         $row = array(
-            'site_id'                => function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 0,
+            'site_id'                => function_exists('get_current_network_id') ? (int) get_current_network_id() : (isset($wpdb->siteid) ? (int) $wpdb->siteid : 0),
             'blog_id'                => function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 0,
             'error_level'            => isset($data['error_level']) ? (string) $data['error_level'] : self::LEVEL_ERROR,
             'error_type'             => isset($data['error_type']) ? (string) $data['error_type'] : self::TYPE_SYSTEM_ERROR,

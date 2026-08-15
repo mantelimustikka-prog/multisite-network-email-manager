@@ -752,10 +752,14 @@ class NetworkAdmin
         }
 
         $logs = \MNEM\ErrorLog::get_logs($filters, 1000, 0);
+        $total_count = \MNEM\ErrorLog::count_logs($filters);
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename=mnem-error-logs-' . gmdate('Y-m-d') . '.csv');
         $out = fopen('php://output', 'w');
+        if ($total_count > 1000) {
+            fputcsv($out, array('# NOTE: Export limited to 1000 most recent entries. Total matching: ' . $total_count));
+        }
         fputcsv($out, array('ID', 'Date', 'Level', 'Type', 'Recipient', 'Subject', 'Provider', 'Error Message'));
         foreach ($logs as $row) {
             fputcsv($out, array(

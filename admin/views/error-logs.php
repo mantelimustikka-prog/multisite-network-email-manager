@@ -171,6 +171,14 @@ pre.mnem-stack-trace { background:#f6f6f6; padding:12px; overflow:auto; max-heig
 <script>
 (function($) {
     var nonce = '<?php echo esc_js(wp_create_nonce('mnem_dashboard_ajax')); ?>';
+    var i18n = {
+        couldNotLoadDetails: '<?php echo esc_js(__('Could not load error details.', 'multisite-network-email-manager')); ?>',
+        confirmDelete: '<?php echo esc_js(__('Delete this error log entry?', 'multisite-network-email-manager')); ?>',
+        couldNotDelete: '<?php echo esc_js(__('Could not delete.', 'multisite-network-email-manager')); ?>',
+        confirmClear: '<?php echo esc_js(__('Delete all error logs older than {days} days?', 'multisite-network-email-manager')); ?>',
+        couldNotClear: '<?php echo esc_js(__('Could not clear logs.', 'multisite-network-email-manager')); ?>',
+        noValue: '—'
+    };
 
     // View error details
     $(document).on('click', '.mnem-view-error-details', function() {
@@ -180,7 +188,7 @@ pre.mnem-stack-trace { background:#f6f6f6; padding:12px; overflow:auto; max-heig
                 populateModal(res.data);
                 $('#mnem-error-details-modal').show();
             } else {
-                alert('Could not load error details.');
+                alert(i18n.couldNotLoadDetails);
             }
         });
     });
@@ -193,11 +201,11 @@ pre.mnem-stack-trace { background:#f6f6f6; padding:12px; overflow:auto; max-heig
 
     // Delete error log
     $(document).on('click', '.mnem-delete-error-log', function() {
-        if (!confirm('Delete this error log entry?')) return;
+        if (!confirm(i18n.confirmDelete)) return;
         var logId = $(this).data('log-id');
         var $row  = $(this).closest('tr');
         $.post(ajaxurl, { action: 'mnem_delete_error_log', log_id: logId, nonce: nonce }, function(res) {
-            if (res.success) { $row.fadeOut(); } else { alert('Could not delete.'); }
+            if (res.success) { $row.fadeOut(); } else { alert(i18n.couldNotDelete); }
         });
     });
 
@@ -225,15 +233,15 @@ pre.mnem-stack-trace { background:#f6f6f6; padding:12px; overflow:auto; max-heig
     // Clear old errors
     $('#mnem-clear-old-errors').on('click', function() {
         var days = parseInt($(this).data('days'), 10) || 30;
-        if (!confirm('Delete all error logs older than ' + days + ' days?')) return;
+        if (!confirm(i18n.confirmClear.replace('{days}', days))) return;
         $.post(ajaxurl, { action: 'mnem_clear_old_errors', days: days, nonce: nonce }, function(res) {
             if (res.success) { alert(res.data.message); location.reload(); }
-            else { alert('Could not clear logs.'); }
+            else { alert(i18n.couldNotClear); }
         });
     });
 
     function esc(str) {
-        if (!str) return '—';
+        if (!str && str !== 0) return i18n.noValue;
         return $('<div/>').text(str).html();
     }
 
