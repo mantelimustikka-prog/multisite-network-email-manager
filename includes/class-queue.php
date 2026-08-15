@@ -73,9 +73,38 @@ class Queue
         return isset($wpdb->insert_id) ? (int) $wpdb->insert_id : true;
     }
 
+    /**
+     * Reset queue rows that have been stuck in "processing" for more than 1 hour back to "pending".
+     * This recovers from server crashes, fatal errors, or other mid-process failures.
+     */
+    public static function recover_stuck_processing_rows(): int
+    {
+        global $wpdb;
+
+        $table     = $wpdb->prefix . 'mnem_queue';
+        $threshold = gmdate('Y-m-d H:i:s', time() - (defined('HOUR_IN_SECONDS') ? HOUR_IN_SECONDS : 3600));
+
+        $recovered = (int) $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s WHERE status = %s AND processed_at < %s",
+                'pending',
+                'processing',
+                $threshold
+            )
+        );
+
+        if ($recovered > 0) {
+            Logger::warning('Recovered stuck queue rows back to pending.', array('count' => $recovered));
+        }
+
+        return $recovered;
+    }
+
     public static function process_batch(int $limit = 20)
     {
         global $wpdb;
+
+        self::recover_stuck_processing_rows();
 
         $table = $wpdb->prefix . 'mnem_queue';
         $now = self::current_time_mysql();
@@ -115,10 +144,12 @@ class Queue
         global $wpdb;
 
         $table = $wpdb->prefix . 'mnem_queue';
+        $claim_time = self::current_time_mysql();
         $claimed = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s",
+                "UPDATE {$table} SET status = %s, processed_at = %s WHERE id = %d AND status = %s",
                 'processing',
+                $claim_time,
                 $id,
                 'pending'
             )
@@ -225,10 +256,6 @@ class Queue
                     )
                 );
 
-                $tracking_headers = $headers;
-                unset($tracking_headers['__attachments']);
-                EmailTracking::store_sent_email($id, $row, $result, $tracking_headers);
-
                 Logger::info('Queue email sent.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
                 $status = 'sent';
             } else {
@@ -255,6 +282,11 @@ class Queue
                     Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled, 'provider' => $provider_type));
                 }
             }
+
+            // Always record the send attempt - both success and failure - so Email History is complete.
+            $tracking_headers = $headers;
+            unset($tracking_headers['__attachments']);
+            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers);
         } finally {
             if ($blog_id > 0 && function_exists('restore_current_blog')) {
                 restore_current_blog();
