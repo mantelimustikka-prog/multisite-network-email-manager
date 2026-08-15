@@ -54,9 +54,10 @@ class EmailTrackingTest extends TestCase
 
         $queries = $GLOBALS['wpdb']->queries;
         $this->assertNotEmpty($queries);
-        $this->assertStringContainsString("SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $queries[0]);
-        $this->assertStringContainsString("open_count = 2", $queries[1]);
-        $this->assertStringContainsString("delivery_status = 'pending'", $queries[1]);
+        $joined_queries = implode("\n", $queries);
+        $this->assertStringContainsString("SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
+        $this->assertStringContainsString("open_count = 2", $joined_queries);
+        $this->assertStringContainsString("delivery_status = 'pending'", $joined_queries);
     }
 
     public function test_save_settings_allows_zero_day_retention()

@@ -10,6 +10,8 @@ class EmailTracking
     public const OPTION_RETENTION_DAYS = 'mnem_email_preview_retention_days';
     public const OPTION_LAST_CLEANUP_AT = 'mnem_email_preview_last_cleanup_at';
 
+    private const TABLE_SUFFIX = 'mnem_email_tracking';
+
     public static function is_enabled(): bool
     {
         $keep_previews = get_site_option(self::OPTION_KEEP_PREVIEWS);
@@ -54,7 +56,10 @@ class EmailTracking
         }
 
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return;
+        }
         $cutoff = gmdate('Y-m-d H:i:s', $now_unix - ($retention_days * 86400));
 
         $wpdb->query(
@@ -78,7 +83,10 @@ class EmailTracking
         }
 
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return;
+        }
         $now = gmdate('Y-m-d H:i:s');
         $provider_message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
 
@@ -110,7 +118,10 @@ class EmailTracking
     public static function get_history(string $search = '', int $limit = 200): array
     {
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return array('items' => array());
+        }
         $search = trim($search);
         $limit = max(1, $limit);
 
@@ -145,7 +156,14 @@ class EmailTracking
     public static function get_storage_usage(): array
     {
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return array(
+                'emails' => 0,
+                'bytes' => 0,
+                'formatted' => self::format_bytes(0),
+            );
+        }
         $row = $wpdb->get_row(
             "SELECT COUNT(1) AS total_emails, COALESCE(SUM(COALESCE(LENGTH(recipient_email), 0) + COALESCE(LENGTH(subject), 0) + COALESCE(LENGTH(body), 0) + COALESCE(LENGTH(headers), 0) + COALESCE(LENGTH(provider_message_id), 0)), 0) AS total_bytes FROM {$table}",
             ARRAY_A
@@ -178,7 +196,10 @@ class EmailTracking
         }
 
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return;
+        }
 
         $where_sql = '';
         $where_args = array();
@@ -298,7 +319,10 @@ class EmailTracking
     public static function get_email(int $email_id): ?array
     {
         global $wpdb;
-        $table = (!empty($wpdb->base_prefix) ? $wpdb->base_prefix : $wpdb->prefix) . 'mnem_email_tracking';
+        $table = self::get_table_name();
+        if ($table === '') {
+            return null;
+        }
         $row = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT email_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE email_id = %d LIMIT %d",
@@ -327,5 +351,33 @@ class EmailTracking
         }
 
         return $bytes . ' B';
+    }
+
+    private static function get_table_name(): string
+    {
+        global $wpdb;
+
+        if (!isset($wpdb) || !is_object($wpdb) || !property_exists($wpdb, 'prefix')) {
+            return '';
+        }
+
+        $table = $wpdb->prefix . self::TABLE_SUFFIX;
+        if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
+            return $table;
+        }
+
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists === $table) {
+            return $table;
+        }
+
+        Installer::install();
+
+        if (!function_exists('dbDelta')) {
+            return $table;
+        }
+
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        return $table_exists === $table ? $table : '';
     }
 }
