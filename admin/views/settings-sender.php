@@ -75,9 +75,11 @@ $force_sender = \MNEM\SmtpSettings::is_force_sender_enabled();
                         <?php esc_html_e('When enabled, all emails use Sender Name and Sender Email configured above, regardless of custom From headers.', 'multisite-network-email-manager'); ?>
                     </p>
                     <?php if ($force_sender && $sender_email !== '') : ?>
-                        <p style="color: #0a6b0a; font-weight: bold;">
+                        <p class="description">
+                            <strong>
                             <?php esc_html_e('Enforced sender:', 'multisite-network-email-manager'); ?>
                             <?php echo esc_html($sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email); ?>
+                            </strong>
                         </p>
                     <?php endif; ?>
                 </td>
