@@ -258,7 +258,7 @@ class RestApi
     {
         global $wpdb;
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-        $table = $wpdb->prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_queue';
         $items = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT id, site_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, processed_at, created_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",

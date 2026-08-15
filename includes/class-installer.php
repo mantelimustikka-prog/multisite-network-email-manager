@@ -54,7 +54,7 @@ class Installer
             return;
         }
 
-        $schema = self::get_table_schema($wpdb->prefix, $charset_collate);
+        $schema = self::get_table_schema($wpdb->base_prefix, $charset_collate);
         foreach ($schema as $table_definition) {
             if (!isset($table_definition['create_sql'])) {
                 continue;
@@ -89,27 +89,61 @@ class Installer
         $tracking_prefix = (property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix))
             ? (string) $wpdb->base_prefix
             : (string) $wpdb->prefix;
-        $tracking_table = $tracking_prefix . 'mnem_email_tracking';
 
-        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tracking_table));
-        if ($table_exists !== $tracking_table) {
-            return;
+        // Migration: ensure site_id column exists in all central tables.
+        $central_tables = array(
+            $tracking_prefix . 'mnem_email_tracking',
+            $tracking_prefix . 'mnem_queue',
+            $tracking_prefix . 'mnem_campaigns',
+        );
+
+        foreach ($central_tables as $table_name) {
+            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name));
+            if ($table_exists !== $table_name) {
+                continue;
+            }
+
+            $column_exists = $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                $table_name,
+                'site_id'
+            ));
+
+            if (!$column_exists) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$table_name}` ADD COLUMN site_id bigint(20) unsigned NOT NULL DEFAULT 0 AFTER id, ADD KEY site_id (site_id)");
+                // Pre-existing rows have no site context; default them to the main site (ID 1).
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("UPDATE `{$table_name}` SET site_id = 1 WHERE site_id = 0");
+            }
         }
 
-        $column_exists = $wpdb->get_var($wpdb->prepare(
-            'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
-            $tracking_table,
-            'site_id'
-        ));
-
-        if (!$column_exists) {
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $wpdb->query("ALTER TABLE `{$tracking_table}` ADD COLUMN site_id bigint(20) unsigned NOT NULL DEFAULT 0 AFTER email_id, ADD KEY site_id (site_id)");
-            // Pre-existing rows have no site context; default them to the main site (ID 1).
-            // This is an acceptable approximation for installations that were running before
-            // the centralized-table architecture was introduced.
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-            $wpdb->query("UPDATE `{$tracking_table}` SET site_id = 1 WHERE site_id = 0");
+        // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
+        if (function_exists('get_sites')) {
+            $sites = get_sites(array('number' => 0, 'fields' => 'ids'));
+            foreach ((array) $sites as $blog_id) {
+                $blog_id = (int) $blog_id;
+                if ($blog_id <= 1) {
+                    continue;
+                }
+                $site_prefix = $tracking_prefix . $blog_id . '_';
+                foreach (array('mnem_queue', 'mnem_campaigns') as $table_suffix) {
+                    $old_table = $site_prefix . $table_suffix;
+                    $new_table = $tracking_prefix . $table_suffix;
+                    $old_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $old_table));
+                    if ($old_exists !== $old_table) {
+                        continue;
+                    }
+                    // Set site_id on the old table's rows first, then copy into the central table.
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("UPDATE `{$old_table}` SET site_id = {$blog_id} WHERE site_id = 0 OR site_id IS NULL");
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("INSERT IGNORE INTO `{$new_table}` SELECT * FROM `{$old_table}`");
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("DROP TABLE IF EXISTS `{$old_table}`");
+                    Logger::info('Migrated old site-based table to central table.', array('old_table' => $old_table, 'new_table' => $new_table, 'blog_id' => $blog_id));
+                }
+            }
         }
     }
 
@@ -129,7 +163,7 @@ class Installer
 
         return array(
             'mnem_logs' => array(
-                'name' => $prefix . 'mnem_logs',
+                'name' => $tracking_prefix . 'mnem_logs',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'site_id' => 'bigint(20) unsigned',
@@ -145,7 +179,7 @@ class Installer
                     'site_id' => array('site_id'),
                     'level' => array('level'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_logs (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_logs (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     site_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -160,7 +194,7 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_queue' => array(
-                'name' => $prefix . 'mnem_queue',
+                'name' => $tracking_prefix . 'mnem_queue',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'site_id' => 'bigint(20) unsigned',
@@ -192,7 +226,7 @@ class Installer
                     'campaign_status' => array('campaign_id', 'status'),
                     'scheduled_at' => array('scheduled_at'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_queue (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_queue (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     site_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -223,7 +257,7 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_suppression' => array(
-                'name' => $prefix . 'mnem_suppression',
+                'name' => $tracking_prefix . 'mnem_suppression',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'site_id' => 'bigint(20) unsigned',
@@ -235,7 +269,7 @@ class Installer
                     'PRIMARY' => array('id'),
                     'site_email' => array('site_id', 'email'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_suppression (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_suppression (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     site_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     email varchar(190) NOT NULL,
@@ -246,7 +280,7 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_campaigns' => array(
-                'name' => $prefix . 'mnem_campaigns',
+                'name' => $tracking_prefix . 'mnem_campaigns',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'site_id' => 'bigint(20) unsigned',
@@ -273,7 +307,7 @@ class Installer
                     'PRIMARY' => array('id'),
                     'site_status' => array('site_id', 'status'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_campaigns (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_campaigns (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     site_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     name varchar(190) NOT NULL,
@@ -299,7 +333,7 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_subscriber_lists' => array(
-                'name' => $prefix . 'mnem_subscriber_lists',
+                'name' => $tracking_prefix . 'mnem_subscriber_lists',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'name' => 'varchar(255)',
@@ -311,7 +345,7 @@ class Installer
                     'PRIMARY' => array('id'),
                     'created_at' => array('created_at'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_subscriber_lists (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_subscriber_lists (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     name varchar(255) NOT NULL,
                     description longtext NULL,
@@ -322,7 +356,7 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_list_subscribers' => array(
-                'name' => $prefix . 'mnem_list_subscribers',
+                'name' => $tracking_prefix . 'mnem_list_subscribers',
                 'columns' => array(
                     'id' => 'bigint(20) unsigned',
                     'list_id' => 'bigint(20) unsigned',
@@ -339,7 +373,7 @@ class Installer
                     'subscription_status' => array('subscription_status'),
                     'list_user' => array('list_id', 'user_id'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_list_subscribers (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_list_subscribers (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     list_id bigint(20) unsigned NOT NULL,
                     user_id bigint(20) unsigned NOT NULL,

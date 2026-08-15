@@ -10,7 +10,7 @@ class Suppression
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
         $email = strtolower(trim(sanitize_email($email)));
         $reason = sanitize_text_field($reason);
 
@@ -33,7 +33,7 @@ class Suppression
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
         $email = strtolower(trim(sanitize_email($email)));
 
         return $wpdb->query(
@@ -49,7 +49,7 @@ class Suppression
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
         $email = strtolower(trim(sanitize_email($email)));
         $count = $wpdb->get_var(
             $wpdb->prepare(
@@ -66,7 +66,7 @@ class Suppression
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
 
         return (array) $wpdb->get_results(
             $wpdb->prepare(
@@ -83,7 +83,7 @@ class Suppression
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_suppression';
+        $table = $wpdb->base_prefix . 'mnem_suppression';
         $count = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(1) FROM {$table} WHERE site_id = %d",

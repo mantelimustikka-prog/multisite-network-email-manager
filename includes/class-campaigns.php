@@ -21,7 +21,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $now = self::current_time_mysql();
         $recipient_list = self::sanitize_recipient_list(isset($args['recipient_list']) ? $args['recipient_list'] : array());
         $target_lists = self::sanitize_target_lists(isset($args['target_lists']) ? $args['target_lists'] : array());
@@ -68,7 +68,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $campaign = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT * FROM {$table} WHERE id = %d",
@@ -84,7 +84,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $limit = max(1, $limit);
         $offset = max(0, $offset);
 
@@ -121,7 +121,7 @@ class Campaigns
             return false;
         }
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $recipient_list = self::sanitize_recipient_list(isset($data['recipient_list']) ? $data['recipient_list'] : (isset($campaign['recipient_list']) ? $campaign['recipient_list'] : ''));
         $scheduled_at = isset($data['scheduled_at']) && $data['scheduled_at'] !== ''
             ? sanitize_text_field((string) $data['scheduled_at'])
@@ -154,7 +154,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
 
         return $wpdb->query(
             $wpdb->prepare(
@@ -177,7 +177,7 @@ class Campaigns
             return false;
         }
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $sent_at = $new_status === 'sent' ? self::current_time_mysql() : (isset($campaign['sent_at']) ? $campaign['sent_at'] : null);
 
         return $wpdb->query(
@@ -363,8 +363,8 @@ class Campaigns
             return false;
         }
 
-        $queue_table = $wpdb->prefix . 'mnem_queue';
-        $campaigns_table = $wpdb->prefix . 'mnem_campaigns';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $campaigns_table = $wpdb->base_prefix . 'mnem_campaigns';
         $queued_total = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d", $id));
         $sent_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status = %s", $id, 'sent'));
         $queue_failed_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status = %s", $id, 'failed'));
@@ -412,7 +412,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
         $now = self::current_time_mysql();
 
         $wpdb->query(
@@ -435,7 +435,7 @@ class Campaigns
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_campaigns';
+        $table = $wpdb->base_prefix . 'mnem_campaigns';
 
         return $wpdb->query(
             $wpdb->prepare(
@@ -530,7 +530,7 @@ class Campaigns
     private static function get_recipients_from_lists(array $list_ids)
     {
         global $wpdb;
-        $list_table = $wpdb->prefix . 'mnem_list_subscribers';
+        $list_table = $wpdb->base_prefix . 'mnem_list_subscribers';
         $list_ids = array_values(array_filter(array_map('intval', $list_ids), static function ($id) {
             return $id > 0;
         }));
