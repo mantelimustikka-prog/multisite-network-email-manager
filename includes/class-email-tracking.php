@@ -402,6 +402,9 @@ class EmailTracking
         if (self::$resolved_table_name === $table) {
             return self::$resolved_table_name;
         }
+        if (self::$resolved_table_name === '') {
+            return '';
+        }
 
         if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
             self::$resolved_table_name = $table;
