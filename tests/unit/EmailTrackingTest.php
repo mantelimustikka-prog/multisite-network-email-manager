@@ -46,6 +46,7 @@ class EmailTrackingTest extends TestCase
                 $this->queries[] = $query;
                 return array(
                     'email_id' => 15,
+                    'site_id' => 1,
                     'delivery_status' => 'pending',
                     'open_count' => 1,
                     'open_timestamps' => '["2026-08-10 10:00:00"]',
@@ -66,9 +67,81 @@ class EmailTrackingTest extends TestCase
         $queries = $GLOBALS['wpdb']->queries;
         $this->assertNotEmpty($queries);
         $joined_queries = implode("\n", $queries);
-        $this->assertStringContainsString("SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
+        $this->assertStringContainsString("SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
         $this->assertStringContainsString("open_count = 2", $joined_queries);
         $this->assertStringContainsString("delivery_status = 'pending'", $joined_queries);
+        $this->assertStringContainsString("WHERE email_id = 15 AND site_id = 1", $joined_queries);
+    }
+
+    public function test_store_sent_email_uses_network_table_and_persists_site_id()
+    {
+        $GLOBALS['mnem_current_blog_id'] = 2;
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $prefix = 'wp_2_';
+            public $base_prefix = 'wp_';
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_email_tracking';
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        EmailTracking::store_sent_email(22, array(
+            'site_id' => 2,
+            'recipient_email' => 'user@example.com',
+            'subject' => 'Subject',
+            'body' => 'Body',
+        ), array(
+            'success' => true,
+            'message_id' => 'provider-123',
+        ), array('X-Test: yes'));
+
+        $joined_queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at) VALUES (2, 22, \'provider-123\'', $joined_queries);
+    }
+
+    public function test_get_history_filters_results_by_site_id_on_central_table()
+    {
+        $GLOBALS['mnem_current_blog_id'] = 2;
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $prefix = 'wp_2_';
+            public $base_prefix = 'wp_';
+            public $results = array(
+                array(
+                    'email_id' => 9,
+                    'site_id' => 2,
+                    'recipient_email' => 'user@example.com',
+                ),
+            );
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_email_tracking';
+                }
+
+                return null;
+            }
+        };
+
+        $history = EmailTracking::get_history('user', 25);
+
+        $this->assertCount(1, $history['items']);
+        $this->assertStringContainsString("FROM wp_mnem_email_tracking WHERE site_id = 2 AND (recipient_email LIKE '%user%' OR subject LIKE '%user%') ORDER BY created_at DESC LIMIT 25", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_save_settings_allows_zero_day_retention()

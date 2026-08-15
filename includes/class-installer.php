@@ -76,6 +76,9 @@ class Installer
         if ($prefix === null) {
             $prefix = (isset($wpdb) && is_object($wpdb) && property_exists($wpdb, 'prefix')) ? (string) $wpdb->prefix : 'wp_';
         }
+        $tracking_prefix = (isset($wpdb) && is_object($wpdb) && property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix))
+            ? (string) $wpdb->base_prefix
+            : $prefix;
 
         $charset_suffix = trim((string) $charset_collate);
         $charset_suffix = $charset_suffix !== '' ? ' ' . $charset_suffix : '';
@@ -308,9 +311,10 @@ class Installer
                 ){$charset_suffix};",
             ),
             'mnem_email_tracking' => array(
-                'name' => $prefix . 'mnem_email_tracking',
+                'name' => $tracking_prefix . 'mnem_email_tracking',
                 'columns' => array(
                     'email_id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
                     'queue_id' => 'bigint(20) unsigned',
                     'provider_message_id' => 'varchar(255)',
                     'recipient_email' => 'varchar(190)',
@@ -327,14 +331,16 @@ class Installer
                 ),
                 'indexes' => array(
                     'PRIMARY' => array('email_id'),
+                    'site_id' => array('site_id'),
                     'queue_id' => array('queue_id'),
                     'recipient_email' => array('recipient_email'),
                     'provider_message_id' => array('provider_message_id'),
                     'delivery_status' => array('delivery_status'),
                     'created_at' => array('created_at'),
                 ),
-                'create_sql' => "CREATE TABLE {$prefix}mnem_email_tracking (
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_email_tracking (
                     email_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     queue_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     provider_message_id varchar(255) NOT NULL DEFAULT '',
                     recipient_email varchar(190) NOT NULL DEFAULT '',
@@ -349,6 +355,7 @@ class Installer
                     created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY  (email_id),
+                    KEY site_id (site_id),
                     KEY queue_id (queue_id),
                     KEY recipient_email (recipient_email),
                     KEY provider_message_id (provider_message_id),

@@ -36,7 +36,23 @@ class TableDiagnosticsTest extends TestCase
         $this->assertArrayHasKey('mnem_logs', $schema);
         $this->assertArrayHasKey('mnem_subscriber_lists', $schema);
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
+        $this->assertArrayHasKey('site_id', $schema['mnem_email_tracking']['columns']);
+        $this->assertSame('wp_mnem_email_tracking', $schema['mnem_email_tracking']['name']);
         $this->assertNotEmpty($schema['mnem_queue']['create_sql']);
+    }
+
+    public function test_installer_schema_uses_base_prefix_for_central_email_tracking_table()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $prefix = 'wp_2_';
+            public $base_prefix = 'wp_';
+        };
+
+        $schema = \MNEM\Installer::get_table_schema('wp_2_');
+
+        $this->assertSame('wp_mnem_email_tracking', $schema['mnem_email_tracking']['name']);
+        $this->assertStringContainsString('CREATE TABLE wp_mnem_email_tracking', $schema['mnem_email_tracking']['create_sql']);
+        $this->assertStringContainsString('site_id bigint(20) unsigned NOT NULL DEFAULT 0', $schema['mnem_email_tracking']['create_sql']);
     }
 
     public function test_collect_diagnostics_detects_missing_tables_and_schema_mismatch()
