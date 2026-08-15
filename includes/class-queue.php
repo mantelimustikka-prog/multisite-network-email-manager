@@ -248,8 +248,10 @@ class Queue
 
             $headers['__attachments'] = $attachments;
 
-            $send = static function () use ($row, $headers) {
-                return ProviderManager::send_email($row['recipient_email'], $row['subject'], $row['body'], $headers);
+            $body = EmailFormatter::apply_global_header_footer((string) $row['body']);
+
+            $send = static function () use ($row, $headers, $body) {
+                return ProviderManager::send_email($row['recipient_email'], $row['subject'], $body, $headers);
             };
 
             if (empty($result)) {
