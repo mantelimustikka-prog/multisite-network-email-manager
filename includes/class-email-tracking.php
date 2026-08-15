@@ -89,11 +89,13 @@ class EmailTracking
             return;
         }
         $now = gmdate('Y-m-d H:i:s');
+        $site_id = self::resolve_site_id(null, $queue_row);
         $provider_message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
 
         $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at) VALUES (%d, %s, %s, %s, %s, %s, %s, %d, %s, %d, %s, %s, %s)",
+                "INSERT INTO {$table} (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at) VALUES (%d, %d, %s, %s, %s, %s, %s, %s, %d, %s, %d, %s, %s, %s)",
+                $site_id,
                 $queue_id,
                 $provider_message_id,
                 isset($queue_row['recipient_email']) ? (string) $queue_row['recipient_email'] : '',
@@ -116,7 +118,7 @@ class EmailTracking
     /**
      * @return array<string,mixed>
      */
-    public static function get_history(string $search = '', int $limit = 200): array
+    public static function get_history(string $search = '', int $limit = 200, ?int $site_id = null): array
     {
         global $wpdb;
         $table = self::get_table_name();
@@ -125,11 +127,13 @@ class EmailTracking
         }
         $search = trim($search);
         $limit = max(1, $limit);
+        $site_id = self::resolve_site_id($site_id);
 
         if ($search === '') {
             $items = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT email_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} ORDER BY created_at DESC LIMIT %d",
+                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
+                    $site_id,
                     $limit
                 ),
                 ARRAY_A
@@ -139,7 +143,8 @@ class EmailTracking
             $like = '%' . $escaped_search . '%';
             $items = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT email_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE recipient_email LIKE %s OR subject LIKE %s ORDER BY created_at DESC LIMIT %d",
+                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE site_id = %d AND (recipient_email LIKE %s OR subject LIKE %s) ORDER BY created_at DESC LIMIT %d",
+                    $site_id,
                     $like,
                     $like,
                     $limit
@@ -154,7 +159,7 @@ class EmailTracking
     /**
      * @return array{emails:int,bytes:int,formatted:string}
      */
-    public static function get_storage_usage(): array
+    public static function get_storage_usage(?int $site_id = null): array
     {
         global $wpdb;
         $table = self::get_table_name();
@@ -165,8 +170,12 @@ class EmailTracking
                 'formatted' => self::format_bytes(0),
             );
         }
+        $site_id = self::resolve_site_id($site_id);
         $row = $wpdb->get_row(
-            "SELECT COUNT(1) AS total_emails, COALESCE(SUM(COALESCE(LENGTH(recipient_email), 0) + COALESCE(LENGTH(subject), 0) + COALESCE(LENGTH(body), 0) + COALESCE(LENGTH(headers), 0) + COALESCE(LENGTH(provider_message_id), 0)), 0) AS total_bytes FROM {$table}",
+            $wpdb->prepare(
+                "SELECT COUNT(1) AS total_emails, COALESCE(SUM(COALESCE(LENGTH(recipient_email), 0) + COALESCE(LENGTH(subject), 0) + COALESCE(LENGTH(body), 0) + COALESCE(LENGTH(headers), 0) + COALESCE(LENGTH(provider_message_id), 0)), 0) AS total_bytes FROM {$table} WHERE site_id = %d",
+                $site_id
+            ),
             ARRAY_A
         );
 
@@ -179,7 +188,7 @@ class EmailTracking
         );
     }
 
-    public static function handle_webhook_event(string $provider, string $event_type, string $recipient, string $message_id, string $timestamp = ''): void
+    public static function handle_webhook_event(string $provider, string $event_type, string $recipient, string $message_id, string $timestamp = '', ?int $site_id = null): void
     {
         if (!self::is_enabled()) {
             return;
@@ -201,6 +210,7 @@ class EmailTracking
         if ($table === '') {
             return;
         }
+        $site_id = $site_id !== null ? self::resolve_site_id($site_id) : null;
 
         $where_sql = '';
         $where_args = array();
@@ -214,9 +224,27 @@ class EmailTracking
             return;
         }
 
-        $query = "SELECT email_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d";
-        $where_args[] = 1;
-        $row = $wpdb->get_row($wpdb->prepare($query, ...$where_args), ARRAY_A);
+        $row = null;
+        if ($site_id !== null) {
+            $scoped_args = $where_args;
+            $query = "SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} AND site_id = %d ORDER BY created_at DESC LIMIT %d";
+            $scoped_args[] = $site_id;
+            $scoped_args[] = 1;
+            $row = $wpdb->get_row($wpdb->prepare($query, ...$scoped_args), ARRAY_A);
+        }
+
+        if (empty($row)) {
+            $fallback_args = $where_args;
+            $fallback_args[] = 1;
+            $row = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d",
+                    ...$fallback_args
+                ),
+                ARRAY_A
+            );
+        }
+
         if (empty($row)) {
             return;
         }
@@ -243,14 +271,15 @@ class EmailTracking
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET delivery_status = %s, open_count = %d, open_timestamps = %s, click_count = %d, click_timestamps = %s, updated_at = %s WHERE email_id = %d",
+                "UPDATE {$table} SET delivery_status = %s, open_count = %d, open_timestamps = %s, click_count = %d, click_timestamps = %s, updated_at = %s WHERE email_id = %d AND site_id = %d",
                 $delivery_status,
                 $open_count,
                 wp_json_encode(array_values($open_timestamps)),
                 $click_count,
                 wp_json_encode(array_values($click_timestamps)),
                 $now,
-                (int) $row['email_id']
+                (int) $row['email_id'],
+                isset($row['site_id']) ? (int) $row['site_id'] : self::resolve_site_id($site_id)
             )
         );
     }
@@ -317,17 +346,19 @@ class EmailTracking
     /**
      * @return array<string,mixed>|null
      */
-    public static function get_email(int $email_id): ?array
+    public static function get_email(int $email_id, ?int $site_id = null): ?array
     {
         global $wpdb;
         $table = self::get_table_name();
         if ($table === '') {
             return null;
         }
+        $site_id = self::resolve_site_id($site_id);
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT email_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE email_id = %d LIMIT %d",
+                "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE email_id = %d AND site_id = %d LIMIT %d",
                 $email_id,
+                $site_id,
                 1
             ),
             ARRAY_A
@@ -356,10 +387,6 @@ class EmailTracking
 
     private static function get_table_name(): string
     {
-        if (self::$resolved_table_name !== null) {
-            return self::$resolved_table_name;
-        }
-
         global $wpdb;
 
         if (!isset($wpdb) || !is_object($wpdb) || !property_exists($wpdb, 'prefix')) {
@@ -367,13 +394,13 @@ class EmailTracking
             return '';
         }
 
-        $table = $wpdb->prefix . self::TABLE_SUFFIX;
-        $candidates = array($table);
-        if (property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix)) {
-            $network_table = $wpdb->base_prefix . self::TABLE_SUFFIX;
-            if ($network_table !== $table) {
-                $candidates[] = $network_table;
-            }
+        $network_prefix = (property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix))
+            ? (string) $wpdb->base_prefix
+            : (string) $wpdb->prefix;
+        $table = $network_prefix . self::TABLE_SUFFIX;
+
+        if (self::$resolved_table_name === $table) {
+            return self::$resolved_table_name;
         }
 
         if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
@@ -381,12 +408,10 @@ class EmailTracking
             return $table;
         }
 
-        foreach ($candidates as $candidate) {
-            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $candidate));
-            if ($table_exists === $candidate) {
-                self::$resolved_table_name = $candidate;
-                return $candidate;
-            }
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists === $table) {
+            self::$resolved_table_name = $table;
+            return $table;
         }
 
         if (!class_exists(__NAMESPACE__ . '\\Installer') && defined('MNEM_PLUGIN_DIR')) {
@@ -400,15 +425,30 @@ class EmailTracking
             Installer::install();
         }
 
-        foreach ($candidates as $candidate) {
-            $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $candidate));
-            if ($table_exists === $candidate) {
-                self::$resolved_table_name = $candidate;
-                return $candidate;
-            }
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($table_exists === $table) {
+            self::$resolved_table_name = $table;
+            return $table;
         }
 
         self::$resolved_table_name = '';
         return '';
+    }
+
+    private static function resolve_site_id(?int $site_id = null, array $queue_row = array()): int
+    {
+        if ($site_id !== null && $site_id > 0) {
+            return $site_id;
+        }
+
+        if (isset($queue_row['site_id']) && (int) $queue_row['site_id'] > 0) {
+            return (int) $queue_row['site_id'];
+        }
+
+        if (isset($queue_row['blog_id']) && (int) $queue_row['blog_id'] > 0) {
+            return (int) $queue_row['blog_id'];
+        }
+
+        return function_exists('get_current_blog_id') ? max(1, (int) get_current_blog_id()) : 1;
     }
 }
