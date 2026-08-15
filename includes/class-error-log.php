@@ -437,13 +437,48 @@ class ErrorLog
     }
 
     /**
+     * Return the fully-qualified error log table name.
+     */
+    private static function get_table_name(): string
+    {
+        global $wpdb;
+        return $wpdb->prefix . 'mnem_error_logs';
+    }
+
+    /**
+     * Check whether the error log table exists in the database.
+     * Result is cached per-request to avoid repeated SHOW TABLES queries.
+     */
+    private static function table_exists(): bool
+    {
+        static $exists = null;
+
+        if ($exists === null) {
+            global $wpdb;
+            $table  = self::get_table_name();
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $exists = (bool) $wpdb->get_var(
+                $wpdb->prepare('SHOW TABLES LIKE %s', $table)
+            );
+        }
+
+        return $exists;
+    }
+
+    /**
      * @param array<string,mixed> $data
      */
     private static function insert(array $data): void
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'mnem_error_logs';
+        $table = self::get_table_name();
+
+        if (!self::table_exists()) {
+            error_log('MNEM: Error log table does not exist (' . $table . '). Has the plugin been activated/updated?');
+            return;
+        }
+
         $now   = current_time('mysql', true);
 
         $row = array(
@@ -474,5 +509,22 @@ class ErrorLog
         $row = array_filter($row, static function ($v) { return $v !== null; });
 
         $wpdb->insert($table, $row);
+
+        if (isset($wpdb->last_error) && $wpdb->last_error !== '') {
+            error_log(sprintf(
+                'MNEM ErrorLog::insert() failed — DB error: %s | error_type: %s | message: %s',
+                $wpdb->last_error,
+                $data['error_type'] ?? 'unknown',
+                $data['error_message'] ?? 'no message'
+            ));
+
+            if (class_exists('\MNEM\Logger')) {
+                Logger::error('Error logging failed', array(
+                    'db_error'      => $wpdb->last_error,
+                    'error_type'    => $data['error_type'] ?? 'unknown',
+                    'error_message' => $data['error_message'] ?? '',
+                ));
+            }
+        }
     }
 }
