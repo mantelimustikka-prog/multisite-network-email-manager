@@ -52,139 +52,12 @@ class Installer
             return;
         }
 
-        $logs_table = $wpdb->prefix . 'mnem_logs';
-        $queue_table = $wpdb->prefix . 'mnem_queue';
-        $suppression_table = $wpdb->prefix . 'mnem_suppression';
-        $campaigns_table = $wpdb->prefix . 'mnem_campaigns';
-        $subscriber_lists_table = $wpdb->prefix . 'mnem_subscriber_lists';
-        $list_subscribers_table = $wpdb->prefix . 'mnem_list_subscribers';
-        $email_tracking_table = $wpdb->prefix . 'mnem_email_tracking';
-
-        $sql = array(
-            "CREATE TABLE {$logs_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                site_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                user_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                level varchar(20) NOT NULL,
-                message text NOT NULL,
-                context longtext NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
-                KEY site_id (site_id),
-                KEY level (level)
-            ) {$charset_collate};",
-            "CREATE TABLE {$queue_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                site_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                recipient_email varchar(190) NOT NULL,
-                subject text NOT NULL,
-                body longtext NOT NULL,
-                from_email varchar(190) NOT NULL DEFAULT '',
-                from_name varchar(255) NOT NULL DEFAULT '',
-                headers longtext NULL,
-                attachments longtext NULL,
-                metadata longtext NULL,
-                source enum('campaign','user_event','plugin','core') NOT NULL DEFAULT 'core',
-                status enum('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
-                attempts int(11) NOT NULL DEFAULT 0,
-                scheduled_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                processed_at datetime NULL,
-                sent_at datetime NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                provider_type varchar(20) NOT NULL DEFAULT '',
-                provider_message_id varchar(255) NOT NULL DEFAULT '',
-                provider_metadata longtext NULL,
-                PRIMARY KEY  (id),
-                KEY site_status (site_id, status),
-                KEY blog_status_created (blog_id, status, created_at),
-                KEY campaign_status (campaign_id, status),
-                KEY scheduled_at (scheduled_at)
-            ) {$charset_collate};",
-            "CREATE TABLE {$suppression_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                site_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                email varchar(190) NOT NULL,
-                reason text NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
-                UNIQUE KEY site_email (site_id, email)
-            ) {$charset_collate};",
-            "CREATE TABLE {$campaigns_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                site_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                name varchar(190) NOT NULL,
-                subject text NOT NULL,
-                body longtext NOT NULL,
-                body_type enum('html') NOT NULL DEFAULT 'html',
-                template_id varchar(190) NOT NULL DEFAULT '',
-                status enum('draft','scheduled','sending','sent','cancelled') NOT NULL DEFAULT 'draft',
-                scheduled_at datetime NULL,
-                recipient_scope varchar(20) NOT NULL DEFAULT 'all_users',
-                recipient_list longtext NULL,
-                target_lists longtext NULL,
-                total_recipients int(11) NOT NULL DEFAULT 0,
-                sent_count int(11) NOT NULL DEFAULT 0,
-                failed_count int(11) NOT NULL DEFAULT 0,
-                enqueue_failed_count int(11) NOT NULL DEFAULT 0,
-                last_send_attempt_at datetime NULL,
-                sent_at datetime NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (id),
-                KEY site_status (site_id, status)
-            ) {$charset_collate};",
-            "CREATE TABLE {$subscriber_lists_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                name varchar(255) NOT NULL,
-                description longtext NULL,
-                created_at datetime NOT NULL,
-                updated_at datetime NOT NULL,
-                PRIMARY KEY  (id),
-                KEY created_at (created_at)
-            ) {$charset_collate};",
-            "CREATE TABLE {$list_subscribers_table} (
-                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                list_id bigint(20) unsigned NOT NULL,
-                user_id bigint(20) unsigned NOT NULL,
-                subscription_status enum('subscribed','unsubscribed') NOT NULL DEFAULT 'subscribed',
-                subscribed_at datetime NOT NULL,
-                unsubscribed_at datetime NULL,
-                unsubscribed_reason varchar(255) NULL,
-                PRIMARY KEY  (id),
-                KEY list_id (list_id),
-                KEY user_id (user_id),
-                KEY subscription_status (subscription_status),
-                UNIQUE KEY list_user (list_id, user_id)
-            ) {$charset_collate};",
-            "CREATE TABLE {$email_tracking_table} (
-                email_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                queue_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                provider_message_id varchar(255) NOT NULL DEFAULT '',
-                recipient_email varchar(190) NOT NULL DEFAULT '',
-                subject text NOT NULL,
-                body longtext NOT NULL,
-                headers longtext NULL,
-                delivery_status enum('pending','delivered','bounced','failed') NOT NULL DEFAULT 'pending',
-                open_count int(11) NOT NULL DEFAULT 0,
-                open_timestamps longtext NULL,
-                click_count int(11) NOT NULL DEFAULT 0,
-                click_timestamps longtext NULL,
-                created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY  (email_id),
-                KEY queue_id (queue_id),
-                KEY recipient_email (recipient_email),
-                KEY provider_message_id (provider_message_id),
-                KEY delivery_status (delivery_status),
-                KEY created_at (created_at)
-            ) {$charset_collate};",
-        );
-
-        foreach ($sql as $statement) {
-            dbDelta($statement);
+        $schema = self::get_table_schema($wpdb->prefix, $charset_collate);
+        foreach ($schema as $table_definition) {
+            if (!isset($table_definition['create_sql'])) {
+                continue;
+            }
+            dbDelta($table_definition['create_sql']);
         }
 
         self::update_db_version();
@@ -194,6 +67,296 @@ class Installer
         if ((int) get_site_option(EmailTracking::OPTION_RETENTION_DAYS, -1) === -1) {
             update_site_option(EmailTracking::OPTION_RETENTION_DAYS, 30);
         }
+    }
+
+    public static function get_table_schema($prefix = null, $charset_collate = '')
+    {
+        global $wpdb;
+
+        if ($prefix === null) {
+            $prefix = (isset($wpdb) && is_object($wpdb) && property_exists($wpdb, 'prefix')) ? (string) $wpdb->prefix : 'wp_';
+        }
+
+        $charset_suffix = trim((string) $charset_collate);
+        $charset_suffix = $charset_suffix !== '' ? ' ' . $charset_suffix : '';
+
+        return array(
+            'mnem_logs' => array(
+                'name' => $prefix . 'mnem_logs',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'blog_id' => 'bigint(20) unsigned',
+                    'user_id' => 'bigint(20) unsigned',
+                    'level' => 'varchar(20)',
+                    'message' => 'text',
+                    'context' => 'longtext',
+                    'created_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'site_id' => array('site_id'),
+                    'level' => array('level'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_logs (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    level varchar(20) NOT NULL,
+                    message text NOT NULL,
+                    context longtext NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY  (id),
+                    KEY site_id (site_id),
+                    KEY level (level)
+                ){$charset_suffix};",
+            ),
+            'mnem_queue' => array(
+                'name' => $prefix . 'mnem_queue',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'blog_id' => 'bigint(20) unsigned',
+                    'campaign_id' => 'bigint(20) unsigned',
+                    'recipient_email' => 'varchar(190)',
+                    'subject' => 'text',
+                    'body' => 'longtext',
+                    'from_email' => 'varchar(190)',
+                    'from_name' => 'varchar(255)',
+                    'headers' => 'longtext',
+                    'attachments' => 'longtext',
+                    'metadata' => 'longtext',
+                    'source' => "enum('campaign','user_event','plugin','core')",
+                    'status' => "enum('pending','processing','sent','failed')",
+                    'attempts' => 'int(11)',
+                    'scheduled_at' => 'datetime',
+                    'processed_at' => 'datetime',
+                    'sent_at' => 'datetime',
+                    'created_at' => 'datetime',
+                    'provider_type' => 'varchar(20)',
+                    'provider_message_id' => 'varchar(255)',
+                    'provider_metadata' => 'longtext',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'site_status' => array('site_id', 'status'),
+                    'blog_status_created' => array('blog_id', 'status', 'created_at'),
+                    'campaign_status' => array('campaign_id', 'status'),
+                    'scheduled_at' => array('scheduled_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_queue (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    recipient_email varchar(190) NOT NULL,
+                    subject text NOT NULL,
+                    body longtext NOT NULL,
+                    from_email varchar(190) NOT NULL DEFAULT '',
+                    from_name varchar(255) NOT NULL DEFAULT '',
+                    headers longtext NULL,
+                    attachments longtext NULL,
+                    metadata longtext NULL,
+                    source enum('campaign','user_event','plugin','core') NOT NULL DEFAULT 'core',
+                    status enum('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
+                    attempts int(11) NOT NULL DEFAULT 0,
+                    scheduled_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    processed_at datetime NULL,
+                    sent_at datetime NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    provider_type varchar(20) NOT NULL DEFAULT '',
+                    provider_message_id varchar(255) NOT NULL DEFAULT '',
+                    provider_metadata longtext NULL,
+                    PRIMARY KEY  (id),
+                    KEY site_status (site_id, status),
+                    KEY blog_status_created (blog_id, status, created_at),
+                    KEY campaign_status (campaign_id, status),
+                    KEY scheduled_at (scheduled_at)
+                ){$charset_suffix};",
+            ),
+            'mnem_suppression' => array(
+                'name' => $prefix . 'mnem_suppression',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'email' => 'varchar(190)',
+                    'reason' => 'text',
+                    'created_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'site_email' => array('site_id', 'email'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_suppression (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    email varchar(190) NOT NULL,
+                    reason text NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY  (id),
+                    UNIQUE KEY site_email (site_id, email)
+                ){$charset_suffix};",
+            ),
+            'mnem_campaigns' => array(
+                'name' => $prefix . 'mnem_campaigns',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'name' => 'varchar(190)',
+                    'subject' => 'text',
+                    'body' => 'longtext',
+                    'body_type' => "enum('html')",
+                    'template_id' => 'varchar(190)',
+                    'status' => "enum('draft','scheduled','sending','sent','cancelled')",
+                    'scheduled_at' => 'datetime',
+                    'recipient_scope' => 'varchar(20)',
+                    'recipient_list' => 'longtext',
+                    'target_lists' => 'longtext',
+                    'total_recipients' => 'int(11)',
+                    'sent_count' => 'int(11)',
+                    'failed_count' => 'int(11)',
+                    'enqueue_failed_count' => 'int(11)',
+                    'last_send_attempt_at' => 'datetime',
+                    'sent_at' => 'datetime',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'site_status' => array('site_id', 'status'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_campaigns (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    name varchar(190) NOT NULL,
+                    subject text NOT NULL,
+                    body longtext NOT NULL,
+                    body_type enum('html') NOT NULL DEFAULT 'html',
+                    template_id varchar(190) NOT NULL DEFAULT '',
+                    status enum('draft','scheduled','sending','sent','cancelled') NOT NULL DEFAULT 'draft',
+                    scheduled_at datetime NULL,
+                    recipient_scope varchar(20) NOT NULL DEFAULT 'all_users',
+                    recipient_list longtext NULL,
+                    target_lists longtext NULL,
+                    total_recipients int(11) NOT NULL DEFAULT 0,
+                    sent_count int(11) NOT NULL DEFAULT 0,
+                    failed_count int(11) NOT NULL DEFAULT 0,
+                    enqueue_failed_count int(11) NOT NULL DEFAULT 0,
+                    last_send_attempt_at datetime NULL,
+                    sent_at datetime NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY  (id),
+                    KEY site_status (site_id, status)
+                ){$charset_suffix};",
+            ),
+            'mnem_subscriber_lists' => array(
+                'name' => $prefix . 'mnem_subscriber_lists',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'name' => 'varchar(255)',
+                    'description' => 'longtext',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'created_at' => array('created_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_subscriber_lists (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    name varchar(255) NOT NULL,
+                    description longtext NULL,
+                    created_at datetime NOT NULL,
+                    updated_at datetime NOT NULL,
+                    PRIMARY KEY  (id),
+                    KEY created_at (created_at)
+                ){$charset_suffix};",
+            ),
+            'mnem_list_subscribers' => array(
+                'name' => $prefix . 'mnem_list_subscribers',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'list_id' => 'bigint(20) unsigned',
+                    'user_id' => 'bigint(20) unsigned',
+                    'subscription_status' => "enum('subscribed','unsubscribed')",
+                    'subscribed_at' => 'datetime',
+                    'unsubscribed_at' => 'datetime',
+                    'unsubscribed_reason' => 'varchar(255)',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'list_id' => array('list_id'),
+                    'user_id' => array('user_id'),
+                    'subscription_status' => array('subscription_status'),
+                    'list_user' => array('list_id', 'user_id'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_list_subscribers (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    list_id bigint(20) unsigned NOT NULL,
+                    user_id bigint(20) unsigned NOT NULL,
+                    subscription_status enum('subscribed','unsubscribed') NOT NULL DEFAULT 'subscribed',
+                    subscribed_at datetime NOT NULL,
+                    unsubscribed_at datetime NULL,
+                    unsubscribed_reason varchar(255) NULL,
+                    PRIMARY KEY  (id),
+                    KEY list_id (list_id),
+                    KEY user_id (user_id),
+                    KEY subscription_status (subscription_status),
+                    UNIQUE KEY list_user (list_id, user_id)
+                ){$charset_suffix};",
+            ),
+            'mnem_email_tracking' => array(
+                'name' => $prefix . 'mnem_email_tracking',
+                'columns' => array(
+                    'email_id' => 'bigint(20) unsigned',
+                    'queue_id' => 'bigint(20) unsigned',
+                    'provider_message_id' => 'varchar(255)',
+                    'recipient_email' => 'varchar(190)',
+                    'subject' => 'text',
+                    'body' => 'longtext',
+                    'headers' => 'longtext',
+                    'delivery_status' => "enum('pending','delivered','bounced','failed')",
+                    'open_count' => 'int(11)',
+                    'open_timestamps' => 'longtext',
+                    'click_count' => 'int(11)',
+                    'click_timestamps' => 'longtext',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('email_id'),
+                    'queue_id' => array('queue_id'),
+                    'recipient_email' => array('recipient_email'),
+                    'provider_message_id' => array('provider_message_id'),
+                    'delivery_status' => array('delivery_status'),
+                    'created_at' => array('created_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$prefix}mnem_email_tracking (
+                    email_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    queue_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    provider_message_id varchar(255) NOT NULL DEFAULT '',
+                    recipient_email varchar(190) NOT NULL DEFAULT '',
+                    subject text NOT NULL,
+                    body longtext NOT NULL,
+                    headers longtext NULL,
+                    delivery_status enum('pending','delivered','bounced','failed') NOT NULL DEFAULT 'pending',
+                    open_count int(11) NOT NULL DEFAULT 0,
+                    open_timestamps longtext NULL,
+                    click_count int(11) NOT NULL DEFAULT 0,
+                    click_timestamps longtext NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY  (email_id),
+                    KEY queue_id (queue_id),
+                    KEY recipient_email (recipient_email),
+                    KEY provider_message_id (provider_message_id),
+                    KEY delivery_status (delivery_status),
+                    KEY created_at (created_at)
+                ){$charset_suffix};",
+            ),
+        );
     }
 
     public static function update_db_version()
