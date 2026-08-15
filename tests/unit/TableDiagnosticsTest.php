@@ -48,7 +48,7 @@ class TableDiagnosticsTest extends TestCase
                 if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_queue'") !== false) {
                     return 'wp_mnem_queue';
                 }
-                if (strpos($query, 'SELECT COUNT(1) FROM wp_mnem_queue') !== false) {
+                if (strpos($query, 'SELECT COUNT(1) FROM `wp_mnem_queue`') !== false) {
                     return 7;
                 }
                 return null;
@@ -68,7 +68,7 @@ class TableDiagnosticsTest extends TestCase
             public function get_results($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SHOW COLUMNS FROM wp_mnem_queue') !== false) {
+                if (strpos($query, 'SHOW COLUMNS FROM `wp_mnem_queue`') !== false) {
                     return array(
                         array(
                             'Field' => 'id',
@@ -77,7 +77,7 @@ class TableDiagnosticsTest extends TestCase
                     );
                 }
 
-                if (strpos($query, 'SHOW INDEX FROM wp_mnem_queue') !== false) {
+                if (strpos($query, 'SHOW INDEX FROM `wp_mnem_queue`') !== false) {
                     return array();
                 }
 

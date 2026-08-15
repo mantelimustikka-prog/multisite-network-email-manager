@@ -128,7 +128,8 @@ class TableDiagnostics
     private static function enrich_table_details(array $table_info, array $expected, $wpdb)
     {
         $table_name = $table_info['name'];
-        $table_info['rows'] = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$table_name}");
+        $quoted_table_name = self::quote_table_name($table_name);
+        $table_info['rows'] = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$quoted_table_name}");
 
         $status_row = $wpdb->get_row($wpdb->prepare('SHOW TABLE STATUS LIKE %s', $table_name), ARRAY_A);
         if (is_array($status_row)) {
@@ -142,7 +143,7 @@ class TableDiagnostics
         }
 
         $actual_columns = array();
-        $column_rows = $wpdb->get_results("SHOW COLUMNS FROM {$table_name}", ARRAY_A);
+        $column_rows = $wpdb->get_results("SHOW COLUMNS FROM {$quoted_table_name}", ARRAY_A);
         foreach ((array) $column_rows as $column_row) {
             if (!isset($column_row['Field'])) {
                 continue;
@@ -167,7 +168,7 @@ class TableDiagnostics
         }
 
         $actual_indexes = array();
-        $index_rows = $wpdb->get_results("SHOW INDEX FROM {$table_name}", ARRAY_A);
+        $index_rows = $wpdb->get_results("SHOW INDEX FROM {$quoted_table_name}", ARRAY_A);
         foreach ((array) $index_rows as $index_row) {
             if (!isset($index_row['Key_name'], $index_row['Column_name'])) {
                 continue;
@@ -220,7 +221,7 @@ class TableDiagnostics
                 continue;
             }
 
-            $query = $operation_sql . ' ' . $table['name'];
+            $query = $operation_sql . ' ' . self::quote_table_name($table['name']);
             $query_result = $wpdb->query($query);
             $entry = array(
                 'table' => $table['name'],
@@ -309,6 +310,12 @@ class TableDiagnostics
         }
 
         return number_format($bytes, 2) . ' ' . $units[$power];
+    }
+
+    private static function quote_table_name($table_name)
+    {
+        $clean_name = preg_replace('/[^A-Za-z0-9_]/', '', (string) $table_name);
+        return '`' . $clean_name . '`';
     }
 
     private function render_template($template, array $variables)
