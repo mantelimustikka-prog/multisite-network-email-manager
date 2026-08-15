@@ -739,7 +739,6 @@ if (!function_exists('checked')) {
 
 require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
-require_once __DIR__ . '/../includes/class-error-log.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-email-formatter.php';
 require_once __DIR__ . '/../includes/class-mail-interceptor.php';

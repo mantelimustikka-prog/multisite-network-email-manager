@@ -22,6 +22,7 @@ class CronTest extends TestCase
         $this->assertTrue($result);
         $this->assertArrayHasKey(Cron::HOOK, $GLOBALS['mnem_cron_events']);
         $this->assertSame('hourly', $GLOBALS['mnem_cron_events'][Cron::HOOK]['recurrence']);
+        $this->assertArrayNotHasKey('mnem_cleanup_error_logs', $GLOBALS['mnem_cron_events']);
     }
 
     public function test_process_queue_batch_tracks_last_run()

@@ -80,16 +80,6 @@ class MailInterceptor
         );
 
         if (!$queued) {
-            ErrorLog::log_queue_error(
-                0,
-                'Failed to enqueue intercepted email.',
-                null,
-                array(
-                    'recipient' => $recipient,
-                    'subject'   => $subject,
-                    'blog_id'   => $blog_id,
-                )
-            );
             return $null;
         }
 

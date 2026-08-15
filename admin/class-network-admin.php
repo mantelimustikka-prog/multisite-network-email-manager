@@ -28,10 +28,6 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
-        add_action('wp_ajax_mnem_get_error_details', array($this, 'ajax_get_error_details'));
-        add_action('wp_ajax_mnem_delete_error_log', array($this, 'ajax_delete_error_log'));
-        add_action('wp_ajax_mnem_export_error_logs', array($this, 'ajax_export_error_logs'));
-        add_action('wp_ajax_mnem_clear_old_errors', array($this, 'ajax_clear_old_errors'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -707,87 +703,6 @@ class NetworkAdmin
             : 'admin.php?' . http_build_query($args, '', '&');
         wp_safe_redirect($url);
         $this->exit_after_redirect();
-    }
-
-    public function ajax_get_error_details()
-    {
-        $this->ensure_ajax_permissions();
-        $log_id = isset($_POST['log_id']) ? (int) $_POST['log_id'] : 0;
-        if ($log_id <= 0) {
-            wp_send_json_error(array('message' => 'Invalid log ID.'), 400);
-            return;
-        }
-
-        $log = \MNEM\ErrorLog::get_log($log_id);
-        if (empty($log)) {
-            wp_send_json_error(array('message' => 'Error log entry not found.'), 404);
-            return;
-        }
-
-        wp_send_json_success($log);
-    }
-
-    public function ajax_delete_error_log()
-    {
-        $this->ensure_ajax_permissions();
-        $log_id = isset($_POST['log_id']) ? (int) $_POST['log_id'] : 0;
-        if ($log_id <= 0) {
-            wp_send_json_error(array('message' => 'Invalid log ID.'), 400);
-            return;
-        }
-
-        $result = \MNEM\ErrorLog::delete_log($log_id);
-        if ($result) {
-            wp_send_json_success(array('message' => 'Error log deleted.'));
-        } else {
-            wp_send_json_error(array('message' => 'Could not delete error log.'), 500);
-        }
-    }
-
-    public function ajax_export_error_logs()
-    {
-        $this->ensure_ajax_permissions();
-
-        $filters = array();
-        if (!empty($_POST['error_level'])) {
-            $filters['error_level'] = sanitize_text_field(wp_unslash($_POST['error_level']));
-        }
-        if (!empty($_POST['error_type'])) {
-            $filters['error_type'] = sanitize_text_field(wp_unslash($_POST['error_type']));
-        }
-
-        $logs = \MNEM\ErrorLog::get_logs($filters, 1000, 0);
-        $total_count = \MNEM\ErrorLog::count_logs($filters);
-
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename=mnem-error-logs-' . gmdate('Y-m-d') . '.csv');
-        $out = fopen('php://output', 'w');
-        if ($total_count > 1000) {
-            fputcsv($out, array('# NOTE: Export limited to 1000 most recent entries. Total matching: ' . $total_count));
-        }
-        fputcsv($out, array('ID', 'Date', 'Level', 'Type', 'Recipient', 'Subject', 'Provider', 'Error Message'));
-        foreach ($logs as $row) {
-            fputcsv($out, array(
-                $row['id'] ?? '',
-                $row['created_at'] ?? '',
-                $row['error_level'] ?? '',
-                $row['error_type'] ?? '',
-                $row['recipient_email'] ?? '',
-                $row['subject'] ?? '',
-                $row['provider_type'] ?? '',
-                $row['error_message'] ?? '',
-            ));
-        }
-        fclose($out);
-        exit;
-    }
-
-    public function ajax_clear_old_errors()
-    {
-        $this->ensure_ajax_permissions();
-        $days = isset($_POST['days']) ? max(1, (int) $_POST['days']) : 30;
-        $deleted = \MNEM\ErrorLog::cleanup_old_logs($days);
-        wp_send_json_success(array('deleted' => $deleted, 'message' => sprintf('%d error log entries removed.', $deleted)));
     }
 
     protected function exit_after_redirect()

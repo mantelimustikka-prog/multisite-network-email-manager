@@ -227,15 +227,6 @@ class Queue
                         'message_id' => '',
                         'metadata' => array(),
                     );
-                    ErrorLog::log_validation_error(
-                        'Force sender enabled but sender email is not configured for queue processing.',
-                        'from_email',
-                        '',
-                        array(
-                            'queue_id' => $id,
-                            'recipient' => isset($row['recipient_email']) ? (string) $row['recipient_email'] : '',
-                        )
-                    );
                 } else {
                     $from_header = $forced_from_name !== ''
                         ? 'From: ' . $forced_from_name . ' <' . $forced_from_email . '>'
@@ -320,21 +311,6 @@ class Queue
 
                 if ($status === 'failed') {
                     Logger::error('Queue email permanently failed.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'provider' => $provider_type, 'error' => $result['message']));
-                    ErrorLog::log_send_failure(
-                        $id,
-                        (string) $row['recipient_email'],
-                        (string) $row['from_email'],
-                        (string) $row['subject'],
-                        $provider_type,
-                        isset($result['message']) ? (string) $result['message'] : 'Send failed without error message',
-                        array(
-                            'http_status'            => isset($result['metadata']['http_code']) ? (int) $result['metadata']['http_code'] : 0,
-                            'api_response'           => isset($result['metadata']['api_response']) ? (string) $result['metadata']['api_response'] : '',
-                            'provider_error_message' => isset($result['message']) ? (string) $result['message'] : '',
-                            'campaign_id'            => (int) $row['campaign_id'],
-                            'attempts'               => $attempts,
-                        )
-                    );
                 } else {
                     Logger::warning('Queue email send failed; retry scheduled.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'attempts' => $attempts, 'next_scheduled' => $next_scheduled, 'provider' => $provider_type));
                 }
@@ -347,15 +323,6 @@ class Queue
         } catch (\Throwable $e) {
             $status = 'failed';
             Logger::error('Exception during queue email processing.', array('queue_id' => $id, 'exception' => $e->getMessage()));
-            ErrorLog::log_system_error(
-                'Exception during queue email processing: ' . $e->getMessage(),
-                $e,
-                ErrorLog::TYPE_QUEUE_ERROR,
-                array(
-                    'queue_id'       => $id,
-                    'recipient_email' => isset($row['recipient_email']) ? (string) $row['recipient_email'] : '',
-                )
-            );
             // Mark the item failed so it won't loop forever.
             $attempts = (int) $row['attempts'] + 1;
             $processed_at = self::current_time_mysql();
