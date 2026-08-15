@@ -112,11 +112,16 @@ class NetworkAdmin
 
         $sender_name  = isset($_POST['sender_name'])  ? sanitize_text_field(wp_unslash($_POST['sender_name']))  : '';
         $sender_email = isset($_POST['sender_email']) ? sanitize_email(wp_unslash($_POST['sender_email'])) : '';
+        $force_sender = isset($_POST['force_sender_settings']) && $_POST['force_sender_settings'] === '1';
 
         update_site_option('mnem_sender_name', $sender_name);
         update_site_option('mnem_sender_email', $sender_email);
+        \MNEM\SmtpSettings::set_force_sender($force_sender);
 
-        \MNEM\Logger::info('Sender settings updated');
+        \MNEM\Logger::info('Sender settings updated', array(
+            'force_sender_enabled' => $force_sender,
+            'sender_email' => $sender_email,
+        ));
 
         $this->redirect_with_notice('mnem-settings', 'sender_settings_saved', array('tab' => 'sender'));
     }

@@ -208,11 +208,51 @@ class Queue
             $attachments = json_decode(isset($row['attachments']) ? (string) $row['attachments'] : '[]', true);
             $attachments = is_array($attachments) ? $attachments : array();
 
+            $from_header = '';
             if (!empty($row['from_email'])) {
                 $from_name = !empty($row['from_name']) ? (string) $row['from_name'] : '';
-                $headers[] = $from_name !== ''
+                $from_header = $from_name !== ''
                     ? 'From: ' . $from_name . ' <' . (string) $row['from_email'] . '>'
                     : 'From: ' . (string) $row['from_email'];
+            }
+
+            if (SmtpSettings::is_force_sender_enabled()) {
+                $forced_from_email = SmtpSettings::get_sender_email();
+                $forced_from_name = SmtpSettings::get_sender_name();
+                if ($forced_from_email === '') {
+                    $result = array(
+                        'success' => false,
+                        'message' => 'Force sender is enabled but sender email is not configured. Please configure it in Settings > Sender Settings.',
+                        'provider' => '',
+                        'message_id' => '',
+                        'metadata' => array(),
+                    );
+                    ErrorLog::log_validation_error(
+                        'Force sender enabled but sender email is not configured for queue processing.',
+                        'from_email',
+                        '',
+                        array(
+                            'queue_id' => $id,
+                            'recipient' => isset($row['recipient_email']) ? (string) $row['recipient_email'] : '',
+                        )
+                    );
+                } else {
+                    $from_header = $forced_from_name !== ''
+                        ? 'From: ' . $forced_from_name . ' <' . $forced_from_email . '>'
+                        : 'From: ' . $forced_from_email;
+                    Logger::info('Queue email sender overridden by force sender setting.', array(
+                        'queue_id' => $id,
+                        'original_from' => isset($row['from_email']) ? (string) $row['from_email'] : '',
+                        'forced_from' => $forced_from_email,
+                    ));
+                }
+            }
+
+            $headers = array_values(array_filter($headers, static function ($header_line) {
+                return stripos((string) $header_line, 'From:') !== 0;
+            }));
+            if ($from_header !== '') {
+                $headers[] = $from_header;
             }
 
             $headers['__attachments'] = $attachments;
@@ -221,9 +261,11 @@ class Queue
                 return ProviderManager::send_email($row['recipient_email'], $row['subject'], $row['body'], $headers);
             };
 
-            $result = class_exists('\\MNEM\\MailInterceptor')
-                ? MailInterceptor::run_without_interception($send)
-                : $send();
+            if (empty($result)) {
+                $result = class_exists('\\MNEM\\MailInterceptor')
+                    ? MailInterceptor::run_without_interception($send)
+                    : $send();
+            }
             $attempts = (int) $row['attempts'] + 1;
             $processed_at = self::current_time_mysql();
             $provider_type = isset($result['provider']) ? (string) $result['provider'] : '';

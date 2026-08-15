@@ -161,18 +161,40 @@ class SmtpDiagnostics
             }
 
             $smtp_settings = SmtpSettings::get_all();
-            $from_email = isset($smtp_settings['from_email']) ? (string) $smtp_settings['from_email'] : '';
-            if ($from_email === '') {
+            $from_email = '';
+            $from_name = '';
+            if (SmtpSettings::is_force_sender_enabled()) {
                 $from_email = SmtpSettings::get_sender_email();
-            }
-            if ($from_email === '') {
-                $result = array(
-                    'success' => false,
-                    'message' => 'Sender email address is not configured. Please configure it in Settings > Sender Settings.',
-                    'details' => array(),
-                );
-                self::store_result('send_test_email', $result, $user_id);
-                return $result;
+                $from_name = SmtpSettings::get_sender_name();
+                if ($from_email === '') {
+                    $result = array(
+                        'success' => false,
+                        'message' => 'Force sender is enabled but sender email is not configured. Please configure it in Settings > Sender Settings.',
+                        'details' => array(),
+                    );
+                    ErrorLog::log_validation_error(
+                        'Force sender enabled but sender email is not configured.',
+                        'from_email',
+                        '',
+                        array('recipient' => $to)
+                    );
+                    self::store_result('send_test_email', $result, $user_id);
+                    return $result;
+                }
+            } else {
+                $from_email = isset($smtp_settings['from_email']) ? (string) $smtp_settings['from_email'] : '';
+                if ($from_email === '') {
+                    $from_email = SmtpSettings::get_sender_email();
+                }
+                if ($from_email === '') {
+                    $result = array(
+                        'success' => false,
+                        'message' => 'Sender email address is not configured. Please configure it in Settings > Sender Settings.',
+                        'details' => array(),
+                    );
+                    self::store_result('send_test_email', $result, $user_id);
+                    return $result;
+                }
             }
 
             $provider_type = (string) SmtpSettings::get('provider_type', 'smtp');
@@ -195,9 +217,11 @@ class SmtpDiagnostics
             $subject = 'MNEM SMTP Test Email';
             $body    = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
 
-            $from_name = isset($smtp_settings['from_name']) ? (string) $smtp_settings['from_name'] : '';
             if ($from_name === '') {
-                $from_name = SmtpSettings::get_sender_name();
+                $from_name = isset($smtp_settings['from_name']) ? (string) $smtp_settings['from_name'] : '';
+                if ($from_name === '') {
+                    $from_name = SmtpSettings::get_sender_name();
+                }
             }
 
             $headers = array('Content-Type: text/html; charset=UTF-8');

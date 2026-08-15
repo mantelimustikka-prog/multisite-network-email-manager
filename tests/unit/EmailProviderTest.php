@@ -465,6 +465,27 @@ class EmailProviderTest extends TestCase
         $this->assertSame('mailgun', $result['provider']);
     }
 
+    public function test_provider_manager_build_config_uses_forced_sender_settings_when_enabled()
+    {
+        update_site_option('mnem_sender_email', 'forced@example.com');
+        update_site_option('mnem_sender_name', 'Forced Sender');
+        update_site_option('mnem_force_sender_settings', 1);
+
+        SmtpSettings::save(array(
+            'provider_type' => 'smtp',
+            'host' => 'smtp.example.com',
+            'from_email' => 'smtp@example.com',
+            'from_name' => 'SMTP Sender',
+        ));
+
+        $reflection = new \ReflectionMethod(ProviderManager::class, 'build_config');
+        $reflection->setAccessible(true);
+        $config = $reflection->invoke(null, 'smtp');
+
+        $this->assertSame('forced@example.com', $config['from_email']);
+        $this->assertSame('Forced Sender', $config['from_name']);
+    }
+
     // -------------------------------------------------------------------------
     // SmtpSettings — multi-provider fields
     // -------------------------------------------------------------------------
