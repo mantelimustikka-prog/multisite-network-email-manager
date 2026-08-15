@@ -70,8 +70,9 @@ class NetworkMailInterceptorTest extends TestCase
         $this->assertStringContainsString('INSERT INTO wp_mnem_queue', $queries);
         $this->assertStringContainsString('blog_id', $queries);
         $this->assertStringContainsString('header@example.com', $queries);
-        $this->assertStringContainsString('Header', $queries);
-        $this->assertStringContainsString('Footer', $queries);
+        $this->assertStringContainsString("'Body'", $queries);
+        $this->assertStringNotContainsString('<p>Header</p>', $queries);
+        $this->assertStringNotContainsString('<p>Footer</p>', $queries);
     }
 
     public function test_intercept_mail_uses_forced_sender_when_enabled()
