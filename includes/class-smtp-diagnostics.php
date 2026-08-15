@@ -160,7 +160,11 @@ class SmtpDiagnostics
                 return $result;
             }
 
-            $from_email = SmtpSettings::get_sender_email();
+            $smtp_settings = SmtpSettings::get_all();
+            $from_email = isset($smtp_settings['from_email']) ? (string) $smtp_settings['from_email'] : '';
+            if ($from_email === '') {
+                $from_email = SmtpSettings::get_sender_email();
+            }
             if ($from_email === '') {
                 $result = array(
                     'success' => false,
@@ -185,7 +189,10 @@ class SmtpDiagnostics
             $subject = 'MNEM SMTP Test Email';
             $body    = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
 
-            $from_name = SmtpSettings::get_sender_name();
+            $from_name = isset($smtp_settings['from_name']) ? (string) $smtp_settings['from_name'] : '';
+            if ($from_name === '') {
+                $from_name = SmtpSettings::get_sender_name();
+            }
 
             $headers = array('Content-Type: text/html; charset=UTF-8');
             $headers[] = $from_name !== ''
