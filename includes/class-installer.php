@@ -6,6 +6,8 @@ defined('ABSPATH') || exit;
 
 class Installer
 {
+    private static $migrations_ran = false;
+
     public static function activate($network_wide = false)
     {
         if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -61,11 +63,53 @@ class Installer
         }
 
         self::update_db_version();
+        self::run_migrations();
         if ((int) get_site_option(EmailTracking::OPTION_KEEP_PREVIEWS, -1) === -1) {
             update_site_option(EmailTracking::OPTION_KEEP_PREVIEWS, 1);
         }
         if ((int) get_site_option(EmailTracking::OPTION_RETENTION_DAYS, -1) === -1) {
             update_site_option(EmailTracking::OPTION_RETENTION_DAYS, 30);
+        }
+    }
+
+    public static function run_migrations()
+    {
+        if (self::$migrations_ran) {
+            return;
+        }
+
+        global $wpdb;
+
+        if (!isset($wpdb) || !is_object($wpdb) || !method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare') || !method_exists($wpdb, 'query')) {
+            return;
+        }
+
+        self::$migrations_ran = true;
+
+        $tracking_prefix = (property_exists($wpdb, 'base_prefix') && !empty($wpdb->base_prefix))
+            ? (string) $wpdb->base_prefix
+            : (string) $wpdb->prefix;
+        $tracking_table = $tracking_prefix . 'mnem_email_tracking';
+
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tracking_table));
+        if ($table_exists !== $tracking_table) {
+            return;
+        }
+
+        $column_exists = $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+            $tracking_table,
+            'site_id'
+        ));
+
+        if (!$column_exists) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("ALTER TABLE `{$tracking_table}` ADD COLUMN site_id bigint(20) unsigned NOT NULL DEFAULT 0 AFTER email_id, ADD KEY site_id (site_id)");
+            // Pre-existing rows have no site context; default them to the main site (ID 1).
+            // This is an acceptable approximation for installations that were running before
+            // the centralized-table architecture was introduced.
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("UPDATE `{$tracking_table}` SET site_id = 1 WHERE site_id = 0");
         }
     }
 
