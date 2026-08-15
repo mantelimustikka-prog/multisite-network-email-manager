@@ -58,8 +58,6 @@ class MailInterceptor
             }
         }
 
-        $message = EmailFormatter::apply_global_header_footer($message);
-
         $queued = Queue::enqueue(
             $blog_id,
             $recipient,

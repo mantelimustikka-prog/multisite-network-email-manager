@@ -45,6 +45,13 @@ class SmtpService
 
     public function filter_mail_from($from)
     {
+        if (SmtpSettings::is_force_sender_enabled()) {
+            $forced_email = SmtpSettings::get_sender_email();
+            if ($forced_email !== '') {
+                return $forced_email;
+            }
+        }
+
         $configured = SmtpSettings::get('from_email', '');
 
         return $configured !== '' ? $configured : $from;
@@ -52,6 +59,13 @@ class SmtpService
 
     public function filter_mail_from_name($from_name)
     {
+        if (SmtpSettings::is_force_sender_enabled()) {
+            $forced_name = SmtpSettings::get_sender_name();
+            if ($forced_name !== '') {
+                return $forced_name;
+            }
+        }
+
         $configured = SmtpSettings::get('from_name', '');
 
         return $configured !== '' ? $configured : $from_name;
