@@ -248,7 +248,7 @@ class TableDiagnostics
             'success' => true,
             'message' => $message,
             'results' => $results,
-            'diagnostics' => self::collect_diagnostics(),
+            'diagnostics' => $diagnostics,
         );
     }
 
