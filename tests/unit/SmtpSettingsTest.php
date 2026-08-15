@@ -111,4 +111,18 @@ class SmtpSettingsTest extends TestCase
     {
         $this->assertFalse(SmtpSettings::validate_api_key(''));
     }
+
+    public function test_force_sender_defaults_to_disabled()
+    {
+        $this->assertFalse(SmtpSettings::is_force_sender_enabled());
+    }
+
+    public function test_set_force_sender_updates_option()
+    {
+        SmtpSettings::set_force_sender(true);
+        $this->assertTrue(SmtpSettings::is_force_sender_enabled());
+
+        SmtpSettings::set_force_sender(false);
+        $this->assertFalse(SmtpSettings::is_force_sender_enabled());
+    }
 }

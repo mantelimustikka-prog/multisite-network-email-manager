@@ -45,6 +45,18 @@ class MailInterceptor
         $from = self::extract_from($headers);
         $from_email = $from['email'] !== '' ? $from['email'] : SmtpSettings::get_sender_email();
         $from_name = $from['name'] !== '' ? $from['name'] : SmtpSettings::get_sender_name();
+        if (SmtpSettings::is_force_sender_enabled()) {
+            $forced_email = SmtpSettings::get_sender_email();
+            $forced_name = SmtpSettings::get_sender_name();
+            if ($forced_email !== '') {
+                $from_email = $forced_email;
+                $from_name = $forced_name;
+                Logger::info('Intercepted email sender overridden by force sender setting.', array(
+                    'to' => $recipient,
+                    'forced_from' => $forced_email,
+                ));
+            }
+        }
 
         $message = EmailFormatter::apply_global_header_footer($message);
 

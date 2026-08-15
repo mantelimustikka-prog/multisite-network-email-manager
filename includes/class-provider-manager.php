@@ -171,10 +171,17 @@ class ProviderManager
     {
         $settings = SmtpSettings::get_all();
 
+        $from_email = isset($settings['from_email']) ? (string) $settings['from_email'] : '';
+        $from_name = isset($settings['from_name']) ? (string) $settings['from_name'] : '';
+        if (SmtpSettings::is_force_sender_enabled()) {
+            $from_email = SmtpSettings::get_sender_email();
+            $from_name = SmtpSettings::get_sender_name();
+        }
+
         // Common from address.
         $base = array(
-            'from_email' => isset($settings['from_email']) ? (string) $settings['from_email'] : '',
-            'from_name'  => isset($settings['from_name'])  ? (string) $settings['from_name']  : '',
+            'from_email' => $from_email,
+            'from_name'  => $from_name,
         );
 
         if ($type === 'smtp') {

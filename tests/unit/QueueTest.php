@@ -171,4 +171,66 @@ class QueueTest extends TestCase
         $this->assertSame(1, $GLOBALS['mnem_restore_blog_calls']);
         $this->assertSame('user@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
     }
+
+    public function test_process_batch_overrides_from_header_when_force_sender_enabled()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'smtp-from@example.test',
+            'from_name' => 'SMTP From',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        $GLOBALS['mnem_site_options']['mnem_force_sender_settings'] = 1;
+        $GLOBALS['mnem_site_options']['mnem_sender_email'] = 'forced@example.com';
+        $GLOBALS['mnem_site_options']['mnem_sender_name'] = 'Forced Sender';
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array(11);
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 11,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'user@example.com',
+                    'subject' => 'Subject',
+                    'body' => 'Body',
+                    'from_email' => 'row@example.com',
+                    'from_name' => 'Row Name',
+                    'headers' => '["From: Header Name <header@example.com>","X-Test: test"]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 0,
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $processed = Queue::process_batch(1);
+        $headers = implode("\n", $GLOBALS['mnem_last_wp_mail']['headers']);
+
+        $this->assertSame(1, $processed);
+        $this->assertStringContainsString('From: Forced Sender <forced@example.com>', $headers);
+        $this->assertStringNotContainsString('header@example.com', $headers);
+        $this->assertStringNotContainsString('row@example.com', $headers);
+    }
 }

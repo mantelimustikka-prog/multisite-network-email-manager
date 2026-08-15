@@ -129,6 +129,18 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertStringContainsString('Sender Settings', $result['message']);
     }
 
+    public function test_send_test_email_fails_when_force_sender_enabled_without_sender_email()
+    {
+        $GLOBALS['mnem_site_options']['mnem_force_sender_settings'] = 1;
+        $GLOBALS['mnem_site_options']['mnem_sender_email'] = '';
+        $GLOBALS['mnem_site_options']['admin_email'] = '';
+
+        $result = SmtpDiagnostics::send_test_email('admin@example.com');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Force sender is enabled', $result['message']);
+    }
+
     public function test_send_test_email_fails_when_provider_not_configured()
     {
         $settings = $GLOBALS['mnem_site_options']['mnem_smtp_settings'];

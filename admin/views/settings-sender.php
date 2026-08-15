@@ -9,6 +9,7 @@ defined('ABSPATH') || exit;
 
 $sender_name  = (string) get_site_option('mnem_sender_name', '');
 $sender_email = (string) get_site_option('mnem_sender_email', '');
+$force_sender = \MNEM\SmtpSettings::is_force_sender_enabled();
 ?>
 
 <p class="description">
@@ -53,6 +54,34 @@ $sender_email = (string) get_site_option('mnem_sender_email', '');
                     <p class="description">
                         <?php esc_html_e('Displayed as the "From" address in outbound emails. Defaults to the WordPress admin email if left blank.', 'multisite-network-email-manager'); ?>
                     </p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="mnem-force-sender"><?php esc_html_e('Force to use these sender settings', 'multisite-network-email-manager'); ?></label>
+                </th>
+                <td>
+                    <label for="mnem-force-sender">
+                        <input
+                            name="force_sender_settings"
+                            id="mnem-force-sender"
+                            type="checkbox"
+                            value="1"
+                            <?php checked($force_sender); ?>
+                        />
+                        <?php esc_html_e('Use these sender settings for ALL outgoing emails (test, campaigns, transactional).', 'multisite-network-email-manager'); ?>
+                    </label>
+                    <p class="description">
+                        <?php esc_html_e('When enabled, all emails use Sender Name and Sender Email configured above, regardless of custom From headers.', 'multisite-network-email-manager'); ?>
+                    </p>
+                    <?php if ($force_sender && $sender_email !== '') : ?>
+                        <p class="description">
+                            <strong>
+                            <?php esc_html_e('Enforced sender:', 'multisite-network-email-manager'); ?>
+                            <?php echo esc_html($sender_name !== '' ? $sender_name . ' <' . $sender_email . '>' : $sender_email); ?>
+                            </strong>
+                        </p>
+                    <?php endif; ?>
                 </td>
             </tr>
         </tbody>

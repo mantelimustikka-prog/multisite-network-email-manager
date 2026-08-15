@@ -175,4 +175,23 @@ class NetworkAdminTest extends TestCase
         $this->assertStringContainsString('count=3', $GLOBALS['mnem_last_redirect']);
         $this->assertStringContainsString('status=failed', $GLOBALS['mnem_last_redirect']);
     }
+
+    public function test_handle_save_sender_settings_saves_force_sender_option()
+    {
+        $_POST = array(
+            'mnem_action' => 'save_sender_settings',
+            '_wpnonce' => 'test-nonce',
+            'sender_name' => 'Forced Name',
+            'sender_email' => 'forced@example.com',
+            'force_sender_settings' => '1',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_save_sender_settings();
+
+        $this->assertSame('Forced Name', get_site_option('mnem_sender_name'));
+        $this->assertSame('forced@example.com', get_site_option('mnem_sender_email'));
+        $this->assertSame(1, get_site_option(\MNEM\SmtpSettings::OPTION_FORCE_SENDER));
+        $this->assertStringContainsString('mnem_notice=sender_settings_saved', $GLOBALS['mnem_last_redirect']);
+    }
 }

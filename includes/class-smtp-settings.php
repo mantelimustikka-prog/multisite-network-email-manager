@@ -7,6 +7,7 @@ defined('ABSPATH') || exit;
 class SmtpSettings
 {
     public const OPTION_KEY = 'mnem_smtp_settings';
+    public const OPTION_FORCE_SENDER = 'mnem_force_sender_settings';
 
     public const DEFAULT_SETTINGS = array(
         // Legacy SMTP fields (also used when provider_type = 'smtp').
@@ -235,6 +236,16 @@ class SmtpSettings
         }
 
         return '';
+    }
+
+    public static function is_force_sender_enabled(): bool
+    {
+        return (int) get_site_option(self::OPTION_FORCE_SENDER, 0) === 1;
+    }
+
+    public static function set_force_sender(bool $enabled): void
+    {
+        update_site_option(self::OPTION_FORCE_SENDER, $enabled ? 1 : 0);
     }
 
     /**
