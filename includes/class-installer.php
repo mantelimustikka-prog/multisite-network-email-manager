@@ -31,6 +31,7 @@ class Installer
     public static function deactivate()
     {
         Cron::deactivate();
+        StatusSyncCron::deactivate();
     }
 
     public static function install()
@@ -158,6 +159,18 @@ class Installer
                     $wpdb->query("ALTER TABLE `{$queue_table}` ADD COLUMN `{$column_name}` datetime NULL AFTER sent_at");
                 }
             }
+
+            foreach (array('opens_count', 'clicks_count') as $column_name) {
+                $column_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                    $queue_table,
+                    $column_name
+                ));
+                if ($column_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$queue_table}` ADD COLUMN `{$column_name}` int(11) NOT NULL DEFAULT 0 AFTER clicked");
+                }
+            }
         }
 
         foreach (array('mnem_email_tracking_events', 'mnem_email_tracking') as $obsolete_table_suffix) {
@@ -266,6 +279,8 @@ class Installer
                     'sent_at' => 'datetime',
                     'opened' => 'datetime',
                     'clicked' => 'datetime',
+                    'opens_count' => 'int(11)',
+                    'clicks_count' => 'int(11)',
                     'created_at' => 'datetime',
                     'provider_type' => 'varchar(20)',
                     'provider_message_id' => 'varchar(255)',
@@ -298,6 +313,8 @@ class Installer
                     sent_at datetime NULL,
                     opened datetime NULL,
                     clicked datetime NULL,
+                    opens_count int(11) NOT NULL DEFAULT 0,
+                    clicks_count int(11) NOT NULL DEFAULT 0,
                     created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     provider_type varchar(20) NOT NULL DEFAULT '',
                     provider_message_id varchar(255) NOT NULL DEFAULT '',

@@ -41,6 +41,8 @@ class RestApiTest extends TestCase
                     'status' => 'sent',
                     'opened' => '',
                     'clicked' => '',
+                    'opens_count' => 0,
+                    'clicks_count' => 0,
                     'provider_metadata' => '{}',
                 );
             }

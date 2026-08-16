@@ -259,6 +259,8 @@ class QueueTest extends TestCase
                     'status' => 'delivered',
                     'opened' => '',
                     'clicked' => '',
+                    'opens_count' => 0,
+                    'clicks_count' => 0,
                     'provider_metadata' => '{}',
                 );
             }
@@ -278,7 +280,40 @@ class QueueTest extends TestCase
         $this->assertStringContainsString("status = 'clicked'", $queries);
         $this->assertStringContainsString("opened = '2026-08-11 12:00:00'", $queries);
         $this->assertStringContainsString("clicked = '2026-08-11 12:00:00'", $queries);
+        $this->assertStringContainsString('opens_count = 0', $queries);
+        $this->assertStringContainsString('clicks_count = 1', $queries);
         $this->assertStringNotContainsString("recipient_email = 'user@example.com'", $queries);
+    }
+
+    public function test_record_local_event_increments_open_count()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'status' => 'delivered',
+                    'opened' => '',
+                    'clicked' => '',
+                    'opens_count' => 2,
+                    'clicks_count' => 1,
+                    'provider_metadata' => '{}',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        Queue::record_local_event(10, 'opened');
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("status = 'opened'", $queries);
+        $this->assertStringContainsString('opens_count = 3', $queries);
+        $this->assertStringContainsString('clicks_count = 1', $queries);
     }
 
     public function test_map_webhook_status_maps_provider_events()

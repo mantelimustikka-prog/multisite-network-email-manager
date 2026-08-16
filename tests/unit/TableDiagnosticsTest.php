@@ -37,6 +37,8 @@ class TableDiagnosticsTest extends TestCase
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
         $this->assertArrayHasKey('opened', $schema['mnem_queue']['columns']);
         $this->assertArrayHasKey('clicked', $schema['mnem_queue']['columns']);
+        $this->assertArrayHasKey('opens_count', $schema['mnem_queue']['columns']);
+        $this->assertArrayHasKey('clicks_count', $schema['mnem_queue']['columns']);
         $this->assertNotEmpty($schema['mnem_queue']['create_sql']);
     }
 

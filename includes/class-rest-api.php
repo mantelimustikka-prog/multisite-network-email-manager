@@ -281,7 +281,7 @@ class RestApi
         $table = $wpdb->base_prefix . 'mnem_queue';
         $items = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, site_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
+                "SELECT id, site_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
                 $site_id,
                 100
             ),
