@@ -363,13 +363,19 @@ function appendUsers(users) {
     }
 
     users.forEach(function(user) {
+        if (tbody.querySelector('[data-user-id="' + user.user_id + '"]')) {
+            return;
+        }
+
         allUsers.set(user.user_id, user);
 
         var row = document.createElement('tr');
         row.className = 'mnem-user-row';
         row.dataset.userId = user.user_id;
         row.dataset.siteId = user.site_id;
-        row.dataset.role = user.role;
+        row.dataset.siteIds = Array.isArray(user.site_ids) ? user.site_ids.join(',') : String(user.site_id || '');
+        row.dataset.role = Array.isArray(user.roles) && user.roles.length > 0 ? user.roles[0] : user.role;
+        row.dataset.roles = Array.isArray(user.roles) ? user.roles.join(',') : String(user.role || '');
         row.dataset.email = user.email;
         row.dataset.login = user.login;
 
@@ -394,7 +400,7 @@ function appendUsers(users) {
         siteCell.textContent = user.site_name;
 
         var roleCell = document.createElement('td');
-        roleCell.textContent = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+        roleCell.textContent = user.role;
 
         row.appendChild(checkboxCell);
         row.appendChild(loginCell);
@@ -539,13 +545,13 @@ function filterUsers() {
     var searchText = document.getElementById('mnem_search_users').value.toLowerCase();
 
     document.querySelectorAll('.mnem-user-row').forEach(function(row) {
-        var rowSiteId = row.dataset.siteId;
-        var rowRole = row.dataset.role;
+        var rowSiteIds = row.dataset.siteIds ? row.dataset.siteIds.split(',').filter(function(siteId) { return siteId; }) : [];
+        var rowRoles = row.dataset.roles ? row.dataset.roles.split(',').filter(function(role) { return role; }) : [];
         var rowEmail = row.dataset.email.toLowerCase();
         var rowLogin = row.dataset.login.toLowerCase();
 
-        var matchesSite = !siteFilter || rowSiteId === siteFilter;
-        var matchesRole = !roleFilter || rowRole === roleFilter;
+        var matchesSite = !siteFilter || rowSiteIds.indexOf(siteFilter) !== -1;
+        var matchesRole = !roleFilter || rowRoles.indexOf(roleFilter) !== -1;
         var matchesSearch = !searchText || rowEmail.indexOf(searchText) !== -1 || rowLogin.indexOf(searchText) !== -1;
 
         row.style.display = (matchesSite && matchesRole && matchesSearch) ? '' : 'none';

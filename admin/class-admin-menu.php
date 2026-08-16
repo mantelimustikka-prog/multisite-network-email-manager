@@ -69,14 +69,13 @@ class AdminMenu
     public static function get_network_users_batch($batch_size, $offset)
     {
         $users = array();
-        $total = 0;
         $batch_size = max(0, (int) $batch_size);
         $offset = max(0, (int) $offset);
 
-        if (!function_exists('get_sites') || !function_exists('get_users')) {
+        if (!class_exists('\WP_User_Query')) {
             return array(
                 'users' => $users,
-                'total' => $total,
+                'total' => 0,
                 'loaded' => 0,
                 'offset' => $offset,
                 'next_offset' => $offset,
@@ -85,63 +84,63 @@ class AdminMenu
             );
         }
 
-        $sites = get_sites(array('number' => 0));
-        $remaining = $batch_size;
-        $remaining_offset = $offset;
+        $query = new \WP_User_Query(array(
+            'blog_id' => 0,
+            'number' => $batch_size,
+            'offset' => $offset,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'count_total' => true,
+            'fields' => array('ID', 'user_login', 'user_email'),
+        ));
+        $queried_users = $query->get_results();
+        $total = (int) $query->get_total();
 
-        foreach ($sites as $site) {
-            $site_id = (int) $site->blog_id;
-            $site_total = 0;
+        foreach ($queried_users as $user) {
+            $user_id = (int) $user->ID;
+            $site_ids = array();
+            $site_names = array();
+            $roles = array();
 
-            if (function_exists('count_users')) {
-                $user_count = count_users('time', $site_id);
-                $site_total = isset($user_count['total_users']) ? (int) $user_count['total_users'] : 0;
+            if (function_exists('get_blogs_of_user')) {
+                $blogs = get_blogs_of_user($user_id);
+
+                foreach ($blogs as $blog) {
+                    $site_id = isset($blog->userblog_id) ? (int) $blog->userblog_id : (isset($blog->blog_id) ? (int) $blog->blog_id : 0);
+                    if ($site_id <= 0) {
+                        continue;
+                    }
+
+                    $site_ids[] = $site_id;
+                    $site_names[] = !empty($blog->blogname) ? $blog->blogname : sprintf(__('Site %d', 'multisite-network-email-manager'), $site_id);
+
+                    $user_object = new \WP_User($user_id, '', $site_id);
+                    if (!empty($user_object->roles[0])) {
+                        $roles[] = $user_object->roles[0];
+                    }
+                }
             }
 
-            $total += $site_total;
+            $site_ids = array_values(array_unique(array_filter(array_map('intval', $site_ids))));
+            $site_names = array_values(array_unique(array_filter($site_names)));
+            $roles = array_values(array_unique(array_filter($roles)));
 
-            if ($remaining <= 0) {
-                continue;
+            if (empty($roles)) {
+                $roles = array('subscriber');
             }
 
-            if ($remaining_offset >= $site_total) {
-                $remaining_offset -= $site_total;
-                continue;
-            }
-
-            $site_offset = $remaining_offset;
-            $site_limit = $site_total > 0 ? min($remaining, $site_total - $site_offset) : $remaining;
-
-            if ($site_limit <= 0) {
-                $remaining_offset = 0;
-                continue;
-            }
-
-            $site_users = get_users(array(
-                'blog_id' => $site_id,
-                'number' => $site_limit,
-                'offset' => $site_offset,
-                'fields' => array('ID', 'user_login', 'user_email'),
-            ));
-
-            foreach ($site_users as $user) {
-                $user_id = (int) $user->ID;
-
-                $user_object = new \WP_User($user_id, '', $site_id);
-                $role = !empty($user_object->roles[0]) ? $user_object->roles[0] : 'subscriber';
-
-                $users[] = array(
-                    'user_id'   => $user_id,
-                    'login'     => $user->user_login,
-                    'email'     => $user->user_email,
-                    'site_id'   => $site_id,
-                    'site_name' => $site->blogname,
-                    'role'      => $role,
-                );
-            }
-
-            $remaining -= count($site_users);
-            $remaining_offset = 0;
+            $users[] = array(
+                'user_id' => $user_id,
+                'login' => $user->user_login,
+                'email' => $user->user_email,
+                'site_id' => !empty($site_ids) ? (int) $site_ids[0] : 0,
+                'site_ids' => $site_ids,
+                'site_name' => !empty($site_names) ? implode(', ', $site_names) : __('No site membership', 'multisite-network-email-manager'),
+                'role' => implode(', ', array_map(static function ($role) {
+                    return ucfirst(str_replace(array('-', '_'), ' ', (string) $role));
+                }, $roles)),
+                'roles' => $roles,
+            );
         }
 
         $loaded = count($users);
