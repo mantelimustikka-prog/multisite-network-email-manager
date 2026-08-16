@@ -77,7 +77,7 @@ class EmailTracking
      * @param array<string,mixed> $send_result
      * @param array<int|string,mixed> $headers
      */
-    public static function store_sent_email(int $queue_id, array $queue_row, array $send_result, array $headers): void
+    public static function store_sent_email(int $queue_id, array $queue_row, array $send_result, array $headers, ?int $site_id = null, string $email_type = 'transactional'): void
     {
         if (!self::is_enabled()) {
             return;
@@ -89,12 +89,15 @@ class EmailTracking
             return;
         }
         $now = gmdate('Y-m-d H:i:s');
-        $site_id = self::resolve_site_id(null, $queue_row);
+        $site_id = self::resolve_site_id($site_id, $queue_row);
         $provider_message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+
+        $allowed_types = array('transactional', 'campaign', 'test');
+        $email_type = in_array($email_type, $allowed_types, true) ? $email_type : 'transactional';
 
         $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at) VALUES (%d, %d, %s, %s, %s, %s, %s, %s, %d, %s, %d, %s, %s, %s)",
+                "INSERT INTO {$table} (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at) VALUES (%d, %d, %s, %s, %s, %s, %s, %s, %d, %s, %d, %s, %s, %s, %s)",
                 $site_id,
                 $queue_id,
                 $provider_message_id,
@@ -107,6 +110,7 @@ class EmailTracking
                 wp_json_encode(array()),
                 0,
                 wp_json_encode(array()),
+                $email_type,
                 $now,
                 $now
             )
@@ -132,7 +136,7 @@ class EmailTracking
         if ($search === '') {
             $items = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
+                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
                     $site_id,
                     $limit
                 ),
@@ -143,7 +147,7 @@ class EmailTracking
             $like = '%' . $escaped_search . '%';
             $items = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE site_id = %d AND (recipient_email LIKE %s OR subject LIKE %s) ORDER BY created_at DESC LIMIT %d",
+                    "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at FROM {$table} WHERE site_id = %d AND (recipient_email LIKE %s OR subject LIKE %s) ORDER BY created_at DESC LIMIT %d",
                     $site_id,
                     $like,
                     $like,
@@ -356,7 +360,7 @@ class EmailTracking
         $site_id = self::resolve_site_id($site_id);
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at FROM {$table} WHERE email_id = %d AND site_id = %d LIMIT %d",
+                "SELECT email_id, site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at FROM {$table} WHERE email_id = %d AND site_id = %d LIMIT %d",
                 $email_id,
                 $site_id,
                 1

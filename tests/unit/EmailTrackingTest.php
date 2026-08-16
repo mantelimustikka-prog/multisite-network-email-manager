@@ -109,7 +109,7 @@ class EmailTrackingTest extends TestCase
         ), array('X-Test: yes'));
 
         $joined_queries = implode("\n", $GLOBALS['wpdb']->queries);
-        $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, created_at, updated_at) VALUES (2, 22, \'provider-123\'', $joined_queries);
+        $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at) VALUES (2, 22, \'provider-123\'', $joined_queries);
     }
 
     public function test_get_history_filters_results_by_site_id_on_central_table()
