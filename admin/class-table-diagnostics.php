@@ -15,8 +15,8 @@ class TableDiagnostics
     {
         add_submenu_page(
             'mnem-dashboard',
-            'Table Diagnosis',
-            'Table Diagnosis',
+            'DB Table Diagnosis',
+            'DB Table Diagnosis',
             'manage_network_options',
             'mnem-table-diagnosis',
             array($this, 'render_page')

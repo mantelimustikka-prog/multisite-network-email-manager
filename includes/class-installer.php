@@ -232,37 +232,6 @@ class Installer
         $charset_suffix = $charset_suffix !== '' ? ' ' . $charset_suffix : '';
 
         return array(
-            'mnem_logs' => array(
-                'name' => $tracking_prefix . 'mnem_logs',
-                'columns' => array(
-                    'id' => 'bigint(20) unsigned',
-                    'site_id' => 'bigint(20) unsigned',
-                    'blog_id' => 'bigint(20) unsigned',
-                    'user_id' => 'bigint(20) unsigned',
-                    'level' => 'varchar(20)',
-                    'message' => 'text',
-                    'context' => 'longtext',
-                    'created_at' => 'datetime',
-                ),
-                'indexes' => array(
-                    'PRIMARY' => array('id'),
-                    'site_id' => array('site_id'),
-                    'level' => array('level'),
-                ),
-                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_logs (
-                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                    blog_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                    user_id bigint(20) unsigned NOT NULL DEFAULT 0,
-                    level varchar(20) NOT NULL,
-                    message text NOT NULL,
-                    context longtext NULL,
-                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY  (id),
-                    KEY site_id (site_id),
-                    KEY level (level)
-                ){$charset_suffix};",
-            ),
             'mnem_queue' => array(
                 'name' => $tracking_prefix . 'mnem_queue',
                 'columns' => array(
