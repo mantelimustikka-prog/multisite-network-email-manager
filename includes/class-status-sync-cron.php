@@ -32,7 +32,7 @@ class StatusSyncCron
             $minute_in_seconds = defined('MINUTE_IN_SECONDS') ? MINUTE_IN_SECONDS : 60;
             $schedules[$key] = array(
                 'interval' => $minutes * $minute_in_seconds,
-                'display' => sprintf('Every %d Minutes', $minutes),
+                'display' => sprintf(__('Every %d Minutes', 'multisite-network-email-manager'), $minutes),
             );
         }
 
@@ -45,13 +45,25 @@ class StatusSyncCron
             return;
         }
 
+        if (function_exists('add_filter') && (!function_exists('has_filter') || !has_filter('cron_schedules', array(__CLASS__, 'register_intervals')))) {
+            add_filter('cron_schedules', array(__CLASS__, 'register_intervals'));
+        }
+
         $existing = wp_next_scheduled(self::HOOK);
         if ($existing) {
             wp_unschedule_event($existing, self::HOOK);
         }
 
         $minutes = SmtpSettings::get_status_update_interval();
-        wp_schedule_event(time(), self::get_interval_key($minutes), self::HOOK);
+        $interval_key = self::get_interval_key($minutes);
+        $schedules = function_exists('wp_get_schedules') ? wp_get_schedules() : array();
+        if (!isset($schedules[$interval_key])) {
+            $schedules = self::register_intervals($schedules);
+        }
+
+        if (isset($schedules[$interval_key])) {
+            wp_schedule_event(time(), $interval_key, self::HOOK);
+        }
     }
 
     public static function sync_last_100_emails(): int

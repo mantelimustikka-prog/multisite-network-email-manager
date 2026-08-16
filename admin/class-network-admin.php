@@ -67,7 +67,7 @@ class NetworkAdmin
             $interval = isset($_POST['cron_interval']) ? sanitize_text_field(wp_unslash($_POST['cron_interval'])) : \MNEM\Cron::DEFAULT_INTERVAL;
             \MNEM\Cron::set_interval($interval);
             $old_status_interval = \MNEM\SmtpSettings::get_status_update_interval();
-            $status_interval = isset($_POST['status_update_interval']) ? (int) wp_unslash($_POST['status_update_interval']) : $old_status_interval;
+            $status_interval = isset($_POST['status_update_interval']) ? (int) sanitize_text_field(wp_unslash($_POST['status_update_interval'])) : $old_status_interval;
             \MNEM\SmtpSettings::set_status_update_interval($status_interval);
             $new_status_interval = \MNEM\SmtpSettings::get_status_update_interval();
             if ($new_status_interval !== $old_status_interval && function_exists('do_action')) {
