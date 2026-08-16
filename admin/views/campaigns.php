@@ -23,6 +23,73 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
     <?php endif; ?>
 
     <div class="mnem-grid">
+        <!-- Existing Campaigns List - Top -->
+        <div class="mnem-panel mnem-panel-wide">
+            <h2>Existing Campaigns</h2>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Recipients</th>
+                        <th>Progress</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($campaigns)) : ?>
+                        <tr>
+                            <td colspan="6">No campaigns yet.</td>
+                        </tr>
+                    <?php else : ?>
+                        <?php foreach ($campaigns as $campaign) : ?>
+                            <?php $pending_count = max(0, (int) $campaign['total_recipients'] - (int) $campaign['sent_count'] - (int) $campaign['failed_count']); ?>
+                            <tr>
+                                <td><?php echo esc_html((string) $campaign['id']); ?></td>
+                                <td>
+                                    <strong><?php echo esc_html($campaign['name']); ?></strong><br />
+                                    <span class="description"><?php echo esc_html($campaign['subject']); ?></span>
+                                </td>
+                                <td><span class="mnem-badge mnem-status-<?php echo esc_attr($campaign['status']); ?>"><?php echo esc_html($campaign['status']); ?></span></td>
+                                <td><?php echo esc_html(isset($campaign['recipient_scope']) ? $campaign['recipient_scope'] : 'all_users'); ?></td>
+                                <td><?php echo esc_html((string) $campaign['sent_count']); ?> sent / <?php echo esc_html((string) $pending_count); ?> pending / <?php echo esc_html((string) $campaign['failed_count']); ?> failed</td>
+                                <td>
+                                    <?php if (in_array($campaign['status'], array('draft', 'scheduled'), true)) : ?>
+                                        <form method="post" class="mnem-inline-form">
+                                            <?php wp_nonce_field('mnem_campaign'); ?>
+                                            <input type="hidden" name="mnem_action" value="send_campaign" />
+                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
+                                            <input type="hidden" name="redirect_page" value="mnem-campaigns" />
+                                            <?php submit_button('Send Campaign', 'secondary', 'submit', false); ?>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if (\MNEM\Campaigns::can_cancel((int) $campaign['id'])) : ?>
+                                        <form method="post" class="mnem-inline-form" onsubmit="return confirm('Are you sure you want to cancel this campaign? This will remove all pending emails from the queue.')">
+                                            <?php wp_nonce_field('mnem_campaign'); ?>
+                                            <input type="hidden" name="mnem_action" value="cancel_campaign" />
+                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
+                                            <input type="hidden" name="redirect_page" value="mnem-campaigns" />
+                                            <?php submit_button('Cancel Campaign', 'delete', 'submit', false); ?>
+                                        </form>
+                                    <?php endif; ?>
+                                    <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-campaigns&mnem_campaign=' . (int) $campaign['id'])); ?>">Edit</a>
+                                    <form method="post" class="mnem-inline-form">
+                                        <?php wp_nonce_field('mnem_campaign'); ?>
+                                        <input type="hidden" name="mnem_action" value="delete_campaign" />
+                                        <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
+                                        <input type="hidden" name="redirect_page" value="mnem-campaigns" />
+                                        <?php submit_button('Delete', 'delete', 'submit', false); ?>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Create/Edit Campaign Form -->
         <div class="mnem-panel mnem-panel-wide">
             <h2><?php echo esc_html($editing ? 'Update Campaign' : 'Create Campaign'); ?></h2>
             <form method="post">
@@ -59,7 +126,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
                             <td>
                                 <?php if (function_exists('wp_editor')) : ?>
-                                    <?php wp_editor($campaign_body, 'mnem_campaign_body', array('textarea_name' => 'body', 'textarea_rows' => 12, 'media_buttons' => true)); ?>
+                                    <?php wp_editor($campaign_body, 'mnem_campaign_body', array('textarea_name' => 'body', 'textarea_rows' => 12, 'media_buttons' => true, 'wpautop' => true)); ?>
                                 <?php else : ?>
                                     <textarea class="large-text" id="mnem_campaign_body" name="body" rows="10" required><?php echo esc_textarea($campaign_body); ?></textarea>
                                 <?php endif; ?>
@@ -95,7 +162,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                                     <?php foreach ($subscriber_lists as $list) : ?>
                                         <?php $list_id = (int) $list['id']; ?>
                                         <label style="display:block;margin:2px 0;">
-                                            <input type="checkbox" name="target_lists[]" value="<?php echo esc_attr((string) $list_id); ?>" <?php checked(in_array($list_id, $campaign_target_lists, true), true); ?> <?php echo $is_cancelled ? 'disabled' : ''; ?> />
+                                            <input type="checkbox" name="target_lists[]" value="<?php echo esc_attr((string) $list_id); ?>" <?php checked(in_array($list_id, $campaign_target_lists, true)); ?> <?php echo $is_cancelled ? 'disabled' : ''; ?> />
                                             <?php echo esc_html($list['name']); ?> (<?php echo esc_html((string) \MNEM\SubscriberLists::get_list_subscribers_count($list_id)); ?>)
                                         </label>
                                     <?php endforeach; ?>
@@ -138,7 +205,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                         <label for="mnem_test_email" style="font-weight: bold; display: block; margin-bottom: 5px;">
                             <?php esc_html_e('Test Email Address:', 'multisite-network-email-manager'); ?>
                         </label>
-                        <input type="email" id="mnem_test_email" class="regular-text" placeholder="test@example.com" value="<?php echo esc_attr(wp_get_current_user()->user_email); ?>" style="margin-bottom: 10px;">
+                        <input type="email" id="mnem_test_email" class="regular-text" placeholder="test@example.com" value="<?php echo esc_attr(wp_get_current_user()->user_email); ?>" style="margin-bottom: 10px;" />
                     </div>
 
                     <div>
@@ -303,70 +370,5 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
         }
         </script>
         <?php endif; ?>
-
-        <div class="mnem-panel mnem-panel-wide">
-            <h2>Existing Campaigns</h2>
-            <table class="widefat striped">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Recipients</th>
-                        <th>Progress</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($campaigns)) : ?>
-                        <tr>
-                            <td colspan="6">No campaigns yet.</td>
-                        </tr>
-                    <?php else : ?>
-                        <?php foreach ($campaigns as $campaign) : ?>
-                            <?php $pending_count = max(0, (int) $campaign['total_recipients'] - (int) $campaign['sent_count'] - (int) $campaign['failed_count']); ?>
-                            <tr>
-                                <td><?php echo esc_html((string) $campaign['id']); ?></td>
-                                <td>
-                                    <strong><?php echo esc_html($campaign['name']); ?></strong><br />
-                                    <span class="description"><?php echo esc_html($campaign['subject']); ?></span>
-                                </td>
-                                <td><span class="mnem-badge mnem-status-<?php echo esc_attr($campaign['status']); ?>"><?php echo esc_html($campaign['status']); ?></span></td>
-                                <td><?php echo esc_html(isset($campaign['recipient_scope']) ? $campaign['recipient_scope'] : 'all_users'); ?></td>
-                                <td><?php echo esc_html((string) $campaign['sent_count']); ?> sent / <?php echo esc_html((string) $pending_count); ?> pending / <?php echo esc_html((string) $campaign['failed_count']); ?> failed</td>
-                                <td>
-                                    <?php if (in_array($campaign['status'], array('draft', 'scheduled'), true)) : ?>
-                                        <form method="post" class="mnem-inline-form">
-                                            <?php wp_nonce_field('mnem_campaign'); ?>
-                                            <input type="hidden" name="mnem_action" value="send_campaign" />
-                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
-                                            <input type="hidden" name="redirect_page" value="mnem-campaigns" />
-                                            <?php submit_button('Send Campaign', 'secondary', 'submit', false); ?>
-                                        </form>
-                                    <?php endif; ?>
-                                    <?php if (\MNEM\Campaigns::can_cancel((int) $campaign['id'])) : ?>
-                                        <form method="post" class="mnem-inline-form" onsubmit="return confirm('Are you sure you want to cancel this campaign? This will remove all pending emails from the queue.');">
-                                            <?php wp_nonce_field('mnem_campaign'); ?>
-                                            <input type="hidden" name="mnem_action" value="cancel_campaign" />
-                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
-                                            <input type="hidden" name="redirect_page" value="mnem-campaigns" />
-                                            <?php submit_button('Cancel Campaign', 'delete', 'submit', false); ?>
-                                        </form>
-                                    <?php endif; ?>
-                                    <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-campaigns&mnem_campaign=' . (int) $campaign['id'])); ?>">Edit</a>
-                                    <form method="post" class="mnem-inline-form">
-                                        <?php wp_nonce_field('mnem_campaign'); ?>
-                                        <input type="hidden" name="mnem_action" value="delete_campaign" />
-                                        <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $campaign['id']); ?>" />
-                                        <input type="hidden" name="redirect_page" value="mnem-campaigns" />
-                                        <?php submit_button('Delete', 'delete', 'submit', false); ?>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
     </div>
 </div>
