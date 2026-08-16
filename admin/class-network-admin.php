@@ -870,6 +870,7 @@ class NetworkAdmin
 
         if (!current_user_can('manage_network_options')) {
             wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
         }
 
         $batch_size = isset($_POST['batch_size']) ? (int) $_POST['batch_size'] : 0;
