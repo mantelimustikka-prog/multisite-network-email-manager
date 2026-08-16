@@ -123,6 +123,187 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
             </form>
         </div>
 
+        <?php if ($editing) : ?>
+        <!-- Test Email Section -->
+        <div class="mnem-panel mnem-panel-wide" style="background: #f0f8ff; border-left: 4px solid #0073aa; margin-top: 20px;">
+            <h3><?php esc_html_e('Send Test Email', 'multisite-network-email-manager'); ?></h3>
+
+            <div style="background: white; padding: 20px; border-radius: 4px;">
+                <p style="color: #666; margin-bottom: 15px;">
+                    <?php esc_html_e('Send a test email to verify your campaign content before sending to all recipients.', 'multisite-network-email-manager'); ?>
+                </p>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label for="mnem_test_email" style="font-weight: bold; display: block; margin-bottom: 5px;">
+                            <?php esc_html_e('Test Email Address:', 'multisite-network-email-manager'); ?>
+                        </label>
+                        <input type="email" id="mnem_test_email" class="regular-text" placeholder="test@example.com" value="<?php echo esc_attr(wp_get_current_user()->user_email); ?>" style="margin-bottom: 10px;">
+                    </div>
+
+                    <div>
+                        <label for="mnem_test_template_var" style="font-weight: bold; display: block; margin-bottom: 5px;">
+                            <?php esc_html_e('Test Template Variables (Optional):', 'multisite-network-email-manager'); ?>
+                        </label>
+                        <input type="text" id="mnem_test_template_var" class="regular-text" placeholder='{"name": "John", "site": "Example"}' style="margin-bottom: 10px;">
+                        <small style="color: #666;"><?php esc_html_e('JSON format for variable substitution', 'multisite-network-email-manager'); ?></small>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" id="mnem_send_test_email_btn" class="button button-primary" onclick="mnemSendTestEmail(<?php echo (int) $edit_campaign['id']; ?>)">
+                        <?php esc_html_e('Send Test Email', 'multisite-network-email-manager'); ?>
+                    </button>
+
+                    <button type="button" id="mnem_preview_test_email_btn" class="button" onclick="mnemPreviewTestEmail(<?php echo (int) $edit_campaign['id']; ?>)">
+                        <?php esc_html_e('Preview Test Email', 'multisite-network-email-manager'); ?>
+                    </button>
+                </div>
+
+                <div id="mnem_test_email_result" style="margin-top: 15px; display: none; padding: 15px; border-radius: 4px;"></div>
+            </div>
+        </div>
+
+        <!-- Preview Modal -->
+        <div id="mnem_preview_modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 999999; overflow-y: auto;">
+            <div style="background: white; margin: 20px auto; max-width: 800px; border-radius: 4px; padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2><?php esc_html_e('Email Preview', 'multisite-network-email-manager'); ?></h2>
+                    <button type="button" onclick="document.getElementById('mnem_preview_modal').style.display='none'" style="background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+
+                <div style="border-bottom: 1px solid #ddd; padding-bottom: 15px; margin-bottom: 15px;">
+                    <p><strong><?php esc_html_e('To:', 'multisite-network-email-manager'); ?></strong> <span id="mnem_preview_to"></span></p>
+                    <p><strong><?php esc_html_e('Subject:', 'multisite-network-email-manager'); ?></strong> <span id="mnem_preview_subject"></span></p>
+                </div>
+
+                <div id="mnem_preview_body" style="border: 1px solid #ddd; border-radius: 4px; min-height: 200px; max-height: 400px; overflow-y: auto;">
+                    <iframe id="mnem_preview_iframe" sandbox="" style="width: 100%; min-height: 200px; border: none; display: block;"></iframe>
+                </div>
+
+                <div style="margin-top: 15px; text-align: right;">
+                    <button type="button" onclick="document.getElementById('mnem_preview_modal').style.display='none'" class="button">
+                        <?php esc_html_e('Close', 'multisite-network-email-manager'); ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        async function mnemSendTestEmail(campaignId) {
+            const email = document.getElementById('mnem_test_email').value.trim();
+
+            if (!email) {
+                alert('<?php echo esc_js(__('Please enter an email address', 'multisite-network-email-manager')); ?>');
+                return;
+            }
+
+            if (!email.includes('@')) {
+                alert('<?php echo esc_js(__('Please enter a valid email address', 'multisite-network-email-manager')); ?>');
+                return;
+            }
+
+            const templateVars = document.getElementById('mnem_test_template_var').value.trim();
+            let parsedVars = {};
+
+            if (templateVars) {
+                try {
+                    parsedVars = JSON.parse(templateVars);
+                } catch (e) {
+                    alert('<?php echo esc_js(__('Invalid JSON in template variables', 'multisite-network-email-manager')); ?>: ' + e.message);
+                    return;
+                }
+            }
+
+            const button = document.getElementById('mnem_send_test_email_btn');
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = '<?php echo esc_js(__('Sending...', 'multisite-network-email-manager')); ?>';
+
+            const resultDiv = document.getElementById('mnem_test_email_result');
+
+            try {
+                const response = await fetch(ajaxurl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'mnem_campaign_send_test_email',
+                        nonce: <?php echo wp_json_encode(wp_create_nonce('mnem_test_email')); ?>,
+                        campaign_id: campaignId,
+                        test_email: email,
+                        template_vars: JSON.stringify(parsedVars),
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.background = '#d4edda';
+                    resultDiv.style.borderLeft = '4px solid #28a745';
+                    resultDiv.style.color = '#155724';
+                    resultDiv.innerHTML = '<strong><?php echo esc_js(__('✓ Success!', 'multisite-network-email-manager')); ?></strong> ' + data.data.message;
+                } else {
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.background = '#f8d7da';
+                    resultDiv.style.borderLeft = '4px solid #dc3545';
+                    resultDiv.style.color = '#721c24';
+                    resultDiv.innerHTML = '<strong><?php echo esc_js(__('✗ Error:', 'multisite-network-email-manager')); ?></strong> ' + data.data.message;
+                }
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.style.background = '#f8d7da';
+                resultDiv.style.borderLeft = '4px solid #dc3545';
+                resultDiv.style.color = '#721c24';
+                resultDiv.innerHTML = '<strong><?php echo esc_js(__('✗ Error:', 'multisite-network-email-manager')); ?></strong> ' + error.message;
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
+        async function mnemPreviewTestEmail(campaignId) {
+            const templateVars = document.getElementById('mnem_test_template_var').value.trim();
+            let parsedVars = {};
+
+            if (templateVars) {
+                try {
+                    parsedVars = JSON.parse(templateVars);
+                } catch (e) {
+                    alert('<?php echo esc_js(__('Invalid JSON in template variables', 'multisite-network-email-manager')); ?>: ' + e.message);
+                    return;
+                }
+            }
+
+            try {
+                const response = await fetch(ajaxurl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'mnem_campaign_preview_test_email',
+                        nonce: <?php echo wp_json_encode(wp_create_nonce('mnem_test_email')); ?>,
+                        campaign_id: campaignId,
+                        template_vars: JSON.stringify(parsedVars),
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('mnem_preview_to').textContent = data.data.to || '<?php echo esc_js(__('test@example.com', 'multisite-network-email-manager')); ?>';
+                    document.getElementById('mnem_preview_subject').textContent = data.data.subject;
+                    document.getElementById('mnem_preview_iframe').srcdoc = data.data.body;
+                    document.getElementById('mnem_preview_modal').style.display = 'block';
+                } else {
+                    alert('<?php echo esc_js(__('Error generating preview', 'multisite-network-email-manager')); ?>: ' + data.data.message);
+                }
+            } catch (error) {
+                alert('<?php echo esc_js(__('Error', 'multisite-network-email-manager')); ?>: ' + error.message);
+            }
+        }
+        </script>
+        <?php endif; ?>
+
         <div class="mnem-panel mnem-panel-wide">
             <h2>Existing Campaigns</h2>
             <table class="widefat striped">

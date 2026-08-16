@@ -37,6 +37,8 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
         add_action('wp_ajax_mnem_load_batch_users', array($this, 'handle_load_batch_users'));
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
+        add_action('wp_ajax_mnem_campaign_send_test_email', array($this, 'handle_send_test_email'));
+        add_action('wp_ajax_mnem_campaign_preview_test_email', array($this, 'handle_preview_test_email'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -940,5 +942,102 @@ class NetworkAdmin
     protected function exit_after_redirect()
     {
         exit;
+    }
+
+    public function handle_send_test_email()
+    {
+        check_ajax_referer('mnem_test_email', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => __('Insufficient permissions', 'multisite-network-email-manager')));
+        }
+
+        $campaign_id = isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0;
+        $test_email = isset($_POST['test_email']) ? sanitize_email(wp_unslash($_POST['test_email'])) : '';
+        $template_vars = isset($_POST['template_vars']) ? json_decode(wp_unslash($_POST['template_vars']), true) : array();
+
+        if ($campaign_id <= 0) {
+            wp_send_json_error(array('message' => __('Invalid campaign', 'multisite-network-email-manager')));
+        }
+
+        if (!is_email($test_email)) {
+            wp_send_json_error(array('message' => __('Invalid email address', 'multisite-network-email-manager')));
+        }
+
+        $campaign = \MNEM\Campaigns::get($campaign_id);
+        if (!$campaign) {
+            wp_send_json_error(array('message' => __('Campaign not found', 'multisite-network-email-manager')));
+        }
+
+        $subject = (string) $campaign['subject'];
+        $body = (string) $campaign['body'];
+
+        if (is_array($template_vars) && !empty($template_vars)) {
+            foreach ($template_vars as $key => $value) {
+                $subject = str_replace('{{' . $key . '}}', (string) $value, $subject);
+                $body = str_replace('{{' . $key . '}}', (string) $value, $body);
+            }
+        }
+
+        $from_name = \MNEM\SmtpSettings::get_sender_name();
+        $from_email = \MNEM\SmtpSettings::get_sender_email();
+        $headers = array(
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $from_name . ' <' . $from_email . '>',
+        );
+
+        $result = wp_mail($test_email, $subject, $body, $headers);
+
+        if ($result) {
+            \MNEM\Logger::info('Test email sent', array(
+                'campaign_id' => $campaign_id,
+                'test_email'  => $test_email,
+                'sent_by'     => get_current_user_id(),
+            ));
+            wp_send_json_success(array('message' => sprintf(
+                /* translators: %s: email address */
+                __('Test email sent successfully to %s', 'multisite-network-email-manager'),
+                $test_email
+            )));
+        } else {
+            wp_send_json_error(array('message' => __('Failed to send test email. Check SMTP configuration.', 'multisite-network-email-manager')));
+        }
+    }
+
+    public function handle_preview_test_email()
+    {
+        check_ajax_referer('mnem_test_email', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => __('Insufficient permissions', 'multisite-network-email-manager')));
+        }
+
+        $campaign_id = isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0;
+        $template_vars = isset($_POST['template_vars']) ? json_decode(wp_unslash($_POST['template_vars']), true) : array();
+
+        if ($campaign_id <= 0) {
+            wp_send_json_error(array('message' => __('Invalid campaign', 'multisite-network-email-manager')));
+        }
+
+        $campaign = \MNEM\Campaigns::get($campaign_id);
+        if (!$campaign) {
+            wp_send_json_error(array('message' => __('Campaign not found', 'multisite-network-email-manager')));
+        }
+
+        $subject = (string) $campaign['subject'];
+        $body = (string) $campaign['body'];
+
+        if (is_array($template_vars) && !empty($template_vars)) {
+            foreach ($template_vars as $key => $value) {
+                $subject = str_replace('{{' . $key . '}}', (string) $value, $subject);
+                $body = str_replace('{{' . $key . '}}', (string) $value, $body);
+            }
+        }
+
+        wp_send_json_success(array(
+            'subject' => $subject,
+            'body'    => $body,
+            'to'      => wp_get_current_user()->user_email,
+        ));
     }
 }
