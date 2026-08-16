@@ -128,8 +128,6 @@
         if (typeof window.ace === 'undefined') {
             return;
         }
-
-        var editors = [];
         $('[data-mnem-ace="html"]').each(function () {
             var $textarea = $(this);
             if ($textarea.data('mnemAceInitialized')) {
@@ -165,19 +163,8 @@
 
             editor.session.on('change', syncValue);
             syncValue();
-
-            editors.push(syncValue);
+            $textarea.closest('form').on('submit.mnemAceSync', syncValue);
             $textarea.data('mnemAceInitialized', true);
-        });
-
-        if (editors.length === 0) {
-            return;
-        }
-
-        $('form').on('submit.mnemAceSync', function () {
-            for (var i = 0; i < editors.length; i++) {
-                editors[i]();
-            }
         });
     }
 
