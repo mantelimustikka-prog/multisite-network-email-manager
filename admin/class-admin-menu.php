@@ -31,6 +31,107 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', '', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+    }
+
+    public function render_subscriber_lists_bulk_add()
+    {
+        if (!isset($_GET['list_id'])) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-subscriber-lists'));
+            exit;
+        }
+
+        $active_list_id = (int) $_GET['list_id'];
+        $active_list = \MNEM\SubscriberLists::get($active_list_id);
+
+        if (!$active_list) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-subscriber-lists'));
+            exit;
+        }
+
+        $all_network_users = self::get_all_network_users();
+        $all_sites = self::get_all_sites_with_user_count();
+        $all_roles = self::get_all_network_roles();
+
+        $this->render_view('subscriber-lists-bulk-add.php', compact(
+            'active_list',
+            'all_network_users',
+            'all_sites',
+            'all_roles'
+        ));
+    }
+
+    private static function get_all_network_users()
+    {
+        $users = array();
+
+        if (!function_exists('get_sites')) {
+            return $users;
+        }
+
+        $sites = get_sites(array('number' => 0));
+
+        foreach ($sites as $site) {
+            $site_users = get_users(array(
+                'blog_id' => $site->blog_id,
+                'number' => -1,
+                'fields' => array('ID', 'user_login', 'user_email'),
+            ));
+
+            foreach ($site_users as $user) {
+                $user_id = (int) $user->ID;
+                $site_id = (int) $site->blog_id;
+
+                $user_object = new \WP_User($user_id, '', $site_id);
+                $role = !empty($user_object->roles[0]) ? $user_object->roles[0] : 'subscriber';
+
+                $users[] = array(
+                    'user_id'   => $user_id,
+                    'login'     => $user->user_login,
+                    'email'     => $user->user_email,
+                    'site_id'   => $site_id,
+                    'site_name' => $site->blogname,
+                    'role'      => $role,
+                );
+            }
+        }
+
+        return $users;
+    }
+
+    private static function get_all_sites_with_user_count()
+    {
+        $sites = array();
+
+        if (!function_exists('get_sites')) {
+            return $sites;
+        }
+
+        $site_objects = get_sites(array('number' => 0));
+
+        foreach ($site_objects as $site) {
+            $user_count = count_users('time', $site->blog_id);
+            $total = isset($user_count['total_users']) ? (int) $user_count['total_users'] : 0;
+
+            $sites[] = array(
+                'id'    => (int) $site->blog_id,
+                'name'  => $site->blogname,
+                'count' => $total,
+            );
+        }
+
+        return $sites;
+    }
+
+    private static function get_all_network_roles()
+    {
+        return array(
+            'administrator' => __('Administrator'),
+            'editor'        => __('Editor'),
+            'author'        => __('Author'),
+            'contributor'   => __('Contributor'),
+            'subscriber'    => __('Subscriber'),
+        );
     }
 
     public function render_dashboard()

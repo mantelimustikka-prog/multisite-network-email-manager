@@ -35,6 +35,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
         add_action('wp_ajax_mnem_table_diagnostics_export', array($this, 'ajax_table_diagnostics_export'));
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
+        add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -801,6 +802,63 @@ class NetworkAdmin
 
         $result = \MNEM\UserEventsCampaign::upsert_rule($rule);
         $this->redirect_with_notice('mnem-user-event-rules', $result ? 'rule_saved' : 'rule_save_failed');
+    }
+
+    public function handle_bulk_add_subscribers()
+    {
+        check_ajax_referer('mnem_bulk_add_users', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+        }
+
+        $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
+        $user_ids_raw = isset($_POST['user_ids']) ? explode(',', sanitize_text_field(wp_unslash($_POST['user_ids']))) : array();
+        $user_ids = array_map('intval', array_filter($user_ids_raw));
+        $skip_existing = isset($_POST['skip_existing']) && sanitize_text_field(wp_unslash($_POST['skip_existing'])) === '1';
+        $skip_unsubscribed = isset($_POST['skip_unsubscribed']) && sanitize_text_field(wp_unslash($_POST['skip_unsubscribed'])) === '1';
+
+        if ($list_id <= 0 || empty($user_ids)) {
+            wp_send_json_error(array('message' => 'Invalid list or no users selected'));
+        }
+
+        $added = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($user_ids as $user_id) {
+            if (!get_userdata($user_id)) {
+                $failed++;
+                continue;
+            }
+
+            if ($skip_existing && \MNEM\SubscriberLists::is_subscribed($list_id, $user_id)) {
+                $skipped++;
+                continue;
+            }
+
+            if ($skip_unsubscribed && \MNEM\SubscriberLists::is_unsubscribed($list_id, $user_id)) {
+                $skipped++;
+                continue;
+            }
+
+            $result = \MNEM\SubscriberLists::add_subscriber($list_id, $user_id);
+            if ($result instanceof \WP_Error || $result === false) {
+                $failed++;
+            } else {
+                $added++;
+            }
+        }
+
+        $message = sprintf(
+            /* translators: 1: added count, 2: skipped count, 3: failed count */
+            __('Added %1$d subscribers, skipped %2$d, failed %3$d.', 'multisite-network-email-manager'),
+            $added,
+            $skipped,
+            $failed
+        );
+
+        wp_send_json_success(array('message' => $message, 'added' => $added, 'skipped' => $skipped, 'failed' => $failed));
     }
 
     private function current_user_can_manage_network()
