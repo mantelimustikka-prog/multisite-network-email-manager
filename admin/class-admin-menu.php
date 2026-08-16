@@ -84,18 +84,19 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'smtp';
         }
 
         $settings = \MNEM\SmtpSettings::get_all();
         $cron_status = \MNEM\Cron::get_status();
+        $status_update_interval = \MNEM\SmtpSettings::get_status_update_interval();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
@@ -275,6 +276,8 @@ class AdminMenu
             'diagnostics_nonce_failed' => 'SMTP diagnostics security check failed.',
             'smtp_test_sent' => 'SMTP test email was sent.',
             'smtp_test_failed' => 'SMTP test email failed.',
+            'status_interval_saved' => 'Status update interval saved. Cron job has been rescheduled.',
+            'status_interval_failed' => 'Failed to save status update interval.',
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -286,7 +289,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed'), true)) {
             return 'notice notice-error';
         }
 
