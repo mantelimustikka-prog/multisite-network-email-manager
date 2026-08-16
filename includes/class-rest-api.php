@@ -588,7 +588,7 @@ class RestApi
 
             Queue::update_status_from_webhook($provider, $message_id, $status, $payload, $recipient, $timestamp);
 
-            if ($recipient !== '' && in_array($status, array('bounce', 'invalid_email'), true)) {
+            if ($recipient !== '' && in_array($status, array('bounce', 'invalid_email', 'complaint'), true)) {
                 $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
                 Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' event: ' . $status);
                 Logger::info('Auto-suppressed address after provider webhook.', array('email' => $recipient, 'provider' => $provider, 'event' => $status));

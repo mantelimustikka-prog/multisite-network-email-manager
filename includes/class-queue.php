@@ -10,6 +10,7 @@ class Queue
     public const BACKOFF_BASE = 300;
     public const DELETABLE_STATUSES = array('pending', 'failed');
     public const SUCCESS_STATUSES = array('sent', 'delivered', 'opened', 'clicked');
+    // Deferred remains recoverable, so it is excluded here even though we still count it as a non-success final-ish state in dashboards.
     public const TERMINAL_ISSUE_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const NON_SUCCESS_FINAL_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const WEBHOOK_STATUSES = array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
@@ -683,12 +684,20 @@ class Queue
         }
 
         if (!is_array($row) && $recipient !== '') {
+            $fallback_statuses = array_merge(self::SUCCESS_STATUSES, array('deferred'));
+            $fallback_placeholders = implode(', ', array_fill(0, count($fallback_statuses), '%s'));
             $row = $wpdb->get_row(
-                $wpdb->prepare(
-                    "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s ORDER BY id DESC LIMIT %d",
-                    $provider,
-                    $recipient,
-                    1
+                call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        array(
+                            "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
+                            $provider,
+                            $recipient,
+                        ),
+                        $fallback_statuses,
+                        array(1)
+                    )
                 ),
                 ARRAY_A
             );

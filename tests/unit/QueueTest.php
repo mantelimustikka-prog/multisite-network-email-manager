@@ -251,6 +251,9 @@ class QueueTest extends TestCase
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
+                if (strpos($query, "provider_message_id = 'message-123'") === false) {
+                    return null;
+                }
                 return array(
                     'id' => 44,
                     'status' => 'delivered',
@@ -275,6 +278,7 @@ class QueueTest extends TestCase
         $this->assertStringContainsString("status = 'clicked'", $queries);
         $this->assertStringContainsString("opened = '2026-08-11 12:00:00'", $queries);
         $this->assertStringContainsString("clicked = '2026-08-11 12:00:00'", $queries);
+        $this->assertStringNotContainsString("recipient_email = 'user@example.com'", $queries);
     }
 
     public function test_map_webhook_status_maps_provider_events()
