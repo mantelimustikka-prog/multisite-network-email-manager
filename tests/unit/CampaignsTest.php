@@ -45,13 +45,19 @@ class CampaignsTest extends TestCase
 
     public function test_send_campaign_enqueues_recipients_and_updates_tracking()
     {
+        $GLOBALS['mnem_users'] = array(
+            (object) array(
+                'user_email' => 'one@example.com',
+                'display_name' => 'One User',
+            ),
+        );
         $GLOBALS['wpdb'] = new class extends wpdb {
             public $campaign = array(
                 'id' => 5,
                 'site_id' => 1,
                 'name' => 'Launch',
-                'subject' => 'Hello',
-                'body' => 'World',
+                'subject' => 'Hello {user_name} from {site_name}',
+                'body' => 'Emailing {user_name} at {user_email} on {date}',
                 'status' => 'scheduled',
                 'recipient_scope' => 'custom',
                 'recipient_list' => "one@example.com\ntwo@example.com",
@@ -101,6 +107,16 @@ class CampaignsTest extends TestCase
         $this->assertNotEmpty(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
             return strpos($query, "INSERT INTO wp_mnem_queue (site_id, campaign_id") !== false;
         }));
+        $insert_queries = array_values(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
+            return strpos($query, "INSERT INTO wp_mnem_queue (site_id, campaign_id") !== false;
+        }));
+        $this->assertCount(2, $insert_queries);
+        $this->assertStringContainsString("Hello One User from Test Site", $insert_queries[0]);
+        $this->assertStringContainsString("Emailing One User at one@example.com on ", $insert_queries[0]);
+        $this->assertStringContainsString("Hello two from Test Site", $insert_queries[1]);
+        $this->assertStringContainsString("Emailing two at two@example.com on ", $insert_queries[1]);
+        $this->assertStringNotContainsString('{user_name}', $insert_queries[0]);
+        $this->assertStringNotContainsString('{user_email}', $insert_queries[0]);
         $this->assertNotEmpty(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
             return strpos($query, "UPDATE wp_mnem_campaigns SET total_recipients = 2") !== false;
         }));

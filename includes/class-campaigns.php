@@ -251,13 +251,19 @@ class Campaigns
         }
         $queued = 0;
         $enqueue_failed = 0;
+        $recipient_users = self::get_recipient_users_by_email($campaign);
 
         foreach ($recipients as $recipient_email) {
+            $email_content = self::build_recipient_email_content(
+                $campaign,
+                $recipient_email,
+                isset($recipient_users[$recipient_email]) ? $recipient_users[$recipient_email] : null
+            );
             $result = Queue::enqueue(
                 (int) $campaign['site_id'],
                 $recipient_email,
-                (string) $campaign['subject'],
-                (string) $campaign['body'],
+                $email_content['subject'],
+                $email_content['body'],
                 (int) $campaign['id']
             );
 
@@ -477,6 +483,86 @@ class Campaigns
         }
 
         return array_values(array_unique($emails));
+    }
+
+    private static function build_recipient_email_content(array $campaign, string $recipient_email, $recipient_user = null)
+    {
+        $variables = array(
+            '{user_name}' => self::extract_recipient_name($recipient_user, $recipient_email),
+            '{user_email}' => $recipient_email,
+        );
+
+        return array(
+            'subject' => EmailTemplates::replace_variables((string) $campaign['subject'], $variables),
+            'body' => EmailTemplates::replace_variables((string) $campaign['body'], $variables),
+        );
+    }
+
+    private static function get_recipient_users_by_email(array $campaign)
+    {
+        if (!function_exists('get_users')) {
+            return array();
+        }
+
+        $users = get_users(
+            array(
+                'blog_id' => isset($campaign['site_id']) ? (int) $campaign['site_id'] : 1,
+            )
+        );
+        $indexed_users = array();
+
+        foreach ((array) $users as $user) {
+            $email = self::extract_recipient_email($user);
+            if ($email !== '') {
+                $indexed_users[$email] = $user;
+            }
+        }
+
+        return $indexed_users;
+    }
+
+    private static function extract_recipient_email($user)
+    {
+        if (is_array($user) && isset($user['user_email'])) {
+            return strtolower(trim(sanitize_email((string) $user['user_email'])));
+        }
+
+        if (is_object($user) && isset($user->user_email)) {
+            return strtolower(trim(sanitize_email((string) $user->user_email)));
+        }
+
+        if (is_string($user)) {
+            return strtolower(trim(sanitize_email($user)));
+        }
+
+        return '';
+    }
+
+    private static function extract_recipient_name($user, string $recipient_email)
+    {
+        if (is_array($user)) {
+            if (!empty($user['display_name'])) {
+                return (string) $user['display_name'];
+            }
+
+            if (!empty($user['user_login'])) {
+                return (string) $user['user_login'];
+            }
+        }
+
+        if (is_object($user)) {
+            if (!empty($user->display_name)) {
+                return (string) $user->display_name;
+            }
+
+            if (!empty($user->user_login)) {
+                return (string) $user->user_login;
+            }
+        }
+
+        $email_parts = explode('@', $recipient_email, 2);
+
+        return isset($email_parts[0]) ? $email_parts[0] : '';
     }
 
     private static function current_time_mysql()
