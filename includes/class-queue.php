@@ -86,7 +86,7 @@ class Queue
 
         $recovered = (int) $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE status = %s AND processed_at < %s",
+                "UPDATE {$table} SET status = %s WHERE status = %s AND scheduled_at < %s",
                 'pending',
                 'processing',
                 $threshold
@@ -147,7 +147,7 @@ class Queue
         $claim_time = self::current_time_mysql();
         $claimed = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, processed_at = %s WHERE id = %d AND status = %s",
+                "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status = %s",
                 'processing',
                 $claim_time,
                 $id,
@@ -245,6 +245,8 @@ class Queue
             $headers['__attachments'] = $attachments;
 
             $body = EmailFormatter::apply_global_header_footer((string) $row['body']);
+            $body = EmailTracker::add_tracking_pixel($body, $id);
+            $body = EmailTracker::rewrite_links_for_tracking($body, $id);
 
             $send = static function () use ($row, $headers, $body) {
                 return ProviderManager::send_email($row['recipient_email'], $row['subject'], $body, $headers);
@@ -256,7 +258,7 @@ class Queue
                     : $send();
             }
             $attempts = (int) $row['attempts'] + 1;
-            $processed_at = self::current_time_mysql();
+            $attempted_at = self::current_time_mysql();
             $provider_type = isset($result['provider']) ? (string) $result['provider'] : '';
             $provider_message_id = isset($result['message_id']) ? (string) $result['message_id'] : '';
             $provider_metadata = !empty($result['metadata']) ? wp_json_encode($result['metadata']) : null;
@@ -265,11 +267,10 @@ class Queue
             if ($sent) {
                 $wpdb->query(
                     $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
+                        "UPDATE {$table} SET status = %s, attempts = %d, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
                         'sent',
                         $attempts,
-                        $processed_at,
-                        $processed_at,
+                        $attempted_at,
                         $provider_type,
                         $provider_message_id,
                         $provider_metadata,
@@ -291,15 +292,14 @@ class Queue
                 $status = 'sent';
             } else {
                 $status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
-                $next_scheduled = $status === 'failed' ? $processed_at : self::calculate_next_attempt($attempts);
+                $next_scheduled = $status === 'failed' ? $attempted_at : self::calculate_next_attempt($attempts);
 
                 $wpdb->query(
                     $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
+                        "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
                         $status,
                         $attempts,
                         $next_scheduled,
-                        $processed_at,
                         $provider_type,
                         $provider_message_id,
                         $provider_metadata,
@@ -318,20 +318,21 @@ class Queue
             $tracking_headers = $headers;
             unset($tracking_headers['__attachments']);
             $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
-            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers, $row_site_id, self::resolve_email_type($row));
+            $tracking_row = $row;
+            $tracking_row['body'] = $body;
+            EmailTracking::store_sent_email($id, $tracking_row, $result, $tracking_headers, $row_site_id, self::resolve_email_type($tracking_row));
+            self::refresh_tracking_data($id);
         } catch (\Throwable $e) {
             $status = 'failed';
             $result = array('success' => false, 'message' => $e->getMessage(), 'provider' => '', 'message_id' => '', 'metadata' => array());
             Logger::error('Exception during queue email processing.', array('queue_id' => $id, 'exception' => $e->getMessage()));
             // Mark the item failed so it won't loop forever.
             $attempts = isset($row['attempts']) ? (int) $row['attempts'] + 1 : 1;
-            $processed_at = self::current_time_mysql();
             $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s, attempts = %d, processed_at = %s WHERE id = %d",
+                    "UPDATE {$table} SET status = %s, attempts = %d WHERE id = %d",
                     'failed',
                     $attempts,
-                    $processed_at,
                     $id
                 )
             );
@@ -431,11 +432,10 @@ class Queue
         );
         $result = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s, processed_at = %s WHERE site_id = %d AND status = %s",
+                "UPDATE {$table} SET status = %s, attempts = %d, scheduled_at = %s WHERE site_id = %d AND status = %s",
                 'pending',
                 0,
                 self::current_time_mysql(),
-                null,
                 $site_id,
                 'failed'
             )
@@ -612,6 +612,55 @@ class Queue
         $delay = self::BACKOFF_BASE * (2 ** $attempts);
 
         return gmdate('Y-m-d H:i:s', time() + $delay);
+    }
+
+    public static function refresh_tracking_data(int $queue_id): void
+    {
+        global $wpdb;
+
+        if ($queue_id <= 0) {
+            return;
+        }
+
+        $opens = EmailTracker::get_open_count($queue_id);
+        $clicks = EmailTracker::get_click_count($queue_id);
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET opens = %d, clicks = %d WHERE id = %d",
+                $opens,
+                $clicks,
+                $queue_id
+            )
+        );
+    }
+
+    public static function get_display_status(array $item): string
+    {
+        $opens = isset($item['opens']) ? (int) $item['opens'] : 0;
+        $clicks = isset($item['clicks']) ? (int) $item['clicks'] : 0;
+        if ($opens > 0 || $clicks > 0) {
+            return 'Opened';
+        }
+
+        $delivery_status = isset($item['delivery_status']) ? strtolower((string) $item['delivery_status']) : '';
+        if ($delivery_status === 'delivered' || $delivery_status === 'opened') {
+            return 'Delivered';
+        }
+
+        if (!empty($item['sent_at'])) {
+            return 'Sent';
+        }
+
+        $queue_status = isset($item['status']) ? strtolower((string) $item['status']) : '';
+        if ($queue_status === 'pending') {
+            return 'Pending';
+        }
+        if ($queue_status === 'processing') {
+            return 'Processing';
+        }
+
+        return 'Failed';
     }
 
     public static function is_suppressed(int $site_id, string $email)

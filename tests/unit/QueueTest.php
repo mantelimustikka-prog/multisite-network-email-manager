@@ -234,4 +234,46 @@ class QueueTest extends TestCase
         $this->assertStringNotContainsString('header@example.com', $headers);
         $this->assertStringNotContainsString('row@example.com', $headers);
     }
+
+    public function test_get_display_status_uses_engagement_and_delivery_priority()
+    {
+        $this->assertSame('Opened', Queue::get_display_status(array(
+            'opens' => 1,
+            'clicks' => 0,
+            'delivery_status' => 'delivered',
+            'sent_at' => '2026-08-01 00:00:00',
+        )));
+        $this->assertSame('Delivered', Queue::get_display_status(array(
+            'opens' => 0,
+            'clicks' => 0,
+            'delivery_status' => 'delivered',
+            'sent_at' => '2026-08-01 00:00:00',
+        )));
+        $this->assertSame('Sent', Queue::get_display_status(array(
+            'opens' => 0,
+            'clicks' => 0,
+            'delivery_status' => 'pending',
+            'sent_at' => '2026-08-01 00:00:00',
+        )));
+        $this->assertSame('Failed', Queue::get_display_status(array(
+            'opens' => 0,
+            'clicks' => 0,
+            'delivery_status' => 'pending',
+            'sent_at' => '',
+        )));
+        $this->assertSame('Pending', Queue::get_display_status(array(
+            'status' => 'pending',
+            'opens' => 0,
+            'clicks' => 0,
+            'delivery_status' => 'pending',
+            'sent_at' => '',
+        )));
+        $this->assertSame('Processing', Queue::get_display_status(array(
+            'status' => 'processing',
+            'opens' => 0,
+            'clicks' => 0,
+            'delivery_status' => 'pending',
+            'sent_at' => '',
+        )));
+    }
 }
