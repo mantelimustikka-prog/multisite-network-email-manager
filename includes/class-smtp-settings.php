@@ -270,6 +270,7 @@ class SmtpSettings
         $valid_intervals = array(5, 10, 15, 20, 30, 60);
         if (in_array($minutes, $valid_intervals, true)) {
             update_site_option(self::OPTION_STATUS_UPDATE_INTERVAL, $minutes);
+            do_action('mnem_status_update_interval_changed');
         }
     }
 }

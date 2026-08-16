@@ -120,6 +120,23 @@ if (!function_exists('add_filter')) {
     }
 }
 
+if (!function_exists('do_action')) {
+    function do_action($hook, ...$args)
+    {
+        if (empty($GLOBALS['mnem_hooks'][$hook]) || !is_array($GLOBALS['mnem_hooks'][$hook])) {
+            return;
+        }
+
+        foreach ($GLOBALS['mnem_hooks'][$hook] as $registration) {
+            if (!isset($registration['callback']) || !is_callable($registration['callback'])) {
+                continue;
+            }
+
+            call_user_func_array($registration['callback'], $args);
+        }
+    }
+}
+
 if (!function_exists('register_rest_route')) {
     function register_rest_route($namespace, $route, $args)
     {

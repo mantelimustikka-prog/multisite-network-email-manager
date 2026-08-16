@@ -11,6 +11,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_smtp_save'));
         add_action('admin_init', array($this, 'handle_save_sender_settings'));
         add_action('admin_init', array($this, 'handle_save_header_footer_settings'));
+        add_action('admin_init', array($this, 'handle_save_status_interval_settings'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
@@ -160,6 +161,31 @@ class NetworkAdmin
         \MNEM\Logger::info('Global header/footer settings updated');
 
         $this->redirect_with_notice('mnem-settings', 'header_footer_saved', array('tab' => 'header-footer'));
+    }
+
+    public function handle_save_status_interval_settings()
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'save_status_interval_settings') {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_status_interval_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'status_interval_failed', array('tab' => 'status-updates'));
+            return;
+        }
+
+        $interval = isset($_POST['mnem_status_update_interval']) ? (int) $_POST['mnem_status_update_interval'] : 30;
+
+        \MNEM\SmtpSettings::set_status_update_interval($interval);
+
+        \MNEM\Logger::info('Status update interval saved.', array('interval_minutes' => $interval));
+
+        $this->redirect_with_notice('mnem-settings', 'status_interval_saved', array('tab' => 'status-updates'));
     }
 
     public function handle_suppression_action()
