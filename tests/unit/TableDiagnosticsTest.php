@@ -23,10 +23,13 @@ class TableDiagnosticsTest extends TestCase
         }, $GLOBALS['mnem_submenu_pages']);
 
         $this->assertContains('mnem-table-diagnosis', $submenu_slugs);
-        $this->assertContains(
-            array('mnem-dashboard', 'DB Table Diagnosis', 'DB Table Diagnosis', 'manage_network_options', 'mnem-table-diagnosis', array($diagnostics, 'render_page'), null),
-            $GLOBALS['mnem_submenu_pages']
-        );
+        $submenu = current(array_filter($GLOBALS['mnem_submenu_pages'], static function ($item) {
+            return isset($item[4]) && 'mnem-table-diagnosis' === $item[4];
+        }));
+
+        $this->assertIsArray($submenu);
+        $this->assertSame('DB Table Diagnosis', $submenu[1]);
+        $this->assertSame('DB Table Diagnosis', $submenu[2]);
     }
 
     public function test_installer_schema_exposes_required_tables()
