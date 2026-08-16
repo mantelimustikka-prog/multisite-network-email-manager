@@ -77,6 +77,114 @@ defined('ABSPATH') || exit;
         </table>
     </div>
 
+    <!-- Database Statistics Dashboard -->
+    <div class="mnem-panel mnem-stats-dashboard">
+        <h2><?php esc_html_e('Database Statistics', 'multisite-network-email-manager'); ?></h2>
+
+        <?php $stats = \MNEM\Admin\TableDiagnostics::get_database_statistics();
+        $records_by_name = array();
+        foreach ($stats['tables_by_records'] as $r) {
+            $records_by_name[$r['name']] = $r['rows'];
+        }
+        ?>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">
+            <div style="background:#fff;padding:15px;border-radius:4px;border-left:4px solid #0073aa;">
+                <strong><?php esc_html_e('Total Tables', 'multisite-network-email-manager'); ?></strong>
+                <p style="font-size:24px;margin:10px 0 0 0;"><?php echo esc_html($stats['total_tables']); ?></p>
+            </div>
+            <div style="background:#fff;padding:15px;border-radius:4px;border-left:4px solid #46b450;">
+                <strong><?php esc_html_e('Total Records', 'multisite-network-email-manager'); ?></strong>
+                <p style="font-size:24px;margin:10px 0 0 0;"><?php echo esc_html(number_format($stats['total_records'])); ?></p>
+            </div>
+            <div style="background:#fff;padding:15px;border-radius:4px;border-left:4px solid #9c27b0;">
+                <strong><?php esc_html_e('Database Size', 'multisite-network-email-manager'); ?></strong>
+                <p style="font-size:24px;margin:10px 0 0 0;"><?php echo esc_html(\MNEM\Admin\TableDiagnostics::format_bytes_public($stats['total_size_bytes'])); ?></p>
+            </div>
+            <div style="background:#fff;padding:15px;border-radius:4px;border-left:4px solid #ff9800;">
+                <strong><?php esc_html_e('Largest Table', 'multisite-network-email-manager'); ?></strong>
+                <p style="font-size:18px;margin:10px 0 0 0;">
+                    <?php if (!empty($stats['tables_by_size'])) : ?>
+                        <?php echo esc_html($stats['tables_by_size'][0]['name']); ?>
+                        (<?php echo esc_html($stats['tables_by_size'][0]['size_human']); ?>)
+                    <?php endif; ?>
+                </p>
+            </div>
+        </div>
+
+        <div style="margin-top:20px;">
+            <h4><?php esc_html_e('Tables by Size', 'multisite-network-email-manager'); ?></h4>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="background:#f0f0f0;">
+                        <th style="padding:10px;text-align:left;border:1px solid #ddd;"><?php esc_html_e('Table Name', 'multisite-network-email-manager'); ?></th>
+                        <th style="padding:10px;text-align:right;border:1px solid #ddd;"><?php esc_html_e('Records', 'multisite-network-email-manager'); ?></th>
+                        <th style="padding:10px;text-align:right;border:1px solid #ddd;"><?php esc_html_e('Size', 'multisite-network-email-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($stats['tables_by_size'] as $tbl) : ?>
+                        <tr style="border:1px solid #ddd;">
+                            <td style="padding:10px;"><?php echo esc_html($tbl['name']); ?></td>
+                            <td style="padding:10px;text-align:right;">
+                                <?php echo esc_html(number_format(isset($records_by_name[$tbl['name']]) ? $records_by_name[$tbl['name']] : 0)); ?>
+                            </td>
+                            <td style="padding:10px;text-align:right;"><?php echo esc_html($tbl['size_human']); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Data Integrity Checks -->
+    <div class="mnem-panel mnem-integrity-checks">
+        <h2><?php esc_html_e('Data Integrity Checks', 'multisite-network-email-manager'); ?></h2>
+
+        <?php $integrity_issues = \MNEM\Admin\TableDiagnostics::check_data_integrity(); ?>
+
+        <?php if (empty($integrity_issues)) : ?>
+            <div style="padding:15px;background:#d4edda;color:#155724;border-radius:4px;">
+                <?php esc_html_e('✓ All integrity checks passed. Database is healthy.', 'multisite-network-email-manager'); ?>
+            </div>
+        <?php else : ?>
+            <?php foreach ($integrity_issues as $issue) : ?>
+                <?php
+                $severity_color  = $issue['severity'] === 'error' ? '#f8d7da' : '#fff3cd';
+                $severity_border = $issue['severity'] === 'error' ? '#f5c6cb' : '#ffeaa7';
+                $severity_text   = $issue['severity'] === 'error' ? '#721c24' : '#856404';
+                ?>
+                <div style="padding:15px;margin-bottom:10px;background:<?php echo esc_attr($severity_color); ?>;border:1px solid <?php echo esc_attr($severity_border); ?>;border-radius:4px;color:<?php echo esc_attr($severity_text); ?>;">
+                    <strong><?php echo esc_html($issue['title']); ?></strong> (<?php echo esc_html($issue['count']); ?> <?php esc_html_e('issues', 'multisite-network-email-manager'); ?>)
+                    <p style="margin:10px 0 0 0;"><?php echo esc_html($issue['description']); ?></p>
+                    <button class="button button-small" style="margin-top:8px;" onclick="mnemCleanupIssue('<?php echo esc_attr($issue['action']); ?>')">
+                        <?php esc_html_e('Auto-Fix', 'multisite-network-email-manager'); ?>
+                    </button>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+
+    <script>
+    function mnemCleanupIssue(action) {
+        if (!confirm('<?php echo esc_js(__('Are you sure? This action cannot be undone.', 'multisite-network-email-manager')); ?>')) {
+            return;
+        }
+        jQuery.post(ajaxurl, {
+            action: 'mnem_table_diagnostics_cleanup',
+            nonce: '<?php echo esc_attr(wp_create_nonce('mnem_table_diagnostics')); ?>',
+            cleanup_action: action,
+        }, function(response) {
+            if (response.success) {
+                alert(response.data.message);
+                location.reload();
+            } else {
+                alert('<?php echo esc_js(__('Error: ', 'multisite-network-email-manager')); ?>' + response.data.message);
+            }
+        });
+    }
+    </script>
+
     <div class="mnem-panel">
         <h2>Recommendations</h2>
         <ul>

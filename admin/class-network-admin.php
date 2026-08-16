@@ -34,6 +34,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
         add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
         add_action('wp_ajax_mnem_table_diagnostics_export', array($this, 'ajax_table_diagnostics_export'));
+        add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -695,6 +696,36 @@ class NetworkAdmin
         }
 
         wp_send_json_success($row);
+    }
+
+    public function handle_table_diagnostics_cleanup()
+    {
+        check_ajax_referer('mnem_table_diagnostics', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+        }
+
+        $cleanup_action = isset($_POST['cleanup_action']) ? sanitize_text_field(wp_unslash($_POST['cleanup_action'])) : '';
+
+        $allowed_actions = array(
+            'cleanup_orphaned_queue',
+            'cleanup_invalid_emails_queue',
+            'cleanup_invalid_emails_suppression',
+            'cleanup_duplicate_suppressions',
+            'recover_stuck_processing',
+        );
+
+        if (!in_array($cleanup_action, $allowed_actions, true)) {
+            wp_send_json_error(array('message' => 'Invalid action'));
+        }
+
+        if (method_exists('\MNEM\Admin\TableDiagnostics', $cleanup_action)) {
+            $result = call_user_func(array('\MNEM\Admin\TableDiagnostics', $cleanup_action));
+            wp_send_json_success($result);
+        }
+
+        wp_send_json_error(array('message' => 'Action not found'));
     }
 
     public function ajax_table_diagnostics_recreate()
