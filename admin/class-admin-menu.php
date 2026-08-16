@@ -49,38 +49,83 @@ class AdminMenu
             exit;
         }
 
-        $all_network_users = self::get_all_network_users();
         $all_sites = self::get_all_sites_with_user_count();
         $all_roles = self::get_all_network_roles();
+        $batch_sizes = self::get_allowed_network_user_batch_sizes();
 
         $this->render_view('subscriber-lists-bulk-add.php', compact(
             'active_list',
-            'all_network_users',
             'all_sites',
-            'all_roles'
+            'all_roles',
+            'batch_sizes'
         ));
     }
 
-    private static function get_all_network_users()
+    public static function get_allowed_network_user_batch_sizes()
+    {
+        return array(500, 1000, 1500, 2000, 5000, 10000);
+    }
+
+    public static function get_network_users_batch($batch_size, $offset)
     {
         $users = array();
+        $total = 0;
+        $batch_size = max(0, (int) $batch_size);
+        $offset = max(0, (int) $offset);
 
-        if (!function_exists('get_sites')) {
-            return $users;
+        if (!function_exists('get_sites') || !function_exists('get_users')) {
+            return array(
+                'users' => $users,
+                'total' => $total,
+                'loaded' => 0,
+                'offset' => $offset,
+                'next_offset' => $offset,
+                'has_more' => false,
+                'batch_size' => $batch_size,
+            );
         }
 
         $sites = get_sites(array('number' => 0));
+        $remaining = $batch_size;
+        $remaining_offset = $offset;
 
         foreach ($sites as $site) {
+            $site_id = (int) $site->blog_id;
+            $site_total = 0;
+
+            if (function_exists('count_users')) {
+                $user_count = count_users('time', $site_id);
+                $site_total = isset($user_count['total_users']) ? (int) $user_count['total_users'] : 0;
+            }
+
+            $total += $site_total;
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            if ($remaining_offset >= $site_total) {
+                $remaining_offset -= $site_total;
+                continue;
+            }
+
+            $site_offset = $remaining_offset;
+            $site_limit = $site_total > 0 ? min($remaining, $site_total - $site_offset) : $remaining;
+
+            if ($site_limit <= 0) {
+                $remaining_offset = 0;
+                continue;
+            }
+
             $site_users = get_users(array(
-                'blog_id' => $site->blog_id,
-                'number' => -1,
+                'blog_id' => $site_id,
+                'number' => $site_limit,
+                'offset' => $site_offset,
                 'fields' => array('ID', 'user_login', 'user_email'),
             ));
 
             foreach ($site_users as $user) {
                 $user_id = (int) $user->ID;
-                $site_id = (int) $site->blog_id;
 
                 $user_object = new \WP_User($user_id, '', $site_id);
                 $role = !empty($user_object->roles[0]) ? $user_object->roles[0] : 'subscriber';
@@ -94,9 +139,23 @@ class AdminMenu
                     'role'      => $role,
                 );
             }
+
+            $remaining -= count($site_users);
+            $remaining_offset = 0;
         }
 
-        return $users;
+        $loaded = count($users);
+        $next_offset = $offset + $loaded;
+
+        return array(
+            'users' => $users,
+            'total' => $total,
+            'loaded' => $loaded,
+            'offset' => $offset,
+            'next_offset' => $next_offset,
+            'has_more' => $next_offset < $total,
+            'batch_size' => $batch_size,
+        );
     }
 
     private static function get_all_sites_with_user_count()

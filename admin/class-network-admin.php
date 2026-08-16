@@ -35,6 +35,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
         add_action('wp_ajax_mnem_table_diagnostics_export', array($this, 'ajax_table_diagnostics_export'));
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
+        add_action('wp_ajax_mnem_load_batch_users', array($this, 'handle_load_batch_users'));
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
 
         $menu = new AdminMenu();
@@ -705,6 +706,7 @@ class NetworkAdmin
 
         if (!current_user_can('manage_network_options')) {
             wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
         }
 
         $cleanup_action = isset($_POST['cleanup_action']) ? sanitize_text_field(wp_unslash($_POST['cleanup_action'])) : '';
@@ -810,6 +812,7 @@ class NetworkAdmin
 
         if (!current_user_can('manage_network_options')) {
             wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
         }
 
         $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
@@ -859,6 +862,26 @@ class NetworkAdmin
         );
 
         wp_send_json_success(array('message' => $message, 'added' => $added, 'skipped' => $skipped, 'failed' => $failed));
+    }
+
+    public function handle_load_batch_users()
+    {
+        check_ajax_referer('mnem_bulk_add_users', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+        }
+
+        $batch_size = isset($_POST['batch_size']) ? (int) $_POST['batch_size'] : 0;
+        $offset = isset($_POST['offset']) ? max(0, (int) $_POST['offset']) : 0;
+        $allowed_batch_sizes = AdminMenu::get_allowed_network_user_batch_sizes();
+
+        if (!in_array($batch_size, $allowed_batch_sizes, true)) {
+            wp_send_json_error(array('message' => 'Invalid batch size'), 400);
+            return;
+        }
+
+        wp_send_json_success(AdminMenu::get_network_users_batch($batch_size, $offset));
     }
 
     private function current_user_can_manage_network()

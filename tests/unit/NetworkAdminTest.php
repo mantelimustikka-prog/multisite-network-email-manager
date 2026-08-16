@@ -43,6 +43,7 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_optimize', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_repair', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_export', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_load_batch_users', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_get_error_details', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_delete_error_log', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_export_error_logs', $GLOBALS['mnem_hooks']);
@@ -224,5 +225,39 @@ class NetworkAdminTest extends TestCase
         $this->assertSame(15000, \MNEM\SmtpSettings::get_campaign_rate_limit_per_day());
         $this->assertSame(250, \MNEM\SmtpSettings::get_campaign_delay_between_sends());
         $this->assertStringContainsString('mnem_notice=general_settings_saved', $GLOBALS['mnem_last_redirect']);
+    }
+
+    public function test_handle_load_batch_users_rejects_invalid_batch_sizes()
+    {
+        $_POST = array(
+            'batch_size' => 750,
+            'offset' => 0,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->handle_load_batch_users();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertSame('Invalid batch size', $GLOBALS['mnem_last_json_response']['data']['message']);
+    }
+
+    public function test_handle_load_batch_users_returns_batch_payload_for_allowed_sizes()
+    {
+        $_POST = array(
+            'batch_size' => 500,
+            'offset' => 1000,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->handle_load_batch_users();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(500, $GLOBALS['mnem_last_json_response']['data']['batch_size']);
+        $this->assertSame(1000, $GLOBALS['mnem_last_json_response']['data']['offset']);
+        $this->assertSame(1000, $GLOBALS['mnem_last_json_response']['data']['next_offset']);
+        $this->assertSame(0, $GLOBALS['mnem_last_json_response']['data']['loaded']);
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['data']['has_more']);
+        $this->assertIsArray($GLOBALS['mnem_last_json_response']['data']['users']);
     }
 }
