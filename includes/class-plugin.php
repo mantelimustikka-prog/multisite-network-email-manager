@@ -13,6 +13,8 @@ class Plugin
             Installer::install();
         }
 
+        CliCommand::register_commands();
+
         if (function_exists('is_admin') && is_admin()) {
             try {
                 $admin = new \MNEM\Admin\NetworkAdmin();
