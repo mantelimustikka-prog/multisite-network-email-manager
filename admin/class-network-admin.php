@@ -617,6 +617,18 @@ class NetworkAdmin
                 );
             }
         }
+
+        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard'), true)) {
+            return;
+        }
+
+        if (function_exists('wp_enqueue_style')) {
+            wp_enqueue_style('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@1.36.2/css/ace.min.css', array(), '1.36.2');
+        }
+
+        if (function_exists('wp_enqueue_script')) {
+            wp_enqueue_script('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@1.36.2/src-min-noconflict/ace.js', array(), '1.36.2', true);
+        }
     }
 
     public function ajax_dashboard_stats()

@@ -124,6 +124,65 @@
         });
     });
 
+    function initAceEditors() {
+        if (typeof window.ace === 'undefined') {
+            return;
+        }
+
+        var editors = [];
+        $('[data-mnem-ace="html"]').each(function () {
+            var $textarea = $(this);
+            if ($textarea.data('mnemAceInitialized')) {
+                return;
+            }
+
+            var $editorHost = $('<div class="mnem-ace-editor" aria-label="Campaign body HTML editor"></div>');
+            var configuredHeight = String($textarea.data('mnemAceHeight') || '450px');
+            $editorHost.css('height', configuredHeight);
+            $editorHost.text($textarea.val() || '');
+            $textarea.after($editorHost).hide();
+
+            var editor = window.ace.edit($editorHost.get(0));
+            editor.session.setMode('ace/mode/html');
+            editor.setTheme('ace/theme/chrome');
+            editor.session.setUseWrapMode(true);
+            editor.setOptions({
+                showPrintMargin: false,
+                fontSize: '13px',
+                tabSize: 2,
+                useSoftTabs: true
+            });
+
+            var isReadOnly = $textarea.is('[readonly], [disabled]');
+            if (isReadOnly) {
+                editor.setReadOnly(true);
+                editor.setHighlightActiveLine(false);
+            }
+
+            var syncValue = function () {
+                $textarea.val(editor.getValue());
+            };
+
+            editor.session.on('change', syncValue);
+            syncValue();
+
+            editors.push(syncValue);
+            $textarea.data('mnemAceInitialized', true);
+        });
+
+        if (editors.length === 0) {
+            return;
+        }
+
+        $('form').on('submit.mnemAceSync', function () {
+            for (var i = 0; i < editors.length; i++) {
+                editors[i]();
+            }
+        });
+    }
+
+    $(initAceEditors);
+
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
     }
