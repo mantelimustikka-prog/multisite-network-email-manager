@@ -70,7 +70,7 @@ class EmailTrackingTest extends TestCase
         $this->assertStringContainsString("SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
         $this->assertStringContainsString("open_count = 2", $joined_queries);
         $this->assertStringContainsString("delivery_status = 'pending'", $joined_queries);
-        $this->assertStringContainsString("WHERE email_id = 15 AND site_id = 1", $joined_queries);
+        $this->assertStringContainsString("WHERE email_id = 15", $joined_queries);
     }
 
     public function test_store_sent_email_uses_network_table_and_persists_site_id()

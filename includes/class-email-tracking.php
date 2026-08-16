@@ -95,6 +95,18 @@ class EmailTracking
         $allowed_types = array('transactional', 'campaign', 'test');
         $email_type = in_array($email_type, $allowed_types, true) ? $email_type : 'transactional';
 
+        // Determine the initial delivery status.
+        // SMTP sends have no webhook follow-up, so mark them delivered immediately on success.
+        // Test emails are also sent directly (not via queue) and will never receive a webhook.
+        // For API providers handling transactional/campaign mail, leave as 'pending' so the
+        // provider webhook can later upgrade it to 'delivered', 'bounced', etc.
+        if (!empty($send_result['success'])) {
+            $provider = isset($send_result['provider']) ? (string) $send_result['provider'] : '';
+            $initial_status = ($provider === 'smtp' || $email_type === 'test') ? 'delivered' : 'pending';
+        } else {
+            $initial_status = 'failed';
+        }
+
         $wpdb->query(
             $wpdb->prepare(
                 "INSERT INTO {$table} (site_id, queue_id, provider_message_id, recipient_email, subject, body, headers, delivery_status, open_count, open_timestamps, click_count, click_timestamps, email_type, created_at, updated_at) VALUES (%d, %d, %s, %s, %s, %s, %s, %s, %d, %s, %d, %s, %s, %s, %s)",
@@ -105,7 +117,7 @@ class EmailTracking
                 isset($queue_row['subject']) ? (string) $queue_row['subject'] : '',
                 isset($queue_row['body']) ? (string) $queue_row['body'] : '',
                 wp_json_encode(array_values($headers)),
-                !empty($send_result['success']) ? 'pending' : 'failed',
+                $initial_status,
                 0,
                 wp_json_encode(array()),
                 0,
@@ -275,15 +287,14 @@ class EmailTracking
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET delivery_status = %s, open_count = %d, open_timestamps = %s, click_count = %d, click_timestamps = %s, updated_at = %s WHERE email_id = %d AND site_id = %d",
+                "UPDATE {$table} SET delivery_status = %s, open_count = %d, open_timestamps = %s, click_count = %d, click_timestamps = %s, updated_at = %s WHERE email_id = %d",
                 $delivery_status,
                 $open_count,
                 wp_json_encode(array_values($open_timestamps)),
                 $click_count,
                 wp_json_encode(array_values($click_timestamps)),
                 $now,
-                (int) $row['email_id'],
-                isset($row['site_id']) ? (int) $row['site_id'] : self::resolve_site_id($site_id)
+                (int) $row['email_id']
             )
         );
     }
@@ -394,7 +405,8 @@ class EmailTracking
         global $wpdb;
 
         if (!isset($wpdb) || !is_object($wpdb) || !property_exists($wpdb, 'prefix')) {
-            self::$resolved_table_name = '';
+            // $wpdb is not available yet; do not cache '' — leave the static as null so
+            // the next call retries the check once $wpdb is properly initialised.
             return '';
         }
 
@@ -404,11 +416,13 @@ class EmailTracking
         $table = $network_prefix . self::TABLE_SUFFIX;
 
         if (self::$resolved_table_name === $table) {
-            return self::$resolved_table_name;
+            return $table;
         }
+        // '' means we already checked and the table was not found; bail fast.
         if (self::$resolved_table_name === '') {
             return '';
         }
+        // null means the check has not run yet in this request; fall through.
 
         if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
             self::$resolved_table_name = $table;

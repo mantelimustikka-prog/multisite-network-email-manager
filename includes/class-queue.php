@@ -322,9 +322,10 @@ class Queue
             EmailTracking::store_sent_email($id, $row, $result, $tracking_headers, $row_site_id, $row_email_type);
         } catch (\Throwable $e) {
             $status = 'failed';
+            $result = array('success' => false, 'message' => $e->getMessage(), 'provider' => '', 'message_id' => '', 'metadata' => array());
             Logger::error('Exception during queue email processing.', array('queue_id' => $id, 'exception' => $e->getMessage()));
             // Mark the item failed so it won't loop forever.
-            $attempts = (int) $row['attempts'] + 1;
+            $attempts = isset($row['attempts']) ? (int) $row['attempts'] + 1 : 1;
             $processed_at = self::current_time_mysql();
             $wpdb->query(
                 $wpdb->prepare(
@@ -335,6 +336,11 @@ class Queue
                     $id
                 )
             );
+            // Still record the failed attempt so Email History is complete.
+            // $row is guaranteed non-empty here: process_item() returns early above if get_row() fails.
+            $row_site_id    = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
+            $row_email_type = !empty($row['campaign_id']) ? 'campaign' : 'transactional';
+            EmailTracking::store_sent_email($id, $row, $result, array(), $row_site_id, $row_email_type);
         } finally {
         }
 
