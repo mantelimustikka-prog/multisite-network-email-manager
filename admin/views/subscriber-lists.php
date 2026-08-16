@@ -65,6 +65,11 @@ defined('ABSPATH') || exit;
         <?php if ($active_list) : ?>
             <div class="mnem-panel mnem-panel-wide">
                 <h2>Subscribed Users</h2>
+                <div style="margin-bottom: 15px;">
+                    <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-subscriber-lists-bulk-add&list_id=' . (int) $active_list['id'])); ?>" class="button button-primary">
+                        <?php esc_html_e('+ Add from Network Users', 'multisite-network-email-manager'); ?>
+                    </a>
+                </div>
                 <form method="post">
                     <?php wp_nonce_field('mnem_subscriber_lists'); ?>
                     <input type="hidden" name="mnem_action" value="subscriber_add_user" />

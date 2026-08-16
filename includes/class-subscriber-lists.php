@@ -233,6 +233,21 @@ class SubscriberLists
         );
     }
 
+    public static function is_subscribed(int $list_id, int $user_id): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
+        $result = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND user_id = %d AND subscription_status = %s",
+            $list_id,
+            $user_id,
+            'subscribed'
+        ));
+
+        return (int) $result > 0;
+    }
+
     public static function is_unsubscribed(int $list_id, int $user_id)
     {
         global $wpdb;
