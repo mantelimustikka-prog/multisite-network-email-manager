@@ -16,6 +16,59 @@ defined('ABSPATH') || exit;
         <div class="<?php echo esc_attr($notice_class); ?>"><p><?php echo esc_html($notice_message); ?></p></div>
     <?php endif; ?>
 
+    <?php
+    $rate_limit_minute = \MNEM\SmtpSettings::get_campaign_rate_limit_per_minute();
+    $rate_limit_hour = \MNEM\SmtpSettings::get_campaign_rate_limit_per_hour();
+    $rate_limit_day = \MNEM\SmtpSettings::get_campaign_rate_limit_per_day();
+
+    $identifier_minute = 'campaign_send_' . gmdate('Y-m-d-H-i');
+    $identifier_hour = 'campaign_send_' . gmdate('Y-m-d-H');
+    $identifier_day = 'campaign_send_' . gmdate('Y-m-d');
+
+    $current_minute = \MNEM\RateLimiter::get_count($identifier_minute);
+    $current_hour = \MNEM\RateLimiter::get_count($identifier_hour);
+    $current_day = \MNEM\RateLimiter::get_count($identifier_day);
+    ?>
+
+    <div class="mnem-rate-limit-status" style="margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 4px;">
+        <h3><?php esc_html_e('Campaign Rate Limits (Current Period)', 'multisite-network-email-manager'); ?></h3>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+            <div>
+                <strong><?php esc_html_e('Per Minute:', 'multisite-network-email-manager'); ?></strong>
+                <?php if ($rate_limit_minute > 0) : ?>
+                    <p><?php printf(esc_html__('%d / %d emails', 'multisite-network-email-manager'), $current_minute, $rate_limit_minute); ?></p>
+                    <div style="width: 100%; height: 20px; background: #ddd; border-radius: 3px; overflow: hidden;">
+                        <div style="width: <?php echo esc_attr((string) min(100, (int) (($current_minute / $rate_limit_minute) * 100))); ?>%; height: 100%; background: #28a745;"></div>
+                    </div>
+                <?php else : ?>
+                    <p><?php esc_html_e('Unlimited', 'multisite-network-email-manager'); ?></p>
+                <?php endif; ?>
+            </div>
+            <div>
+                <strong><?php esc_html_e('Per Hour:', 'multisite-network-email-manager'); ?></strong>
+                <?php if ($rate_limit_hour > 0) : ?>
+                    <p><?php printf(esc_html__('%d / %d emails', 'multisite-network-email-manager'), $current_hour, $rate_limit_hour); ?></p>
+                    <div style="width: 100%; height: 20px; background: #ddd; border-radius: 3px; overflow: hidden;">
+                        <div style="width: <?php echo esc_attr((string) min(100, (int) (($current_hour / $rate_limit_hour) * 100))); ?>%; height: 100%; background: #28a745;"></div>
+                    </div>
+                <?php else : ?>
+                    <p><?php esc_html_e('Unlimited', 'multisite-network-email-manager'); ?></p>
+                <?php endif; ?>
+            </div>
+            <div>
+                <strong><?php esc_html_e('Per Day:', 'multisite-network-email-manager'); ?></strong>
+                <?php if ($rate_limit_day > 0) : ?>
+                    <p><?php printf(esc_html__('%d / %d emails', 'multisite-network-email-manager'), $current_day, $rate_limit_day); ?></p>
+                    <div style="width: 100%; height: 20px; background: #ddd; border-radius: 3px; overflow: hidden;">
+                        <div style="width: <?php echo esc_attr((string) min(100, (int) (($current_day / $rate_limit_day) * 100))); ?>%; height: 100%; background: #28a745;"></div>
+                    </div>
+                <?php else : ?>
+                    <p><?php esc_html_e('Unlimited', 'multisite-network-email-manager'); ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
     <div class="mnem-panel">
         <h2>Queue Summary</h2>
         <table class="widefat striped">
@@ -259,4 +312,3 @@ defined('ABSPATH') || exit;
 
     <p class="description">Retry backoff status: <?php echo esc_html($queue_stats['next_retry_at'] !== '' ? $queue_stats['next_retry_at'] . ' (attempt ' . (string) $queue_stats['next_retry_attempts'] . ')' : 'No retries scheduled'); ?></p>
 </div>
-

@@ -139,4 +139,22 @@ class SmtpSettingsTest extends TestCase
         SmtpSettings::set_status_update_interval(7);
         $this->assertSame(20, SmtpSettings::get_status_update_interval());
     }
+
+    public function test_campaign_rate_limits_defaults_and_sanitization()
+    {
+        $this->assertSame(60, SmtpSettings::get_campaign_rate_limit_per_minute());
+        $this->assertSame(1000, SmtpSettings::get_campaign_rate_limit_per_hour());
+        $this->assertSame(10000, SmtpSettings::get_campaign_rate_limit_per_day());
+        $this->assertSame(100, SmtpSettings::get_campaign_delay_between_sends());
+
+        SmtpSettings::set_campaign_rate_limit_per_minute(-1);
+        SmtpSettings::set_campaign_rate_limit_per_hour(-1);
+        SmtpSettings::set_campaign_rate_limit_per_day(-1);
+        SmtpSettings::set_campaign_delay_between_sends(-1);
+
+        $this->assertSame(0, SmtpSettings::get_campaign_rate_limit_per_minute());
+        $this->assertSame(0, SmtpSettings::get_campaign_rate_limit_per_hour());
+        $this->assertSame(0, SmtpSettings::get_campaign_rate_limit_per_day());
+        $this->assertSame(0, SmtpSettings::get_campaign_delay_between_sends());
+    }
 }

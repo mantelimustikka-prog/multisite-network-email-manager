@@ -46,6 +46,7 @@ if (!defined('MNEM_TESTING')) {
 }
 
 $GLOBALS['mnem_site_options'] = array();
+$GLOBALS['mnem_transients'] = array();
 $GLOBALS['mnem_hooks'] = array();
 $GLOBALS['mnem_cron_events'] = array();
 $GLOBALS['wpdb'] = null;
@@ -69,6 +70,44 @@ if (!function_exists('update_site_option')) {
     {
         $GLOBALS['mnem_site_options'][$key] = $value;
         return true;
+    }
+
+    if (!function_exists('get_transient')) {
+        function get_transient($key)
+        {
+            if (!isset($GLOBALS['mnem_transients'][$key])) {
+                return false;
+            }
+
+            $entry = $GLOBALS['mnem_transients'][$key];
+            $expires_at = isset($entry['expires_at']) ? (int) $entry['expires_at'] : 0;
+            if ($expires_at > 0 && $expires_at < time()) {
+                unset($GLOBALS['mnem_transients'][$key]);
+                return false;
+            }
+
+            return isset($entry['value']) ? $entry['value'] : false;
+        }
+    }
+
+    if (!function_exists('set_transient')) {
+        function set_transient($key, $value, $expiration = 0)
+        {
+            $expires_at = (int) $expiration > 0 ? (time() + (int) $expiration) : 0;
+            $GLOBALS['mnem_transients'][$key] = array(
+                'value' => $value,
+                'expires_at' => $expires_at,
+            );
+            return true;
+        }
+    }
+
+    if (!function_exists('delete_transient')) {
+        function delete_transient($key)
+        {
+            unset($GLOBALS['mnem_transients'][$key]);
+            return true;
+        }
     }
 }
 
@@ -757,6 +796,7 @@ if (!function_exists('checked')) {
 
 require_once __DIR__ . '/../includes/class-settings.php';
 require_once __DIR__ . '/../includes/class-logger.php';
+require_once __DIR__ . '/../includes/class-rate-limiter.php';
 require_once __DIR__ . '/../includes/class-smtp-settings.php';
 require_once __DIR__ . '/../includes/class-email-formatter.php';
 require_once __DIR__ . '/../includes/class-mail-interceptor.php';

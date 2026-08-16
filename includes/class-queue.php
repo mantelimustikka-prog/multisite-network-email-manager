@@ -117,6 +117,29 @@ class Queue
         $now = self::current_time_mysql();
         $limit = max(1, $limit);
 
+        $rate_limit_per_minute = SmtpSettings::get_campaign_rate_limit_per_minute();
+        $rate_limit_per_hour = SmtpSettings::get_campaign_rate_limit_per_hour();
+        $rate_limit_per_day = SmtpSettings::get_campaign_rate_limit_per_day();
+
+        $identifier_minute = 'campaign_send_' . gmdate('Y-m-d-H-i');
+        $identifier_hour = 'campaign_send_' . gmdate('Y-m-d-H');
+        $identifier_day = 'campaign_send_' . gmdate('Y-m-d');
+
+        if (!RateLimiter::is_allowed($identifier_minute, $rate_limit_per_minute, 60)) {
+            Logger::warning('Campaign send rate limit exceeded (per minute)');
+            return 0;
+        }
+
+        if (!RateLimiter::is_allowed($identifier_hour, $rate_limit_per_hour, 3600)) {
+            Logger::warning('Campaign send rate limit exceeded (per hour)');
+            return 0;
+        }
+
+        if (!RateLimiter::is_allowed($identifier_day, $rate_limit_per_day, 86400)) {
+            Logger::warning('Campaign send rate limit exceeded (per day)');
+            return 0;
+        }
+
         $ids = $wpdb->get_col(
             $wpdb->prepare(
                 "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d ORDER BY blog_id ASC, scheduled_at ASC LIMIT %d",
@@ -132,11 +155,34 @@ class Queue
         }
 
         $processed = 0;
+        $delay_ms = SmtpSettings::get_campaign_delay_between_sends();
 
         foreach ($ids as $id) {
+            if ($rate_limit_per_minute > 0 && !RateLimiter::is_allowed($identifier_minute, $rate_limit_per_minute, 60)) {
+                Logger::info('Campaign send stopped due to per-minute rate limit');
+                break;
+            }
+
+            if ($rate_limit_per_hour > 0 && !RateLimiter::is_allowed($identifier_hour, $rate_limit_per_hour, 3600)) {
+                Logger::info('Campaign send stopped due to per-hour rate limit');
+                break;
+            }
+
+            if ($rate_limit_per_day > 0 && !RateLimiter::is_allowed($identifier_day, $rate_limit_per_day, 86400)) {
+                Logger::info('Campaign send stopped due to per-day rate limit');
+                break;
+            }
+
             $result = self::process_item((int) $id);
             if (!empty($result['processed'])) {
                 ++$processed;
+                RateLimiter::record_action($identifier_minute, 60);
+                RateLimiter::record_action($identifier_hour, 3600);
+                RateLimiter::record_action($identifier_day, 86400);
+
+                if ($delay_ms > 0 && $processed < count($ids)) {
+                    usleep($delay_ms * 1000);
+                }
             }
         }
 
