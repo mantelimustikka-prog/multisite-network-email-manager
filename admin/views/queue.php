@@ -3,7 +3,7 @@
 defined('ABSPATH') || exit;
 ?>
 <div class="wrap mnem-dashboard">
-    <h1>Queue</h1>
+    <h1>Email Status Logs</h1>
 
     <?php if ($notice_message !== '') : ?>
         <div class="<?php echo esc_attr($notice_class); ?>"><p><?php echo esc_html($notice_message); ?></p></div>
