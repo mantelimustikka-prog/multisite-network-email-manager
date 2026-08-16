@@ -3,10 +3,6 @@
 defined('ABSPATH') || exit;
 
 $base_url = network_admin_url('admin.php?page=mnem-queue');
-$filter_url = add_query_arg(array(
-    'per_page'      => $per_page,
-    'status_filter' => $status_filter,
-), $base_url);
 ?>
 <div class="wrap mnem-dashboard">
     <h1>
