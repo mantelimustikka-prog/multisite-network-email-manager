@@ -52,12 +52,14 @@ class AdminMenu
         $all_sites = self::get_all_sites_with_user_count();
         $all_roles = self::get_all_network_roles();
         $batch_sizes = self::get_allowed_network_user_batch_sizes();
+        $default_batch_size = in_array(1000, $batch_sizes, true) ? 1000 : (int) $batch_sizes[0];
 
         $this->render_view('subscriber-lists-bulk-add.php', compact(
             'active_list',
             'all_sites',
             'all_roles',
-            'batch_sizes'
+            'batch_sizes',
+            'default_batch_size'
         ));
     }
 

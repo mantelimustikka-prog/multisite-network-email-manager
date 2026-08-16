@@ -59,7 +59,7 @@ defined('ABSPATH') || exit;
                         </label>
                         <select id="mnem_batch_size" style="min-width: 140px;">
                             <?php foreach ($batch_sizes as $batch_size) : ?>
-                                <option value="<?php echo esc_attr((string) $batch_size); ?>"<?php selected($batch_size, 1000); ?>>
+                                <option value="<?php echo esc_attr((string) $batch_size); ?>"<?php selected($batch_size, $default_batch_size); ?>>
                                     <?php echo esc_html((string) $batch_size); ?>
                                 </option>
                             <?php endforeach; ?>
