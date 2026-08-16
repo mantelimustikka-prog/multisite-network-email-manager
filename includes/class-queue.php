@@ -6,6 +6,8 @@ defined('ABSPATH') || exit;
 
 class Queue
 {
+    public const STATUS_REFRESH_HOOK = 'mnem_refresh_provider_status_once';
+    private const STATUS_REFRESH_DELAY_SECONDS = 120;
     public const MAX_ATTEMPTS = 3;
     public const BACKOFF_BASE = 300;
     public const DELETABLE_STATUSES = array('pending', 'failed');
@@ -967,13 +969,15 @@ class Queue
             return '';
         }
 
-        if (!defined('PHPUNIT_COMPOSER_INSTALL')) {
-            sleep(2);
+        $actual_status = self::retrieve_message_status($provider_type, $message_id, $recipient_email);
+        if ($actual_status === '') {
+            return '';
         }
 
-        $actual_status = self::retrieve_message_status($provider_type, $message_id, $recipient_email);
-        if ($actual_status === '' || $actual_status === 'sent') {
-            return $actual_status;
+        if ($actual_status === 'sent') {
+            // "sent" means no status upgrade yet; queue a delayed re-check instead of blocking send flow.
+            self::schedule_delayed_status_refresh($queue_id);
+            return '';
         }
 
         $table = $wpdb->base_prefix . 'mnem_queue';
@@ -994,6 +998,52 @@ class Queue
         }
 
         return $resolved_status;
+    }
+
+    public static function refresh_single_item_status(int $queue_id): void
+    {
+        global $wpdb;
+
+        if ($queue_id <= 0) {
+            return;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT status, provider_type, provider_message_id, recipient_email FROM {$table} WHERE id = %d LIMIT %d",
+                $queue_id,
+                1
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($row) || empty($row['provider_type']) || empty($row['provider_message_id'])) {
+            return;
+        }
+
+        $current_status = isset($row['status']) ? (string) $row['status'] : '';
+        $actual_status = self::retrieve_message_status(
+            (string) $row['provider_type'],
+            (string) $row['provider_message_id'],
+            isset($row['recipient_email']) ? (string) $row['recipient_email'] : ''
+        );
+        if ($actual_status === '' || $actual_status === $current_status) {
+            return;
+        }
+
+        $resolved_status = self::resolve_status_update($current_status, $actual_status);
+        if ($resolved_status === $current_status) {
+            return;
+        }
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s WHERE id = %d",
+                $resolved_status,
+                $queue_id
+            )
+        );
     }
 
     private static function retrieve_sendgrid_message_status(string $message_id): string
@@ -1086,6 +1136,19 @@ class Queue
 
         $decoded = base64_decode($secret, true);
         return $decoded === false ? $secret : $decoded;
+    }
+
+    private static function schedule_delayed_status_refresh(int $queue_id): void
+    {
+        if ($queue_id <= 0) {
+            return;
+        }
+
+        if (!function_exists('wp_schedule_single_event')) {
+            return;
+        }
+
+        wp_schedule_single_event(time() + self::STATUS_REFRESH_DELAY_SECONDS, self::STATUS_REFRESH_HOOK, array($queue_id));
     }
 
     private static function resolve_status_update(string $current_status, string $new_status): string

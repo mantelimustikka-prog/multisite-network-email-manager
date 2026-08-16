@@ -11,6 +11,7 @@ class StatusSyncCron
     public function init(): void
     {
         add_action(self::HOOK, array(__CLASS__, 'sync_statuses'));
+        add_action(Queue::STATUS_REFRESH_HOOK, array(Queue::class, 'refresh_single_item_status'));
 
         if (!function_exists('wp_next_scheduled') || !function_exists('wp_schedule_event')) {
             return;
