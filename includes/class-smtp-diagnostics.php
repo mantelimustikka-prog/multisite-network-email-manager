@@ -203,7 +203,7 @@ class SmtpDiagnostics
             }
 
             $subject = 'MNEM SMTP Test Email';
-            $body    = EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>');
+            $body    = '<p>This is a test email from Multisite Network Email Manager.</p>';
 
             if ($from_name === '') {
                 $from_name = isset($smtp_settings['from_name']) ? (string) $smtp_settings['from_name'] : '';
@@ -213,11 +213,10 @@ class SmtpDiagnostics
             }
 
             $headers = array('Content-Type: text/html; charset=UTF-8');
-            $headers[] = $from_name !== ''
-                ? 'From: ' . $from_name . ' <' . $from_email . '>'
-                : 'From: ' . $from_email;
 
-            Logger::info('Sending test email via configured provider.', array(
+            $site_id = function_exists('get_current_blog_id') ? max(1, (int) get_current_blog_id()) : 1;
+
+            Logger::info('Queuing test email via configured provider.', array(
                 'to'         => $to,
                 'user_id'    => $user_id,
                 'provider'   => $provider_type,
@@ -225,35 +224,45 @@ class SmtpDiagnostics
                 'from_name'  => $from_name,
             ));
 
-            $send_result = ProviderManager::send_email($to, $subject, $body, $headers);
+            $queue_id = Queue::enqueue(
+                $site_id,
+                $to,
+                $subject,
+                $body,
+                0,
+                array(
+                    'from_email' => $from_email,
+                    'from_name'  => $from_name,
+                    'headers'    => $headers,
+                    'source'     => Queue::SOURCE_PLUGIN,
+                    'metadata'   => array('email_type' => 'test'),
+                )
+            );
 
-            $sent       = !empty($send_result['success']);
-            $provider   = isset($send_result['provider'])   ? (string) $send_result['provider']   : '';
-            $message_id = isset($send_result['message_id']) ? (string) $send_result['message_id'] : '';
+            if ($queue_id) {
+                $processed   = Queue::process_item((int) $queue_id);
+                $sent        = !empty($processed['success']);
+                $provider    = isset($processed['provider'])    ? (string) $processed['provider']    : '';
+                $message_id  = isset($processed['message_id']) ? (string) $processed['message_id']  : '';
+                $send_result = array(
+                    'success'    => $sent,
+                    'provider'   => $provider,
+                    'message_id' => $message_id,
+                    'message'    => isset($processed['message']) ? (string) $processed['message'] : '',
+                );
+            } else {
+                $sent        = false;
+                $provider    = '';
+                $message_id  = '';
+                $send_result = array('success' => false, 'provider' => '', 'message_id' => '', 'message' => 'Failed to enqueue test email.');
+            }
 
             if ($sent) {
                 Logger::info('Test email sent successfully.', array('to' => $to, 'provider' => $provider, 'message_id' => $message_id, 'user_id' => $user_id));
             } else {
                 $error = isset($send_result['message']) ? (string) $send_result['message'] : 'Unknown error.';
                 Logger::error('Test email send failed.', array('to' => $to, 'provider' => $provider !== '' ? $provider : $provider_type, 'provider_message' => $error, 'user_id' => $user_id));
-
-                if ($provider === '') {
-                    Logger::error('Test email failed - no provider returned in result.', array(
-                        'expected_provider' => $provider_type,
-                        'result'            => $send_result,
-                    ));
-                }
             }
-
-            // Always record the attempt - success or failure.
-            $site_id = function_exists('get_current_blog_id') ? max(1, (int) get_current_blog_id()) : 1;
-            $tracking_row = array(
-                'site_id'         => $site_id,
-                'recipient_email' => $to,
-                'subject'         => $subject,
-                'body'            => $body,
-            );
-            EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers, $site_id, 'test');
 
             $provider_label = $provider !== '' ? $provider : $provider_type;
             $message = $sent

@@ -28,6 +28,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
+        add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
         add_action('wp_ajax_mnem_table_diagnostics_recreate', array($this, 'ajax_table_diagnostics_recreate'));
         add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
         add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
@@ -600,6 +601,32 @@ class NetworkAdmin
             return;
         }
         wp_send_json_error($result, 400);
+    }
+
+    public function ajax_get_queue_preview()
+    {
+        $this->ensure_ajax_permissions();
+        $queue_id = isset($_POST['queue_id']) ? (int) $_POST['queue_id'] : 0;
+        if ($queue_id <= 0) {
+            wp_send_json_error(array('message' => 'Invalid queue ID.'), 400);
+            return;
+        }
+
+        global $wpdb;
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, status, attempts, scheduled_at, processed_at, sent_at, created_at FROM {$wpdb->base_prefix}mnem_queue WHERE id = %d",
+                $queue_id
+            ),
+            ARRAY_A
+        );
+
+        if (empty($row)) {
+            wp_send_json_error(array('message' => 'Queue item not found.'), 404);
+            return;
+        }
+
+        wp_send_json_success($row);
     }
 
     public function ajax_get_email_preview()
