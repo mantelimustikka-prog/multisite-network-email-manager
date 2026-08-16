@@ -156,7 +156,8 @@ class AdminMenu
         $offset = ($current_page - 1) * $per_page;
 
         // Total count of ALL records (regardless of filter) for header.
-        $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table}");
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name from $wpdb->base_prefix, not user input.
+        $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM " . esc_sql($queue_table));
 
         // Filtered count and records.
         if ($status_filter !== '') {
@@ -185,7 +186,8 @@ class AdminMenu
         $total_pages = $per_page > 0 ? (int) ceil($total_filtered / $per_page) : 1;
 
         // All unique statuses for filter dropdown.
-        $all_statuses = (array) $wpdb->get_col("SELECT DISTINCT status FROM {$queue_table} ORDER BY status ASC");
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table name from $wpdb->base_prefix, not user input.
+        $all_statuses = (array) $wpdb->get_col("SELECT DISTINCT status FROM " . esc_sql($queue_table) . " ORDER BY status ASC");
 
         $queue_stats = \MNEM\Queue::get_stats(null);
         $queue_summary = \MNEM\StatusSummary::get_summary(null);

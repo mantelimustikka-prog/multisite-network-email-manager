@@ -195,10 +195,13 @@ $filter_url = add_query_arg(array(
                     'status_filter' => $status_filter,
                 ), $base_url);
                 ?>
-                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>"
-                   href="<?php echo esc_url(add_query_arg('paged', 1, $page_url)); ?>">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></a>
-                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>"
-                   href="<?php echo esc_url(add_query_arg('paged', max(1, $current_page - 1), $page_url)); ?>">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></a>
+                <?php if ($current_page <= 1) : ?>
+                    <span class="button disabled" aria-disabled="true">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></span>
+                    <span class="button disabled" aria-disabled="true">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></span>
+                <?php else : ?>
+                    <a class="button" href="<?php echo esc_url(add_query_arg('paged', 1, $page_url)); ?>">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></a>
+                    <a class="button" href="<?php echo esc_url(add_query_arg('paged', $current_page - 1, $page_url)); ?>">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></a>
+                <?php endif; ?>
 
                 <span style="margin: 0 8px; line-height: 28px;">
                     <?php
@@ -210,10 +213,13 @@ $filter_url = add_query_arg(array(
                     ?>
                 </span>
 
-                <a class="button<?php echo $current_page >= $total_pages ? ' disabled' : ''; ?>"
-                   href="<?php echo esc_url(add_query_arg('paged', min($total_pages, $current_page + 1), $page_url)); ?>"><?php esc_html_e('Next', 'multisite-network-email-manager'); ?> &rsaquo;</a>
-                <a class="button<?php echo $current_page >= $total_pages ? ' disabled' : ''; ?>"
-                   href="<?php echo esc_url(add_query_arg('paged', $total_pages, $page_url)); ?>"><?php esc_html_e('Last', 'multisite-network-email-manager'); ?> &raquo;</a>
+                <?php if ($current_page >= $total_pages) : ?>
+                    <span class="button disabled" aria-disabled="true"><?php esc_html_e('Next', 'multisite-network-email-manager'); ?> &rsaquo;</span>
+                    <span class="button disabled" aria-disabled="true"><?php esc_html_e('Last', 'multisite-network-email-manager'); ?> &raquo;</span>
+                <?php else : ?>
+                    <a class="button" href="<?php echo esc_url(add_query_arg('paged', $current_page + 1, $page_url)); ?>"><?php esc_html_e('Next', 'multisite-network-email-manager'); ?> &rsaquo;</a>
+                    <a class="button" href="<?php echo esc_url(add_query_arg('paged', $total_pages, $page_url)); ?>"><?php esc_html_e('Last', 'multisite-network-email-manager'); ?> &raquo;</a>
+                <?php endif; ?>
             </div>
         </div>
     <?php endif; ?>
