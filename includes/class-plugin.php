@@ -66,5 +66,11 @@ class Plugin
         } catch (\Throwable $throwable) {
             error_log('MNEM status sync cron loader failed: ' . $throwable->getMessage());
         }
+
+        try {
+            QueueCleanupCron::init();
+        } catch (\Throwable $throwable) {
+            error_log('MNEM queue cleanup cron loader failed: ' . $throwable->getMessage());
+        }
     }
 }

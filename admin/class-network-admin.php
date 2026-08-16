@@ -12,6 +12,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_save_sender_settings'));
         add_action('admin_init', array($this, 'handle_save_header_footer_settings'));
         add_action('admin_init', array($this, 'handle_save_status_interval_settings'));
+        add_action('admin_init', array($this, 'handle_save_general_settings'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
@@ -186,6 +187,30 @@ class NetworkAdmin
         \MNEM\Logger::info('Status update interval saved.', array('interval_minutes' => $interval));
 
         $this->redirect_with_notice('mnem-settings', 'status_interval_saved', array('tab' => 'status-updates'));
+    }
+
+    public function handle_save_general_settings()
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'save_general_settings') {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_general_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'general_settings_failed', array('tab' => 'general'));
+            return;
+        }
+
+        $days = isset($_POST['mnem_queue_retention_days']) ? (int) $_POST['mnem_queue_retention_days'] : 90;
+        \MNEM\SmtpSettings::set_queue_retention_days($days);
+
+        \MNEM\Logger::info('General settings saved.', array('queue_retention_days' => $days));
+
+        $this->redirect_with_notice('mnem-settings', 'general_settings_saved', array('tab' => 'general'));
     }
 
     public function handle_suppression_action()

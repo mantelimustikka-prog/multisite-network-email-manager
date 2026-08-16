@@ -32,6 +32,7 @@ class Installer
     {
         Cron::deactivate();
         StatusSyncCron::deactivate();
+        QueueCleanupCron::deactivate();
     }
 
     public static function install()

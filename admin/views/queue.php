@@ -1,9 +1,22 @@
 <?php
 
 defined('ABSPATH') || exit;
+
+$base_url = network_admin_url('admin.php?page=mnem-queue');
+$filter_url = add_query_arg(array(
+    'per_page'      => $per_page,
+    'status_filter' => $status_filter,
+), $base_url);
 ?>
 <div class="wrap mnem-dashboard">
-    <h1>Email Status Logs</h1>
+    <h1>
+        <?php
+        printf(
+            esc_html__('Email Status Logs (%s Records)', 'multisite-network-email-manager'),
+            esc_html(number_format($total_all_records))
+        );
+        ?>
+    </h1>
 
     <?php if ($notice_message !== '') : ?>
         <div class="<?php echo esc_attr($notice_class); ?>"><p><?php echo esc_html($notice_message); ?></p></div>
@@ -43,6 +56,31 @@ defined('ABSPATH') || exit;
         </div>
     </div>
 
+    <!-- Filter & per-page controls -->
+    <form method="get" action="<?php echo esc_url(network_admin_url('admin.php')); ?>">
+        <input type="hidden" name="page" value="mnem-queue" />
+        <div style="margin: 10px 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
+            <select name="status_filter" id="mnem-status-filter">
+                <option value=""><?php esc_html_e('All Statuses', 'multisite-network-email-manager'); ?></option>
+                <?php foreach ($all_statuses as $s) : ?>
+                    <option value="<?php echo esc_attr((string) $s); ?>"<?php selected($status_filter, (string) $s); ?>>
+                        <?php echo esc_html(ucwords(str_replace('_', ' ', (string) $s))); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <label for="mnem-per-page"><strong><?php esc_html_e('Per page:', 'multisite-network-email-manager'); ?></strong></label>
+            <select name="per_page" id="mnem-per-page">
+                <?php foreach (array(10, 20, 50, 100, 200, 500) as $n) : ?>
+                    <option value="<?php echo esc_attr((string) $n); ?>"<?php selected($per_page, $n); ?>><?php echo esc_html((string) $n); ?></option>
+                <?php endforeach; ?>
+            </select>
+
+            <button type="submit" class="button"><?php esc_html_e('Apply', 'multisite-network-email-manager'); ?></button>
+        </div>
+    </form>
+
     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" class="mnem-queue-bulk-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="redirect_page" value="mnem-queue" />
@@ -57,7 +95,23 @@ defined('ABSPATH') || exit;
                     <option value="delete_selected">Delete Selected Items</option>
                 </select>
                 <button type="submit" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
-                <span class="description">Showing <?php echo esc_html((string) count($queue_items)); ?> queue items.</span>
+                <?php
+                $range_start = $total_filtered > 0 ? ($offset + 1) : 0;
+                $range_end   = min($offset + $per_page, $total_filtered);
+                ?>
+                <span class="description">
+                    <?php
+                    printf(
+                        esc_html__('Showing %1$s–%2$s of %3$s records', 'multisite-network-email-manager'),
+                        esc_html(number_format($range_start)),
+                        esc_html(number_format($range_end)),
+                        esc_html(number_format($total_filtered))
+                    );
+                    if ($status_filter !== '') {
+                        echo ' (' . esc_html(number_format($total_all_records)) . ' ' . esc_html__('total in database', 'multisite-network-email-manager') . ')';
+                    }
+                    ?>
+                </span>
             </div>
         </div>
 
@@ -122,8 +176,6 @@ defined('ABSPATH') || exit;
                                         data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
                                         data-status="<?php echo esc_attr($item['status']); ?>"
                                     >Delete</button>
-                                <?php else : ?>
-                                    <span class="description">Not deletable</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -132,6 +184,40 @@ defined('ABSPATH') || exit;
             </tbody>
         </table>
     </form>
+
+    <!-- Pagination -->
+    <?php if ($total_pages > 1) : ?>
+        <div class="tablenav bottom" style="margin-top: 10px;">
+            <div class="tablenav-pages">
+                <?php
+                $page_url = add_query_arg(array(
+                    'per_page'      => $per_page,
+                    'status_filter' => $status_filter,
+                ), $base_url);
+                ?>
+                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>"
+                   href="<?php echo esc_url(add_query_arg('paged', 1, $page_url)); ?>">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></a>
+                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>"
+                   href="<?php echo esc_url(add_query_arg('paged', max(1, $current_page - 1), $page_url)); ?>">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></a>
+
+                <span style="margin: 0 8px; line-height: 28px;">
+                    <?php
+                    printf(
+                        esc_html__('Page %1$s of %2$s', 'multisite-network-email-manager'),
+                        esc_html((string) $current_page),
+                        esc_html((string) $total_pages)
+                    );
+                    ?>
+                </span>
+
+                <a class="button<?php echo $current_page >= $total_pages ? ' disabled' : ''; ?>"
+                   href="<?php echo esc_url(add_query_arg('paged', min($total_pages, $current_page + 1), $page_url)); ?>"><?php esc_html_e('Next', 'multisite-network-email-manager'); ?> &rsaquo;</a>
+                <a class="button<?php echo $current_page >= $total_pages ? ' disabled' : ''; ?>"
+                   href="<?php echo esc_url(add_query_arg('paged', $total_pages, $page_url)); ?>"><?php esc_html_e('Last', 'multisite-network-email-manager'); ?> &raquo;</a>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-single-queue-delete-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="mnem_action" value="delete_queue_item" />
