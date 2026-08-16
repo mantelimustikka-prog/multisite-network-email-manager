@@ -317,7 +317,9 @@ class Queue
             // Always record the send attempt - both success and failure - so Email History is complete.
             $tracking_headers = $headers;
             unset($tracking_headers['__attachments']);
-            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers);
+            $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
+            $row_email_type = !empty($row['campaign_id']) ? 'campaign' : 'transactional';
+            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers, $row_site_id, $row_email_type);
         } catch (\Throwable $e) {
             $status = 'failed';
             Logger::error('Exception during queue email processing.', array('queue_id' => $id, 'exception' => $e->getMessage()));

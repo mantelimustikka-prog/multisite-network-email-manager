@@ -118,6 +118,21 @@ class Installer
             }
         }
 
+        // Migration: ensure email_type column exists in mnem_email_tracking.
+        $tracking_table = $tracking_prefix . 'mnem_email_tracking';
+        $tracking_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tracking_table));
+        if ($tracking_exists === $tracking_table) {
+            $email_type_exists = $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                $tracking_table,
+                'email_type'
+            ));
+            if (!(int) $email_type_exists) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$tracking_table}` ADD COLUMN email_type enum('transactional','campaign','test') NOT NULL DEFAULT 'transactional' AFTER click_timestamps, ADD KEY email_type (email_type)");
+            }
+        }
+
         // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
         if (function_exists('get_sites')) {
             $sites = get_sites(array('number' => 0, 'fields' => 'ids'));
@@ -404,6 +419,7 @@ class Installer
                     'open_timestamps' => 'longtext',
                     'click_count' => 'int(11)',
                     'click_timestamps' => 'longtext',
+                    'email_type' => "enum('transactional','campaign','test')",
                     'created_at' => 'datetime',
                     'updated_at' => 'datetime',
                 ),
@@ -430,6 +446,7 @@ class Installer
                     open_timestamps longtext NULL,
                     click_count int(11) NOT NULL DEFAULT 0,
                     click_timestamps longtext NULL,
+                    email_type enum('transactional','campaign','test') NOT NULL DEFAULT 'transactional',
                     created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY  (email_id),
@@ -438,6 +455,7 @@ class Installer
                     KEY recipient_email (recipient_email),
                     KEY provider_message_id (provider_message_id),
                     KEY delivery_status (delivery_status),
+                    KEY email_type (email_type),
                     KEY created_at (created_at)
                 ){$charset_suffix};",
             ),

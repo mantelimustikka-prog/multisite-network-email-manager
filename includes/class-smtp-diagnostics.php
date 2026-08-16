@@ -246,12 +246,14 @@ class SmtpDiagnostics
             }
 
             // Always record the attempt - success or failure.
+            $site_id = function_exists('get_current_blog_id') ? max(1, (int) get_current_blog_id()) : 1;
             $tracking_row = array(
+                'site_id'         => $site_id,
                 'recipient_email' => $to,
                 'subject'         => $subject,
                 'body'            => $body,
             );
-            EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers);
+            EmailTracking::store_sent_email(0, $tracking_row, $send_result, $headers, $site_id, 'test');
 
             $provider_label = $provider !== '' ? $provider : $provider_type;
             $message = $sent
