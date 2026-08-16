@@ -11,6 +11,7 @@ class StatusSyncCronTest extends TestCase
     {
         parent::setUp();
         $GLOBALS['mnem_cron_events'] = array();
+        unset($GLOBALS['mnem_site_options']['mnem_status_update_interval']);
     }
 
     public function test_init_schedules_status_sync_using_default_interval()
