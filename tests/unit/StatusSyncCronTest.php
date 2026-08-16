@@ -13,20 +13,30 @@ class StatusSyncCronTest extends TestCase
         $GLOBALS['mnem_cron_events'] = array();
     }
 
-    public function test_init_schedules_hourly_sync_event()
+    public function test_init_schedules_status_sync_using_default_interval()
     {
         $cron = new StatusSyncCron();
         $cron->init();
 
         $this->assertArrayHasKey(StatusSyncCron::HOOK, $GLOBALS['mnem_cron_events']);
-        $this->assertSame('hourly', $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK]['recurrence']);
+        $this->assertSame('mnem_status_sync_30_minutes', $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK]['recurrence']);
+    }
+
+    public function test_reschedule_uses_selected_interval()
+    {
+        $GLOBALS['mnem_site_options']['mnem_status_update_interval'] = 10;
+
+        StatusSyncCron::reschedule();
+
+        $this->assertArrayHasKey(StatusSyncCron::HOOK, $GLOBALS['mnem_cron_events']);
+        $this->assertSame('mnem_status_sync_10_minutes', $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK]['recurrence']);
     }
 
     public function test_deactivate_clears_sync_hook()
     {
         $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK] = array(
             'timestamp' => time(),
-            'recurrence' => 'hourly',
+            'recurrence' => 'mnem_status_sync_30_minutes',
             'args' => array(),
         );
 
