@@ -41,8 +41,10 @@ class TableDiagnosticsTest extends TestCase
         $this->assertArrayHasKey('mnem_suppression', $schema);
         $this->assertArrayHasKey('mnem_subscriber_lists', $schema);
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
-        $this->assertCount(5, $schema);
-        $this->assertArrayNotHasKey('mnem_logs', $schema);
+        $this->assertSame(
+            array('mnem_queue', 'mnem_suppression', 'mnem_campaigns', 'mnem_subscriber_lists', 'mnem_list_subscribers'),
+            array_keys($schema)
+        );
         $this->assertArrayHasKey('opened', $schema['mnem_queue']['columns']);
         $this->assertArrayHasKey('clicked', $schema['mnem_queue']['columns']);
         $this->assertArrayHasKey('opens_count', $schema['mnem_queue']['columns']);
