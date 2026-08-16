@@ -30,8 +30,14 @@ class Installer
 
     public static function deactivate()
     {
+        global $wpdb;
+
         Cron::deactivate();
         StatusSyncCron::deactivate();
+
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $wpdb->query("DROP TABLE IF EXISTS `{$logs_table}`");
     }
 
     public static function install()

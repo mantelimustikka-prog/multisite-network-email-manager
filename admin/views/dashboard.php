@@ -252,34 +252,4 @@ defined('ABSPATH') || exit;
         </table>
     </div>
     </div>
-
-    <div class="mnem-panel mnem-panel-wide">
-    <h2>Activity Timeline</h2>
-    <table class="widefat striped">
-        <thead>
-            <tr>
-                <th>Blog ID</th>
-                <th>Status</th>
-                <th>Event</th>
-                <th>Timestamp</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($recent_logs)) : ?>
-                    <tr>
-                        <td colspan="4">No log entries yet.</td>
-                    </tr>
-                <?php else : ?>
-                    <?php foreach ($recent_logs as $log) : ?>
-                        <tr>
-                            <td><?php echo esc_html(isset($log['blog_id']) ? (string) $log['blog_id'] : '0'); ?></td>
-                            <td><span class="mnem-badge mnem-level-<?php echo esc_attr($log['level']); ?>"><?php echo esc_html($log['level']); ?></span></td>
-                            <td><?php echo esc_html($log['message']); ?></td>
-                            <td><?php echo esc_html($log['created_at']); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
 </div>
