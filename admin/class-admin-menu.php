@@ -457,6 +457,10 @@ class AdminMenu
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
+        $error_detail_notices = array('campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed');
+        $error_detail = in_array($notice, $error_detail_notices, true)
+            ? \MNEM\Admin\NetworkAdmin::get_and_clear_error_detail()
+            : '';
         $messages = array(
             'campaign_created' => 'Campaign created successfully.',
             'campaign_updated' => 'Campaign updated successfully.',
@@ -474,9 +478,9 @@ class AdminMenu
             'queue_nothing_selected' => 'No items selected for deletion.',
             'campaign_nonce_failed' => 'Campaign security check failed.',
             'queue_nonce_failed' => 'Queue security check failed.',
-            'campaign_send_failed' => 'Campaign send failed.',
-            'campaign_save_failed' => 'Campaign could not be saved.',
-            'campaign_delete_failed' => 'Campaign could not be deleted.',
+            'campaign_send_failed' => 'Campaign send failed' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
+            'campaign_save_failed' => 'Campaign could not be saved' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
+            'campaign_delete_failed' => 'Campaign could not be deleted' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
             'smtp_saved' => 'SMTP settings saved.',
             'smtp_failed' => 'SMTP settings could not be saved.',
             'cron_settings_saved' => 'Cron settings saved.',

@@ -286,26 +286,42 @@ class NetworkAdmin
 
         if ($_POST['mnem_action'] === 'send_campaign') {
             $result = \MNEM\Campaigns::send_campaign($campaign_id);
-            $notice = !empty($result['success']) ? 'campaign_sent' : 'campaign_send_failed';
-            $this->redirect_with_notice($page, $notice);
+            if (empty($result['success'])) {
+                $error_detail = isset($result['message']) ? (string) $result['message'] : 'Unknown error';
+                $this->store_error_detail($error_detail);
+                $this->redirect_with_notice($page, 'campaign_send_failed');
+            } else {
+                $this->redirect_with_notice($page, 'campaign_sent');
+            }
             return;
         }
 
         if ($_POST['mnem_action'] === 'cancel_campaign') {
             $result = \MNEM\Campaigns::cancel_campaign($campaign_id);
-            $this->redirect_with_notice($page, $result ? 'campaign_cancelled' : 'campaign_send_failed');
+            if (!$result) {
+                $this->store_error_detail('Campaign could not be cancelled.');
+                $this->redirect_with_notice($page, 'campaign_send_failed');
+            } else {
+                $this->redirect_with_notice($page, 'campaign_cancelled');
+            }
             return;
         }
 
         if ($_POST['mnem_action'] === 'delete_campaign') {
             $result = \MNEM\Campaigns::delete($campaign_id);
-            $this->redirect_with_notice($page, $result ? 'campaign_deleted' : 'campaign_delete_failed');
+            if (!$result) {
+                $this->store_error_detail('Campaign could not be deleted from the database.');
+                $this->redirect_with_notice($page, 'campaign_delete_failed');
+            } else {
+                $this->redirect_with_notice($page, 'campaign_deleted');
+            }
             return;
         }
 
         if ($campaign_id > 0) {
             $campaign = \MNEM\Campaigns::get($campaign_id);
             if (is_array($campaign) && isset($campaign['status']) && $campaign['status'] === 'cancelled') {
+                $this->store_error_detail('Cancelled campaigns cannot be edited.');
                 $this->redirect_with_notice($page, 'campaign_save_failed');
             }
         }
@@ -325,11 +341,21 @@ class NetworkAdmin
 
         if ($campaign_id > 0) {
             $result = \MNEM\Campaigns::update($campaign_id, $data);
-            $this->redirect_with_notice($page, $result ? 'campaign_updated' : 'campaign_save_failed');
+            if (!$result) {
+                $this->store_error_detail('Campaign could not be updated.');
+                $this->redirect_with_notice($page, 'campaign_save_failed');
+            } else {
+                $this->redirect_with_notice($page, 'campaign_updated');
+            }
         }
 
         $result = \MNEM\Campaigns::create($site_id, $data['name'], $data['subject'], $data['body'], $data);
-        $this->redirect_with_notice($page, $result ? 'campaign_created' : 'campaign_save_failed');
+        if (!$result) {
+            $this->store_error_detail('Campaign could not be created.');
+            $this->redirect_with_notice($page, 'campaign_save_failed');
+        } else {
+            $this->redirect_with_notice($page, 'campaign_created');
+        }
     }
 
     public function handle_subscriber_list_action()
@@ -942,6 +968,30 @@ class NetworkAdmin
     protected function exit_after_redirect()
     {
         exit;
+    }
+
+    private function store_error_detail($message)
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id === 0) {
+            return;
+        }
+        set_transient('mnem_campaign_error_' . $user_id, (string) $message, 60);
+    }
+
+    public static function get_and_clear_error_detail()
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id === 0) {
+            return '';
+        }
+        $key = 'mnem_campaign_error_' . $user_id;
+        $detail = get_transient($key);
+        if ($detail !== false) {
+            delete_transient($key);
+            return (string) $detail;
+        }
+        return '';
     }
 
     public function handle_send_campaign_test_email()
