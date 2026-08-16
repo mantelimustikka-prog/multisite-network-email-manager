@@ -605,7 +605,7 @@ class NetworkAdmin
         global $wpdb;
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$wpdb->base_prefix}mnem_queue WHERE id = %d",
+                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$wpdb->base_prefix}mnem_queue WHERE id = %d",
                 $queue_id
             ),
             ARRAY_A

@@ -6,6 +6,8 @@ defined('ABSPATH') || exit;
 
 class Queue
 {
+    public const STATUS_REFRESH_HOOK = 'mnem_refresh_provider_status_once';
+    private const STATUS_REFRESH_DELAY_SECONDS = 120;
     public const MAX_ATTEMPTS = 3;
     public const BACKOFF_BASE = 300;
     public const DELETABLE_STATUSES = array('pending', 'failed');
@@ -295,6 +297,10 @@ class Queue
 
                 Logger::info('Queue email sent.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
                 $status = 'sent';
+                $resolved_status = self::refresh_provider_status($id, $provider_type, $provider_message_id, (string) $row['recipient_email']);
+                if ($resolved_status !== '') {
+                    $status = $resolved_status;
+                }
             } else {
                 $status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
                 $next_scheduled = $status === 'failed' ? $attempted_at : self::calculate_next_attempt($attempts);
@@ -606,7 +612,7 @@ class Queue
 
         $table = $wpdb->base_prefix . 'mnem_queue';
         $timestamp = self::current_time_mysql();
-        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
+        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
         if (!is_array($row)) {
             return;
         }
@@ -614,8 +620,13 @@ class Queue
         $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
         $opened = isset($row['opened']) ? (string) $row['opened'] : '';
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
+        $opens_count = isset($row['opens_count']) ? (int) $row['opens_count'] : 0;
+        $clicks_count = isset($row['clicks_count']) ? (int) $row['clicks_count'] : 0;
         if ($status === 'opened' && $opened === '') {
             $opened = $timestamp;
+        }
+        if ($status === 'opened') {
+            ++$opens_count;
         }
         if ($status === 'clicked') {
             if ($opened === '') {
@@ -624,6 +635,7 @@ class Queue
             if ($clicked === '') {
                 $clicked = $timestamp;
             }
+            ++$clicks_count;
         }
 
         $final_status = self::resolve_status_update($current_status, $status);
@@ -637,10 +649,12 @@ class Queue
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, provider_metadata = %s WHERE id = %d",
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = %d, clicks_count = %d, provider_metadata = %s WHERE id = %d",
                 $final_status,
                 $opened !== '' ? $opened : null,
                 $clicked !== '' ? $clicked : null,
+                $opens_count,
+                $clicks_count,
                 $provider_metadata,
                 $queue_id
             )
@@ -674,7 +688,7 @@ class Queue
         if ($message_id !== '') {
             $row = $wpdb->get_row(
                 $wpdb->prepare(
-                    "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND provider_message_id = %s ORDER BY id DESC LIMIT %d",
+                    "SELECT id, status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE provider_type = %s AND provider_message_id = %s ORDER BY id DESC LIMIT %d",
                     $provider,
                     $message_id,
                     1
@@ -691,7 +705,7 @@ class Queue
                     array($wpdb, 'prepare'),
                     array_merge(
                         array(
-                            "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
+                            "SELECT id, status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
                             $provider,
                             $recipient,
                         ),
@@ -710,8 +724,13 @@ class Queue
         $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
         $opened = isset($row['opened']) ? (string) $row['opened'] : '';
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
+        $opens_count = isset($row['opens_count']) ? (int) $row['opens_count'] : 0;
+        $clicks_count = isset($row['clicks_count']) ? (int) $row['clicks_count'] : 0;
         if ($status === 'opened' && $opened === '') {
             $opened = $timestamp;
+        }
+        if ($status === 'opened') {
+            ++$opens_count;
         }
         if ($status === 'clicked') {
             if ($opened === '') {
@@ -720,6 +739,7 @@ class Queue
             if ($clicked === '') {
                 $clicked = $timestamp;
             }
+            ++$clicks_count;
         }
 
         $provider_metadata = self::merge_provider_metadata(isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '', array(
@@ -735,10 +755,12 @@ class Queue
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, provider_metadata = %s WHERE id = %d",
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = %d, clicks_count = %d, provider_metadata = %s WHERE id = %d",
                 self::resolve_status_update($current_status, $status),
                 $opened !== '' ? $opened : null,
                 $clicked !== '' ? $clicked : null,
+                $opens_count,
+                $clicks_count,
                 $provider_metadata,
                 (int) $row['id']
             )
@@ -835,6 +857,88 @@ class Queue
         return isset($map[$event_type]) ? $map[$event_type] : '';
     }
 
+    public static function sync_recent_provider_statuses(int $limit = 500, int $days = 30): int
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $limit = max(1, $limit);
+        $days = max(1, $days);
+        $threshold = gmdate('Y-m-d H:i:s', time() - ($days * (defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400)));
+        $syncable_statuses = array('sent', 'processing', 'deferred', 'soft_bounce');
+        $status_placeholders = implode(', ', array_fill(0, count($syncable_statuses), '%s'));
+
+        $rows = (array) $wpdb->get_results(
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    array(
+                        "SELECT id, provider_type, provider_message_id, recipient_email, status FROM {$table} WHERE status IN ({$status_placeholders}) AND provider_type <> '' AND provider_message_id <> '' AND sent_at >= %s ORDER BY sent_at DESC LIMIT %d",
+                    ),
+                    $syncable_statuses,
+                    array($threshold, $limit)
+                )
+            ),
+            ARRAY_A
+        );
+
+        $updated = 0;
+        foreach ($rows as $row) {
+            $queue_id = isset($row['id']) ? (int) $row['id'] : 0;
+            if ($queue_id <= 0) {
+                continue;
+            }
+
+            $current_status = isset($row['status']) ? (string) $row['status'] : '';
+            $actual_status = self::retrieve_message_status(
+                isset($row['provider_type']) ? (string) $row['provider_type'] : '',
+                isset($row['provider_message_id']) ? (string) $row['provider_message_id'] : '',
+                isset($row['recipient_email']) ? (string) $row['recipient_email'] : ''
+            );
+
+            if ($actual_status === '' || $actual_status === $current_status) {
+                continue;
+            }
+
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s WHERE id = %d",
+                    self::resolve_status_update($current_status, $actual_status),
+                    $queue_id
+                )
+            );
+            ++$updated;
+        }
+
+        Logger::info('Provider status sync run completed.', array(
+            'checked' => count($rows),
+            'updated' => $updated,
+        ));
+
+        return $updated;
+    }
+
+    public static function retrieve_message_status(string $provider_type, string $message_id, string $recipient_email = ''): string
+    {
+        $provider_type = strtolower(trim($provider_type));
+        $message_id = trim($message_id);
+        if ($provider_type === '' || $message_id === '') {
+            return '';
+        }
+
+        $status = '';
+        if ($provider_type === 'sendgrid') {
+            $status = self::retrieve_sendgrid_message_status($message_id);
+        }
+
+        if (function_exists('apply_filters')) {
+            $status = (string) apply_filters('mnem_provider_message_status', $status, $provider_type, $message_id, $recipient_email);
+        }
+
+        $status = sanitize_text_field($status);
+        return in_array($status, self::WEBHOOK_STATUSES, true) ? $status : '';
+    }
+
     public static function is_suppressed(int $site_id, string $email)
     {
         global $wpdb;
@@ -855,6 +959,196 @@ class Queue
     private static function current_time_mysql()
     {
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
+    }
+
+    private static function refresh_provider_status(int $queue_id, string $provider_type, string $message_id, string $recipient_email): string
+    {
+        global $wpdb;
+
+        if ($queue_id <= 0 || trim($provider_type) === '' || trim($message_id) === '') {
+            return '';
+        }
+
+        $actual_status = self::retrieve_message_status($provider_type, $message_id, $recipient_email);
+        if ($actual_status === '') {
+            return '';
+        }
+
+        if ($actual_status === 'sent') {
+            // "sent" means no status upgrade yet; queue a delayed re-check instead of blocking send flow.
+            self::schedule_delayed_status_refresh($queue_id);
+            return '';
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $current_status = (string) $wpdb->get_var($wpdb->prepare("SELECT status FROM {$table} WHERE id = %d LIMIT %d", $queue_id, 1));
+        if ($current_status === '') {
+            return '';
+        }
+
+        $resolved_status = self::resolve_status_update($current_status, $actual_status);
+        if ($resolved_status !== $current_status) {
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s WHERE id = %d",
+                    $resolved_status,
+                    $queue_id
+                )
+            );
+        }
+
+        return $resolved_status;
+    }
+
+    public static function refresh_single_item_status(int $queue_id): void
+    {
+        global $wpdb;
+
+        if ($queue_id <= 0) {
+            return;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT status, provider_type, provider_message_id, recipient_email FROM {$table} WHERE id = %d LIMIT %d",
+                $queue_id,
+                1
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($row) || empty($row['provider_type']) || empty($row['provider_message_id'])) {
+            return;
+        }
+
+        $current_status = isset($row['status']) ? (string) $row['status'] : '';
+        $actual_status = self::retrieve_message_status(
+            (string) $row['provider_type'],
+            (string) $row['provider_message_id'],
+            isset($row['recipient_email']) ? (string) $row['recipient_email'] : ''
+        );
+        if ($actual_status === '' || $actual_status === $current_status) {
+            return;
+        }
+
+        $resolved_status = self::resolve_status_update($current_status, $actual_status);
+        if ($resolved_status === $current_status) {
+            return;
+        }
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s WHERE id = %d",
+                $resolved_status,
+                $queue_id
+            )
+        );
+    }
+
+    private static function retrieve_sendgrid_message_status(string $message_id): string
+    {
+        $api_key = self::get_provider_secret('sendgrid', 'api_key');
+        if ($api_key === '') {
+            return '';
+        }
+
+        $response = wp_remote_get(
+            'https://api.sendgrid.com/v3/messages/' . rawurlencode($message_id),
+            array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $api_key,
+                    'Content-Type' => 'application/json',
+                ),
+                'timeout' => 15,
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return '';
+        }
+
+        if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            return '';
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($body)) {
+            return '';
+        }
+
+        $raw_status = '';
+        foreach (array('status', 'event', 'last_event') as $key) {
+            if (!empty($body[$key])) {
+                $raw_status = (string) $body[$key];
+                break;
+            }
+        }
+        if ($raw_status === '' && !empty($body['events']) && is_array($body['events'])) {
+            $latest_event = end($body['events']);
+            if (is_array($latest_event) && !empty($latest_event['event'])) {
+                $raw_status = (string) $latest_event['event'];
+            }
+        }
+
+        return self::map_provider_lookup_status('sendgrid', $raw_status);
+    }
+
+    private static function map_provider_lookup_status(string $provider, string $status): string
+    {
+        $provider = strtolower(trim($provider));
+        $status = strtolower(trim($status));
+        if ($status === '') {
+            return '';
+        }
+
+        if ($provider === 'sendgrid') {
+            $map = array(
+                'processed' => 'sent',
+                'delivered' => 'delivered',
+                'deferred' => 'deferred',
+                'bounce' => 'bounce',
+                'dropped' => 'failed',
+                'spamreport' => 'complaint',
+                'unsubscribe' => 'unsubscribed',
+                'open' => 'opened',
+                'click' => 'clicked',
+            );
+            return isset($map[$status]) ? $map[$status] : '';
+        }
+
+        return '';
+    }
+
+    private static function get_provider_secret(string $provider_type, string $field): string
+    {
+        $settings = SmtpSettings::get_all();
+        $provider_configs = isset($settings['provider_config']) && is_array($settings['provider_config'])
+            ? $settings['provider_config']
+            : array();
+        $provider_config = isset($provider_configs[$provider_type]) && is_array($provider_configs[$provider_type])
+            ? $provider_configs[$provider_type]
+            : array();
+        $secret = isset($provider_config[$field]) ? (string) $provider_config[$field] : '';
+        if ($secret === '') {
+            return '';
+        }
+
+        $decoded = base64_decode($secret, true);
+        return $decoded === false ? $secret : $decoded;
+    }
+
+    private static function schedule_delayed_status_refresh(int $queue_id): void
+    {
+        if ($queue_id <= 0) {
+            return;
+        }
+
+        if (!function_exists('wp_schedule_single_event')) {
+            return;
+        }
+
+        wp_schedule_single_event(time() + self::STATUS_REFRESH_DELAY_SECONDS, self::STATUS_REFRESH_HOOK, array($queue_id));
     }
 
     private static function resolve_status_update(string $current_status, string $new_status): string

@@ -59,5 +59,12 @@ class Plugin
         } catch (\Throwable $throwable) {
             error_log('MNEM cron loader failed: ' . $throwable->getMessage());
         }
+
+        try {
+            $status_sync_cron = new StatusSyncCron();
+            $status_sync_cron->init();
+        } catch (\Throwable $throwable) {
+            error_log('MNEM status sync cron loader failed: ' . $throwable->getMessage());
+        }
     }
 }

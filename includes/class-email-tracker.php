@@ -88,9 +88,13 @@ class EmailTracker
         }
 
         $table = $wpdb->base_prefix . 'mnem_queue';
-        $opened = (string) $wpdb->get_var($wpdb->prepare("SELECT opened FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+        $opens_count = $wpdb->get_var($wpdb->prepare("SELECT opens_count FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+        if ($opens_count === null || $opens_count === '') {
+            $opened = (string) $wpdb->get_var($wpdb->prepare("SELECT opened FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+            return $opened !== '' ? 1 : 0;
+        }
 
-        return $opened !== '' ? 1 : 0;
+        return max(0, (int) $opens_count);
     }
 
     public static function get_click_count(int $email_id): int
@@ -102,9 +106,13 @@ class EmailTracker
         }
 
         $table = $wpdb->base_prefix . 'mnem_queue';
-        $clicked = (string) $wpdb->get_var($wpdb->prepare("SELECT clicked FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+        $clicks_count = $wpdb->get_var($wpdb->prepare("SELECT clicks_count FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+        if ($clicks_count === null || $clicks_count === '') {
+            $clicked = (string) $wpdb->get_var($wpdb->prepare("SELECT clicked FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+            return $clicked !== '' ? 1 : 0;
+        }
 
-        return $clicked !== '' ? 1 : 0;
+        return max(0, (int) $clicks_count);
     }
 
     public static function get_email_status(int $email_id): string

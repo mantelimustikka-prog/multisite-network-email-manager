@@ -145,7 +145,7 @@ class AdminMenu
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
         $queue_items = (array) $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
                 50,
                 0
             ),
