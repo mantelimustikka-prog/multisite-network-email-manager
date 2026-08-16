@@ -55,7 +55,10 @@ class SmtpProvider extends EmailProvider
             $sent = wp_mail($to, $subject, $body, $headers, $attachments);
 
             if ($sent) {
-                return $this->success_result('Email sent via SMTP.', '', array('to' => $to));
+                $host = function_exists('get_site_url') ? (string) parse_url(get_site_url(), PHP_URL_HOST) : '';
+                $host = ($host !== '') ? $host : 'localhost';
+                $message_id = sprintf('<%s.%s@%s>', uniqid('', true), substr(md5($to . $subject), 0, 8), $host);
+                return $this->success_result('Email sent via SMTP.', $message_id, array('to' => $to));
             }
 
             return $this->error_result('wp_mail() returned false.');

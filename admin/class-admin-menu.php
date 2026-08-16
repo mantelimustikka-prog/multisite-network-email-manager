@@ -39,14 +39,14 @@ class AdminMenu
     {
         global $wpdb;
 
-        $logs_table = $wpdb->prefix . 'mnem_logs';
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
         $plugin_version = defined('MNEM_VERSION') ? MNEM_VERSION : '1.0.0';
         $queue_stats = \MNEM\Queue::get_stats(null);
-        $suppression_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->prefix}mnem_suppression WHERE site_id >= %d", 0));
+        $suppression_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->base_prefix}mnem_suppression WHERE site_id >= %d", 0));
         $recent_logs = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, level, message, created_at FROM {$logs_table} ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
         $smtp_configured = \MNEM\SmtpSettings::is_active_provider_configured();
-        $campaigns = (array) $wpdb->get_results($wpdb->prepare("SELECT id, site_id, name, subject, status, total_recipients, sent_count, failed_count, last_send_attempt_at FROM {$wpdb->prefix}mnem_campaigns ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
-        $site_breakdown = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, status, COUNT(1) AS total FROM {$wpdb->prefix}mnem_queue GROUP BY blog_id, status ORDER BY blog_id ASC LIMIT %d", 200), ARRAY_A);
+        $campaigns = (array) $wpdb->get_results($wpdb->prepare("SELECT id, site_id, name, subject, status, total_recipients, sent_count, failed_count, last_send_attempt_at FROM {$wpdb->base_prefix}mnem_campaigns ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
+        $site_breakdown = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, status, COUNT(1) AS total FROM {$wpdb->base_prefix}mnem_queue GROUP BY blog_id, status ORDER BY blog_id ASC LIMIT %d", 200), ARRAY_A);
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
@@ -145,7 +145,7 @@ class AdminMenu
     {
         global $wpdb;
 
-        $queue_table = $wpdb->prefix . 'mnem_queue';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
         $queue_items = (array) $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, processed_at, sent_at, created_at FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
@@ -184,7 +184,7 @@ class AdminMenu
     {
         global $wpdb;
 
-        $logs_table = $wpdb->prefix . 'mnem_logs';
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
         $logs = (array) $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT blog_id, level, message, created_at FROM {$logs_table} ORDER BY created_at DESC LIMIT %d",
