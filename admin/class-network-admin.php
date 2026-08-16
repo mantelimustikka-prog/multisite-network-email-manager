@@ -6,6 +6,9 @@ defined('ABSPATH') || exit;
 
 class NetworkAdmin
 {
+    private const ACE_EDITOR_VERSION = '1.36.2';
+    private const ACE_EDITOR_SRI = 'sha384-r3kq+DdnMQs5JrtmfwuynWOueMIzHeLhciMG/RoD6A6XgzUR5Czjk1zjfWCQ6OcD';
+
     public function init()
     {
         add_action('admin_init', array($this, 'handle_smtp_save'));
@@ -39,6 +42,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
         add_action('wp_ajax_mnem_send_campaign_test_email', array($this, 'handle_send_campaign_test_email'));
         add_action('wp_ajax_mnem_preview_campaign_test_email', array($this, 'handle_preview_campaign_test_email'));
+        add_filter('script_loader_tag', array($this, 'add_script_integrity'), 10, 3);
 
         $menu = new AdminMenu();
         $menu->init();
@@ -617,6 +621,23 @@ class NetworkAdmin
                 );
             }
         }
+
+        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard'), true)) {
+            return;
+        }
+
+        if (function_exists('wp_enqueue_script')) {
+            wp_enqueue_script('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_EDITOR_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_EDITOR_VERSION, true);
+        }
+    }
+
+    public function add_script_integrity($tag, $handle, $src)
+    {
+        if ($handle !== 'mnem-ace-editor' || strpos($tag, ' integrity=') !== false) {
+            return $tag;
+        }
+
+        return str_replace('<script ', '<script integrity="' . self::ACE_EDITOR_SRI . '" crossorigin="anonymous" ', $tag);
     }
 
     public function ajax_dashboard_stats()

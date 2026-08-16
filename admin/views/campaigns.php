@@ -125,11 +125,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                         <tr>
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
                             <td>
-                                <?php if (function_exists('wp_editor')) : ?>
-                                    <?php wp_editor($campaign_body, 'mnem_campaign_body', array('textarea_name' => 'body', 'textarea_rows' => 12, 'media_buttons' => true, 'wpautop' => true)); ?>
-                                <?php else : ?>
-                                    <textarea class="large-text" id="mnem_campaign_body" name="body" rows="10" required><?php echo esc_textarea($campaign_body); ?></textarea>
-                                <?php endif; ?>
+                                <textarea class="large-text mnem-ace-editor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ace="html" data-mnem-ace-height="450px" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
                                 <p class="description">Available variables: {user_name}, {user_email}, {site_name}, {date}</p>
                             </td>
                         </tr>
