@@ -227,7 +227,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({
-                        action: 'mnem_campaign_send_test_email',
+                        action: 'mnem_send_campaign_test_email',
                         nonce: <?php echo wp_json_encode(wp_create_nonce('mnem_test_email')); ?>,
                         campaign_id: campaignId,
                         test_email: email,
@@ -280,7 +280,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({
-                        action: 'mnem_campaign_preview_test_email',
+                        action: 'mnem_preview_campaign_test_email',
                         nonce: <?php echo wp_json_encode(wp_create_nonce('mnem_test_email')); ?>,
                         campaign_id: campaignId,
                         template_vars: JSON.stringify(parsedVars),

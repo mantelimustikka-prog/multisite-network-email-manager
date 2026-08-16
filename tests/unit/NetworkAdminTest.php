@@ -39,11 +39,15 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_toggle_campaign_pause', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_test_connection', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_send_test_email', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_send_campaign_test_email', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_preview_campaign_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_recreate', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_optimize', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_repair', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_export', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_load_batch_users', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_send_test_email', $GLOBALS['mnem_hooks']);
+        $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_preview_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_get_error_details', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_delete_error_log', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_export_error_logs', $GLOBALS['mnem_hooks']);

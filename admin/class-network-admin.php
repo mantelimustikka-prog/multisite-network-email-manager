@@ -37,8 +37,8 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
         add_action('wp_ajax_mnem_load_batch_users', array($this, 'handle_load_batch_users'));
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
-        add_action('wp_ajax_mnem_campaign_send_test_email', array($this, 'handle_send_test_email'));
-        add_action('wp_ajax_mnem_campaign_preview_test_email', array($this, 'handle_preview_test_email'));
+        add_action('wp_ajax_mnem_send_campaign_test_email', array($this, 'handle_send_campaign_test_email'));
+        add_action('wp_ajax_mnem_preview_campaign_test_email', array($this, 'handle_preview_campaign_test_email'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -944,7 +944,7 @@ class NetworkAdmin
         exit;
     }
 
-    public function handle_send_test_email()
+    public function handle_send_campaign_test_email()
     {
         check_ajax_referer('mnem_test_email', 'nonce');
 
@@ -1004,7 +1004,7 @@ class NetworkAdmin
         }
     }
 
-    public function handle_preview_test_email()
+    public function handle_preview_campaign_test_email()
     {
         check_ajax_referer('mnem_test_email', 'nonce');
 
