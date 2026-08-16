@@ -297,6 +297,12 @@ class Queue
 
                 Logger::info('Queue email sent.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
                 $status = 'sent';
+
+                // Wait briefly for the provider to process the message before polling.
+                if ($provider_type !== '' && $provider_message_id !== '') {
+                    sleep(2);
+                }
+
                 $resolved_status = self::refresh_provider_status($id, $provider_type, $provider_message_id, (string) $row['recipient_email']);
                 if ($resolved_status !== '') {
                     $status = $resolved_status;
@@ -926,9 +932,28 @@ class Queue
             return '';
         }
 
-        $status = '';
-        if ($provider_type === 'sendgrid') {
-            $status = self::retrieve_sendgrid_message_status($message_id);
+        switch ($provider_type) {
+            case 'sendgrid':
+                $status = self::retrieve_sendgrid_message_status($message_id);
+                break;
+            case 'brevo':
+                $status = self::retrieve_brevo_message_status($message_id);
+                break;
+            case 'mailgun':
+                $status = self::retrieve_mailgun_message_status($message_id);
+                break;
+            case 'aws':
+            case 'aws_ses':
+                $status = self::retrieve_aws_ses_message_status($message_id);
+                break;
+            case 'postmark':
+                $status = self::retrieve_postmark_message_status($message_id);
+                break;
+            case 'smtp2go':
+                $status = self::retrieve_smtp2go_message_status($message_id);
+                break;
+            default:
+                $status = '';
         }
 
         if (function_exists('apply_filters')) {
@@ -1094,30 +1119,256 @@ class Queue
         return self::map_provider_lookup_status('sendgrid', $raw_status);
     }
 
+    private static function retrieve_brevo_message_status(string $message_id): string
+    {
+        $api_key = self::get_provider_secret('brevo', 'api_key');
+        if ($api_key === '') {
+            return '';
+        }
+
+        $response = wp_remote_post(
+            'https://api.brevo.com/v3/smtp/email-events',
+            array(
+                'headers' => array(
+                    'api-key'      => $api_key,
+                    'Content-Type' => 'application/json',
+                ),
+                'body'    => wp_json_encode(array(
+                    'messageId' => $message_id,
+                    'limit'     => 1,
+                )),
+                'timeout' => 15,
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return '';
+        }
+
+        if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            return '';
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($body) || empty($body['events'])) {
+            return '';
+        }
+
+        $latest_event = reset($body['events']);
+        if (!is_array($latest_event) || empty($latest_event['event'])) {
+            return '';
+        }
+
+        return self::map_provider_lookup_status('brevo', (string) $latest_event['event']);
+    }
+
+    private static function retrieve_mailgun_message_status(string $message_id): string
+    {
+        $api_key = self::get_provider_secret('mailgun', 'api_key');
+        $domain  = self::get_provider_config('mailgun', 'domain');
+
+        if ($api_key === '' || $domain === '') {
+            return '';
+        }
+
+        $response = wp_remote_get(
+            'https://api.mailgun.net/v3/' . urlencode($domain) . '/events',
+            array(
+                'headers' => array(
+                    'Authorization' => 'Basic ' . base64_encode('api:' . $api_key),
+                ),
+                'body'    => array('message-id' => $message_id),
+                'timeout' => 15,
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return '';
+        }
+
+        if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            return '';
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($body) || empty($body['items'])) {
+            return '';
+        }
+
+        $latest = reset($body['items']);
+        if (!is_array($latest)) {
+            return '';
+        }
+
+        // Mailgun uses event='failed' with severity='permanent' (hard bounce) or severity='temporary' (soft bounce).
+        if (isset($latest['event']) && (string) $latest['event'] === 'failed') {
+            $severity = isset($latest['severity']) ? strtolower((string) $latest['severity']) : 'permanent';
+            $event    = $severity === 'temporary' ? 'temporary_failed' : 'failed';
+        } else {
+            $event = isset($latest['event']) ? (string) $latest['event'] : '';
+        }
+
+        return self::map_provider_lookup_status('mailgun', $event);
+    }
+
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed
+    private static function retrieve_aws_ses_message_status(string $message_id): string
+    {
+        // AWS SES status is webhook-only (SNS); direct API lookup is not available.
+        return '';
+    }
+
+    private static function retrieve_postmark_message_status(string $message_id): string
+    {
+        $api_key = self::get_provider_secret('postmark', 'api_key');
+        if ($api_key === '') {
+            return '';
+        }
+
+        $response = wp_remote_get(
+            'https://api.postmarkapp.com/messages/outbound/' . urlencode($message_id) . '/events',
+            array(
+                'headers' => array(
+                    'X-Postmark-Server-Token' => $api_key,
+                    'Content-Type'            => 'application/json',
+                ),
+                'timeout' => 15,
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return '';
+        }
+
+        if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            return '';
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($body) || empty($body['Events'])) {
+            return '';
+        }
+
+        $latest = reset($body['Events']);
+        $event  = isset($latest['Type']) ? (string) $latest['Type'] : '';
+
+        return self::map_provider_lookup_status('postmark', $event);
+    }
+
+    private static function retrieve_smtp2go_message_status(string $message_id): string
+    {
+        $api_key = self::get_provider_secret('smtp2go', 'api_key');
+        if ($api_key === '') {
+            return '';
+        }
+
+        $response = wp_remote_post(
+            'https://api.smtp2go.com/v3/message_status',
+            array(
+                'headers' => array('Content-Type' => 'application/json'),
+                'body'    => wp_json_encode(array(
+                    'api_key'    => $api_key,
+                    'message_id' => $message_id,
+                )),
+                'timeout' => 15,
+            )
+        );
+
+        if (is_wp_error($response)) {
+            return '';
+        }
+
+        if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+            return '';
+        }
+
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (!is_array($body) || empty($body['status'])) {
+            return '';
+        }
+
+        return self::map_provider_lookup_status('smtp2go', (string) $body['status']);
+    }
+
     private static function map_provider_lookup_status(string $provider, string $status): string
     {
         $provider = strtolower(trim($provider));
-        $status = strtolower(trim($status));
+        $status   = strtolower(trim($status));
         if ($status === '') {
             return '';
         }
 
         if ($provider === 'sendgrid') {
             $map = array(
-                'processed' => 'sent',
-                'delivered' => 'delivered',
-                'deferred' => 'deferred',
-                'bounce' => 'bounce',
-                'dropped' => 'failed',
-                'spamreport' => 'complaint',
+                'processed'   => 'sent',
+                'delivered'   => 'delivered',
+                'deferred'    => 'deferred',
+                'bounce'      => 'bounce',
+                'dropped'     => 'failed',
+                'spamreport'  => 'complaint',
                 'unsubscribe' => 'unsubscribed',
-                'open' => 'opened',
-                'click' => 'clicked',
+                'open'        => 'opened',
+                'click'       => 'clicked',
             );
-            return isset($map[$status]) ? $map[$status] : '';
+        } elseif ($provider === 'brevo') {
+            $map = array(
+                'sent'           => 'sent',
+                'delivered'      => 'delivered',
+                'opened'         => 'opened',
+                'unique_opened'  => 'opened',
+                'click'          => 'clicked',
+                'hard_bounce'    => 'bounce',
+                'soft_bounce'    => 'soft_bounce',
+                'invalid_email'  => 'invalid_email',
+                'deferred'       => 'deferred',
+                'spam'           => 'complaint',
+                'complaint'      => 'complaint',
+                'unsubscribed'   => 'unsubscribed',
+                'blocked'        => 'suppressed',
+                'error'          => 'failed',
+            );
+        } elseif ($provider === 'mailgun') {
+            $map = array(
+                'accepted'         => 'sent',
+                'delivered'        => 'delivered',
+                'opened'           => 'opened',
+                'clicked'          => 'clicked',
+                'complained'       => 'complaint',
+                'unsubscribed'     => 'unsubscribed',
+                'failed'           => 'bounce',
+                'temporary_failed' => 'soft_bounce',
+            );
+        } elseif ($provider === 'postmark') {
+            $map = array(
+                'delivery'           => 'delivered',
+                'open'               => 'opened',
+                'click'              => 'clicked',
+                'spamcomplaint'      => 'complaint',
+                'subscriptionchange' => 'unsubscribed',
+                'bounce'             => 'bounce',
+            );
+        } elseif ($provider === 'smtp2go') {
+            $map = array(
+                'processed'   => 'sent',
+                'sent'        => 'sent',
+                'delivered'   => 'delivered',
+                'open'        => 'opened',
+                'click'       => 'clicked',
+                'bounce'      => 'bounce',
+                'soft_bounce' => 'soft_bounce',
+                'invalid'     => 'invalid_email',
+                'deferred'    => 'deferred',
+                'spam'        => 'complaint',
+                'unsubscribe' => 'unsubscribed',
+                'blocked'     => 'suppressed',
+                'rejected'    => 'rejected',
+                'failed'      => 'failed',
+            );
+        } else {
+            $map = array();
         }
 
-        return '';
+        return isset($map[$status]) ? $map[$status] : '';
     }
 
     private static function get_provider_secret(string $provider_type, string $field): string
@@ -1136,6 +1387,19 @@ class Queue
 
         $decoded = base64_decode($secret, true);
         return $decoded === false ? $secret : $decoded;
+    }
+
+    private static function get_provider_config(string $provider_type, string $field): string
+    {
+        $settings = SmtpSettings::get_all();
+        $provider_configs = isset($settings['provider_config']) && is_array($settings['provider_config'])
+            ? $settings['provider_config']
+            : array();
+        $provider_config = isset($provider_configs[$provider_type]) && is_array($provider_configs[$provider_type])
+            ? $provider_configs[$provider_type]
+            : array();
+
+        return isset($provider_config[$field]) ? (string) $provider_config[$field] : '';
     }
 
     private static function schedule_delayed_status_refresh(int $queue_id): void
