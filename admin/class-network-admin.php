@@ -182,7 +182,6 @@ class NetworkAdmin
         $interval = isset($_POST['mnem_status_update_interval']) ? (int) $_POST['mnem_status_update_interval'] : 30;
 
         \MNEM\SmtpSettings::set_status_update_interval($interval);
-        \MNEM\StatusSyncCron::reschedule();
 
         \MNEM\Logger::info('Status update interval saved.', array('interval_minutes' => $interval));
 
