@@ -97,6 +97,53 @@ class AdminMenu
         ));
         $queried_users = $query->get_results();
         $total = (int) $query->get_total();
+        $user_ids = array_map(static function ($user) {
+            return (int) $user->ID;
+        }, $queried_users);
+        $site_names_by_id = array();
+        $memberships_by_user = array();
+
+        if (function_exists('get_sites')) {
+            foreach (get_sites(array('number' => 0)) as $site) {
+                $site_names_by_id[(int) $site->blog_id] = $site->blogname;
+            }
+        }
+
+        global $wpdb;
+        if (!empty($user_ids) && isset($wpdb->usermeta, $wpdb->base_prefix)) {
+            $placeholders = implode(',', array_fill(0, count($user_ids), '%d'));
+            $capabilities_pattern = $wpdb->esc_like($wpdb->base_prefix) . '%capabilities';
+            $membership_rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id IN ({$placeholders}) AND (meta_key = %s OR meta_key LIKE %s)",
+                    array_merge($user_ids, array($wpdb->base_prefix . 'capabilities', $capabilities_pattern))
+                )
+            );
+
+            foreach ($membership_rows as $membership_row) {
+                if (!preg_match('/^' . preg_quote($wpdb->base_prefix, '/') . '(?:(\d+)_)?capabilities$/', (string) $membership_row->meta_key, $matches)) {
+                    continue;
+                }
+
+                $site_id = isset($matches[1]) && $matches[1] !== '' ? (int) $matches[1] : 1;
+                $capabilities = maybe_unserialize($membership_row->meta_value);
+                if (!is_array($capabilities)) {
+                    continue;
+                }
+
+                $roles = array_keys(array_filter($capabilities));
+                if (empty($roles)) {
+                    continue;
+                }
+
+                $user_id = (int) $membership_row->user_id;
+                if (!isset($memberships_by_user[$user_id])) {
+                    $memberships_by_user[$user_id] = array();
+                }
+
+                $memberships_by_user[$user_id][$site_id] = $roles;
+            }
+        }
 
         foreach ($queried_users as $user) {
             $user_id = (int) $user->ID;
@@ -104,22 +151,11 @@ class AdminMenu
             $site_names = array();
             $roles = array();
 
-            if (function_exists('get_blogs_of_user')) {
-                $blogs = get_blogs_of_user($user_id);
-
-                foreach ($blogs as $blog) {
-                    $site_id = isset($blog->userblog_id) ? (int) $blog->userblog_id : (isset($blog->blog_id) ? (int) $blog->blog_id : 0);
-                    if ($site_id <= 0) {
-                        continue;
-                    }
-
-                    $site_ids[] = $site_id;
-                    $site_names[] = !empty($blog->blogname) ? $blog->blogname : sprintf(__('Site %d', 'multisite-network-email-manager'), $site_id);
-
-                    $user_object = new \WP_User($user_id, '', $site_id);
-                    if (!empty($user_object->roles[0])) {
-                        $roles[] = $user_object->roles[0];
-                    }
+            if (isset($memberships_by_user[$user_id])) {
+                foreach ($memberships_by_user[$user_id] as $site_id => $site_roles) {
+                    $site_ids[] = (int) $site_id;
+                    $site_names[] = isset($site_names_by_id[(int) $site_id]) ? $site_names_by_id[(int) $site_id] : sprintf(__('Site %d', 'multisite-network-email-manager'), $site_id);
+                    $roles = array_merge($roles, $site_roles);
                 }
             }
 
