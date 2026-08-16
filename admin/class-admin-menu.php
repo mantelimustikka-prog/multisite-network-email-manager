@@ -84,7 +84,7 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'general');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'smtp';
         }
@@ -92,11 +92,12 @@ class AdminMenu
         $settings = \MNEM\SmtpSettings::get_all();
         $cron_status = \MNEM\Cron::get_status();
         $status_update_interval = \MNEM\SmtpSettings::get_status_update_interval();
+        $queue_retention_days = \MNEM\SmtpSettings::get_queue_retention_days();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
@@ -144,21 +145,62 @@ class AdminMenu
         global $wpdb;
 
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
+
+        // Status filter.
+        $status_filter = isset($_GET['status_filter']) ? sanitize_text_field(wp_unslash($_GET['status_filter'])) : '';
+
+        // Per-page selector with validation.
+        $allowed_per_page = array(10, 20, 50, 100, 200, 500);
+        $per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 50;
+        if (!in_array($per_page, $allowed_per_page, true)) {
+            $per_page = 50;
+        }
+
+        // Current page and offset.
+        $current_page = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
+        $offset = ($current_page - 1) * $per_page;
+
+        // Total count of ALL records (for header).
+        $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table}");
+
+        // Build WHERE clause for status filter.
+        if ($status_filter !== '') {
+            $where_sql = $wpdb->prepare('WHERE status = %s', $status_filter);
+            $total_filtered = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE status = %s", $status_filter));
+        } else {
+            $where_sql = '';
+            $total_filtered = $total_all_records;
+        }
+
+        // Fetch page of records.
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $queue_items = (array) $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
-                50,
-                0
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$queue_table} {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                $per_page,
+                $offset
             ),
             ARRAY_A
         );
+
+        // All unique statuses for the filter dropdown.
+        $all_statuses = (array) $wpdb->get_col("SELECT DISTINCT status FROM {$queue_table} ORDER BY status ASC");
+
+        $total_pages = $per_page > 0 ? (int) ceil($total_filtered / $per_page) : 1;
+
         $queue_stats = \MNEM\Queue::get_stats(null);
         $queue_summary = \MNEM\StatusSummary::get_summary(null);
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('queue.php', compact('queue_items', 'queue_stats', 'queue_summary', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('queue.php', compact(
+            'queue_items', 'queue_stats', 'queue_summary',
+            'notice', 'notice_message', 'notice_class',
+            'total_all_records', 'total_filtered', 'total_pages',
+            'current_page', 'per_page', 'status_filter', 'all_statuses'
+        ));
     }
 
     public function render_suppression()
@@ -278,6 +320,8 @@ class AdminMenu
             'smtp_test_failed' => 'SMTP test email failed.',
             'status_interval_saved' => 'Status update interval saved. Cron job has been rescheduled.',
             'status_interval_failed' => 'Failed to save status update interval.',
+            'general_settings_saved' => 'General settings saved successfully.',
+            'general_settings_failed' => 'Failed to save general settings.',
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -289,7 +333,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
             return 'notice notice-error';
         }
 

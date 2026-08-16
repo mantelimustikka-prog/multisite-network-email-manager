@@ -31,6 +31,10 @@ defined('ABSPATH') || exit;
            href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=status-updates')); ?>">
             <?php esc_html_e('Status Updates', 'multisite-network-email-manager'); ?>
         </a>
+        <a class="nav-tab<?php echo $active_tab === 'general' ? ' nav-tab-active' : ''; ?>"
+           href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=general')); ?>">
+            <?php esc_html_e('General Settings', 'multisite-network-email-manager'); ?>
+        </a>
     </nav>
 
     <div class="mnem-tab-content" style="margin-top: 20px;">
