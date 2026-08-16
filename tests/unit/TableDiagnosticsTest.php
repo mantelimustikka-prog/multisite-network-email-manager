@@ -13,7 +13,7 @@ class TableDiagnosticsTest extends TestCase
         $GLOBALS['mnem_submenu_pages'] = array();
     }
 
-    public function test_register_submenu_adds_table_diagnosis_page()
+    public function test_register_submenu_adds_db_table_diagnosis_page()
     {
         $diagnostics = new TableDiagnostics();
         $diagnostics->register_submenu();
@@ -23,6 +23,13 @@ class TableDiagnosticsTest extends TestCase
         }, $GLOBALS['mnem_submenu_pages']);
 
         $this->assertContains('mnem-table-diagnosis', $submenu_slugs);
+        $submenu = current(array_filter($GLOBALS['mnem_submenu_pages'], static function ($item) {
+            return isset($item[4]) && 'mnem-table-diagnosis' === $item[4];
+        }));
+
+        $this->assertIsArray($submenu);
+        $this->assertSame('DB Table Diagnosis', $submenu[1]);
+        $this->assertSame('DB Table Diagnosis', $submenu[2]);
     }
 
     public function test_installer_schema_exposes_required_tables()
@@ -32,9 +39,14 @@ class TableDiagnosticsTest extends TestCase
         $this->assertArrayHasKey('mnem_queue', $schema);
         $this->assertArrayHasKey('mnem_campaigns', $schema);
         $this->assertArrayHasKey('mnem_suppression', $schema);
-        $this->assertArrayHasKey('mnem_logs', $schema);
         $this->assertArrayHasKey('mnem_subscriber_lists', $schema);
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
+        $expected_keys = array('mnem_queue', 'mnem_suppression', 'mnem_campaigns', 'mnem_subscriber_lists', 'mnem_list_subscribers');
+        $actual_keys = array_keys($schema);
+        sort($expected_keys);
+        sort($actual_keys);
+
+        $this->assertSame($expected_keys, $actual_keys);
         $this->assertArrayHasKey('opened', $schema['mnem_queue']['columns']);
         $this->assertArrayHasKey('clicked', $schema['mnem_queue']['columns']);
         $this->assertArrayHasKey('opens_count', $schema['mnem_queue']['columns']);
