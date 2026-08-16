@@ -14,12 +14,16 @@ class QueueCleanupCron
         self::schedule();
     }
 
-    public static function schedule(): void
-    {
-        if (!wp_next_scheduled(self::HOOK)) {
-            wp_schedule_event(time(), 'daily', self::HOOK);
-        }
+public static function schedule(): void
+{
+    if (!function_exists('wp_next_scheduled') || !function_exists('wp_schedule_event')) {
+        return;
     }
+
+    if (!wp_next_scheduled(self::HOOK)) {
+        wp_schedule_event(time() + 60, 'daily', self::HOOK);
+    }
+}
 
     public static function cleanup_old_records(): int
     {
