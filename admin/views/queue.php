@@ -105,6 +105,15 @@ defined('ABSPATH') || exit;
                             <td><?php echo esc_html(!empty($item['processed_at']) ? $item['processed_at'] : '—'); ?></td>
                             <td><?php echo esc_html(!empty($item['sent_at']) ? $item['sent_at'] : '—'); ?></td>
                             <td>
+                                <button
+                                    type="button"
+                                    class="button button-small mnem-queue-preview-button"
+                                    data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
+                                    data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
+                                    data-subject="<?php echo esc_attr($item['subject']); ?>"
+                                    data-status="<?php echo esc_attr($item['status']); ?>"
+                                    data-created-at="<?php echo esc_attr($item['created_at']); ?>"
+                                >Preview</button>
                                 <?php if ($is_deletable) : ?>
                                     <button
                                         type="button"

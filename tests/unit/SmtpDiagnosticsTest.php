@@ -59,7 +59,7 @@ class SmtpDiagnosticsTest extends TestCase
                     'campaign_id' => 0,
                     'recipient_email' => 'admin@example.com',
                     'subject' => 'MNEM SMTP Test Email',
-                    'body' => \MNEM\EmailFormatter::apply_global_header_footer('<p>This is a test email from Multisite Network Email Manager.</p>'),
+                    'body' => '<p>This is a test email from Multisite Network Email Manager.</p>',
                     'from_email' => 'noreply@example.com',
                     'from_name' => 'Mailer',
                     'headers' => '["Content-Type: text/html; charset=UTF-8"]',
@@ -193,7 +193,7 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertSame('admin@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
         $this->assertStringContainsString('<p>Header</p>', $GLOBALS['mnem_last_wp_mail']['message']);
         $this->assertStringContainsString('<p>Footer</p>', $GLOBALS['mnem_last_wp_mail']['message']);
-        $this->assertStringNotContainsString('INSERT INTO wp_mnem_queue', $queries);
+        $this->assertStringContainsString('INSERT INTO wp_mnem_queue', $queries);
         $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking', $queries);
         $this->assertSame('smtp', $result['details']['provider']);
         $this->assertArrayHasKey('message_id', $result['details']);

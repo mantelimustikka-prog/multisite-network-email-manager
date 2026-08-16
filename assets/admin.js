@@ -293,6 +293,56 @@
         frame.srcdoc = html || '';
     }
 
+    $(document).on('click', '.mnem-queue-preview-button', function(){
+        var $button = $(this);
+        var queueId = parseInt($button.data('queue-id') || 0, 10);
+        if (!queueId) {
+            return;
+        }
+        var $modal = ensurePreviewModal();
+        $modal.find('[data-field="subject"]').text('Loading...');
+        $modal.find('[data-field="body"]').text('Loading...');
+        $modal.show();
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_get_queue_preview',
+            nonce: mnemAdmin.nonce,
+            queue_id: queueId
+        }).done(function(response){
+            if (!response || !response.success || !response.data) {
+                $modal.find('[data-field="subject"]').text('Failed to load preview');
+                $modal.find('[data-field="body"]').text('');
+                return;
+            }
+
+            var row = response.data;
+            var status = row.status || 'pending';
+            var headers = parseHeaders(row.headers || '[]');
+            var fromValue = '';
+            if (row.from_name && row.from_email) {
+                fromValue = row.from_name + ' <' + row.from_email + '>';
+            } else if (row.from_email) {
+                fromValue = row.from_email;
+            } else {
+                fromValue = extractHeaderValue(headers, 'From') || '';
+            }
+
+            $modal.find('[data-field="from"]').text(fromValue);
+            $modal.find('[data-field="recipient"]').text(row.recipient_email || '');
+            $modal.find('[data-field="sentAt"]').text(row.sent_at || row.created_at || '');
+            $modal.find('[data-field="status"]').text(status).attr('class', 'mnem-badge mnem-status-' + status);
+            $modal.find('[data-field="messageId"]').text('');
+            $modal.find('[data-field="openCount"]').text(0);
+            $modal.find('[data-field="clickCount"]').text(0);
+            $modal.find('[data-field="subject"]').text(row.subject || '');
+            $modal.find('[data-field="body"]').text(row.body || '');
+            $modal.find('[data-field="headers"]').text(JSON.stringify(headers, null, 2));
+            $modal.find('[data-field="openTimestamps"]').text('');
+            $modal.find('[data-field="clickTimestamps"]').text('');
+            renderPreviewFrame($modal.find('[data-field="bodyFrame"]'), row.body || '');
+        });
+    });
+
     $(document).on('click', '.mnem-email-preview-button', function(){
         var $button = $(this);
         var emailId = parseInt($button.data('email-id') || 0, 10);

@@ -318,8 +318,7 @@ class Queue
             $tracking_headers = $headers;
             unset($tracking_headers['__attachments']);
             $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
-            $row_email_type = !empty($row['campaign_id']) ? 'campaign' : 'transactional';
-            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers, $row_site_id, $row_email_type);
+            EmailTracking::store_sent_email($id, $row, $result, $tracking_headers, $row_site_id, self::resolve_email_type($row));
         } catch (\Throwable $e) {
             $status = 'failed';
             $result = array('success' => false, 'message' => $e->getMessage(), 'provider' => '', 'message_id' => '', 'metadata' => array());
@@ -338,9 +337,8 @@ class Queue
             );
             // Still record the failed attempt so Email History is complete.
             // $row is guaranteed non-empty here: process_item() returns early above if get_row() fails.
-            $row_site_id    = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
-            $row_email_type = !empty($row['campaign_id']) ? 'campaign' : 'transactional';
-            EmailTracking::store_sent_email($id, $row, $result, array(), $row_site_id, $row_email_type);
+            $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
+            EmailTracking::store_sent_email($id, $row, $result, array(), $row_site_id, self::resolve_email_type($row));
         } finally {
         }
 
@@ -357,6 +355,19 @@ class Queue
             'provider' => $provider_type,
             'message_id' => $provider_message_id,
         );
+    }
+
+    private static function resolve_email_type(array $row): string
+    {
+        $meta = json_decode(isset($row['metadata']) ? (string) $row['metadata'] : '[]', true);
+        $meta = is_array($meta) ? $meta : array();
+        if (!empty($meta['email_type']) && $meta['email_type'] === 'test') {
+            return 'test';
+        }
+        if (!empty($row['campaign_id'])) {
+            return 'campaign';
+        }
+        return 'transactional';
     }
 
     public static function get_stats(?int $site_id = null)
