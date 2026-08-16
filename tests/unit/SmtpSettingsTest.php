@@ -125,4 +125,18 @@ class SmtpSettingsTest extends TestCase
         SmtpSettings::set_force_sender(false);
         $this->assertFalse(SmtpSettings::is_force_sender_enabled());
     }
+
+    public function test_status_update_interval_defaults_to_30_minutes()
+    {
+        $this->assertSame(30, SmtpSettings::get_status_update_interval());
+    }
+
+    public function test_status_update_interval_accepts_only_valid_values()
+    {
+        SmtpSettings::set_status_update_interval(20);
+        $this->assertSame(20, SmtpSettings::get_status_update_interval());
+
+        SmtpSettings::set_status_update_interval(7);
+        $this->assertSame(20, SmtpSettings::get_status_update_interval());
+    }
 }

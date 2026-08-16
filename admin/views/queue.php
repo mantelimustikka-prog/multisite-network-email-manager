@@ -13,22 +13,18 @@ defined('ABSPATH') || exit;
         <h2>Queue Summary</h2>
         <table class="widefat striped">
             <tbody>
-                <tr>
-                    <th scope="row">Pending</th>
-                    <td><?php echo esc_html((string) $queue_stats['pending']); ?></td>
-                </tr>
-                <tr>
-                    <th scope="row">Processing</th>
-                    <td><?php echo esc_html((string) $queue_stats['processing']); ?></td>
-                </tr>
-                <tr>
-                    <th scope="row">Sent</th>
-                    <td><?php echo esc_html((string) $queue_stats['sent']); ?></td>
-                </tr>
-                <tr>
-                    <th scope="row">Failed</th>
-                    <td><?php echo esc_html((string) $queue_stats['failed']); ?></td>
-                </tr>
+                <?php if (empty($queue_summary)) : ?>
+                    <tr>
+                        <td colspan="2">No status data available.</td>
+                    </tr>
+                <?php else : ?>
+                    <?php foreach ($queue_summary as $status => $count) : ?>
+                        <tr>
+                            <th scope="row"><?php echo esc_html(ucwords(str_replace('_', ' ', (string) $status))); ?></th>
+                            <td><?php echo esc_html((string) ((int) $count)); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
         <div class="mnem-actions">

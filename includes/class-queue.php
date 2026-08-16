@@ -618,21 +618,25 @@ class Queue
 
         $table = $wpdb->base_prefix . 'mnem_queue';
         $timestamp = self::current_time_mysql();
-        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
+        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
         if (!is_array($row)) {
+            Logger::warning('Local tracking event skipped because queue row was not found.', array(
+                'queue_id' => $queue_id,
+                'status' => $status,
+            ));
             return;
         }
 
         $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
         $opened = isset($row['opened']) ? (string) $row['opened'] : '';
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
-        $opens_count = isset($row['opens_count']) ? (int) $row['opens_count'] : 0;
-        $clicks_count = isset($row['clicks_count']) ? (int) $row['clicks_count'] : 0;
+        $opens_increment = 0;
+        $clicks_increment = 0;
         if ($status === 'opened' && $opened === '') {
             $opened = $timestamp;
         }
         if ($status === 'opened') {
-            ++$opens_count;
+            $opens_increment = 1;
         }
         if ($status === 'clicked') {
             if ($opened === '') {
@@ -641,7 +645,7 @@ class Queue
             if ($clicked === '') {
                 $clicked = $timestamp;
             }
-            ++$clicks_count;
+            $clicks_increment = 1;
         }
 
         $final_status = self::resolve_status_update($current_status, $status);
@@ -653,18 +657,27 @@ class Queue
             ),
         ));
 
-        $wpdb->query(
+        $updated = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = %d, clicks_count = %d, provider_metadata = %s WHERE id = %d",
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = COALESCE(opens_count, 0) + %d, clicks_count = COALESCE(clicks_count, 0) + %d, provider_metadata = %s WHERE id = %d",
                 $final_status,
                 $opened !== '' ? $opened : null,
                 $clicked !== '' ? $clicked : null,
-                $opens_count,
-                $clicks_count,
+                $opens_increment,
+                $clicks_increment,
                 $provider_metadata,
                 $queue_id
             )
         );
+
+        Logger::info('Local tracking event recorded.', array(
+            'queue_id' => $queue_id,
+            'input_status' => $status,
+            'resolved_status' => $final_status,
+            'opens_increment' => $opens_increment,
+            'clicks_increment' => $clicks_increment,
+            'updated' => $updated !== false,
+        ));
     }
 
     public static function get_display_status(array $item): string
@@ -694,7 +707,7 @@ class Queue
         if ($message_id !== '') {
             $row = $wpdb->get_row(
                 $wpdb->prepare(
-                    "SELECT id, status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE provider_type = %s AND provider_message_id = %s ORDER BY id DESC LIMIT %d",
+                    "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND provider_message_id = %s ORDER BY id DESC LIMIT %d",
                     $provider,
                     $message_id,
                     1
@@ -711,7 +724,7 @@ class Queue
                     array($wpdb, 'prepare'),
                     array_merge(
                         array(
-                            "SELECT id, status, opened, clicked, opens_count, clicks_count, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
+                            "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
                             $provider,
                             $recipient,
                         ),
@@ -724,19 +737,25 @@ class Queue
         }
 
         if (!is_array($row) || empty($row['id'])) {
+            Logger::warning('Webhook status update skipped because queue row was not found.', array(
+                'provider' => $provider,
+                'message_id' => $message_id,
+                'recipient' => $recipient,
+                'status' => $status,
+            ));
             return false;
         }
 
         $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
         $opened = isset($row['opened']) ? (string) $row['opened'] : '';
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
-        $opens_count = isset($row['opens_count']) ? (int) $row['opens_count'] : 0;
-        $clicks_count = isset($row['clicks_count']) ? (int) $row['clicks_count'] : 0;
+        $opens_increment = 0;
+        $clicks_increment = 0;
         if ($status === 'opened' && $opened === '') {
             $opened = $timestamp;
         }
         if ($status === 'opened') {
-            ++$opens_count;
+            $opens_increment = 1;
         }
         if ($status === 'clicked') {
             if ($opened === '') {
@@ -745,7 +764,7 @@ class Queue
             if ($clicked === '') {
                 $clicked = $timestamp;
             }
-            ++$clicks_count;
+            $clicks_increment = 1;
         }
 
         $provider_metadata = self::merge_provider_metadata(isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '', array(
@@ -759,20 +778,32 @@ class Queue
             ),
         ));
 
-        $wpdb->query(
+        $resolved_status = self::resolve_status_update($current_status, $status);
+        $updated = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = %d, clicks_count = %d, provider_metadata = %s WHERE id = %d",
-                self::resolve_status_update($current_status, $status),
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = COALESCE(opens_count, 0) + %d, clicks_count = COALESCE(clicks_count, 0) + %d, provider_metadata = %s WHERE id = %d",
+                $resolved_status,
                 $opened !== '' ? $opened : null,
                 $clicked !== '' ? $clicked : null,
-                $opens_count,
-                $clicks_count,
+                $opens_increment,
+                $clicks_increment,
                 $provider_metadata,
                 (int) $row['id']
             )
         );
 
-        return true;
+        Logger::info('Webhook status update processed.', array(
+            'queue_id' => (int) $row['id'],
+            'provider' => $provider,
+            'message_id' => $message_id,
+            'received_status' => $status,
+            'resolved_status' => $resolved_status,
+            'opens_increment' => $opens_increment,
+            'clicks_increment' => $clicks_increment,
+            'updated' => $updated !== false,
+        ));
+
+        return $updated !== false;
     }
 
     public static function map_webhook_status(string $provider, string $event_type, array $payload = array()): string
@@ -929,6 +960,10 @@ class Queue
         $provider_type = strtolower(trim($provider_type));
         $message_id = trim($message_id);
         if ($provider_type === '' || $message_id === '') {
+            Logger::warning('Provider status lookup skipped because provider or message id is missing.', array(
+                'provider' => $provider_type,
+                'message_id' => $message_id,
+            ));
             return '';
         }
 
@@ -961,7 +996,16 @@ class Queue
         }
 
         $status = sanitize_text_field($status);
-        return in_array($status, self::WEBHOOK_STATUSES, true) ? $status : '';
+        $valid_status = in_array($status, self::WEBHOOK_STATUSES, true) ? $status : '';
+
+        Logger::info('Provider status lookup completed.', array(
+            'provider' => $provider_type,
+            'message_id' => $message_id,
+            'recipient' => $recipient_email,
+            'result_status' => $valid_status,
+        ));
+
+        return $valid_status;
     }
 
     public static function is_suppressed(int $site_id, string $email)
@@ -1415,7 +1459,7 @@ class Queue
         wp_schedule_single_event(time() + self::STATUS_REFRESH_DELAY_SECONDS, self::STATUS_REFRESH_HOOK, array($queue_id));
     }
 
-    private static function resolve_status_update(string $current_status, string $new_status): string
+    public static function resolve_status_update(string $current_status, string $new_status): string
     {
         if ($new_status === '') {
             return $current_status;

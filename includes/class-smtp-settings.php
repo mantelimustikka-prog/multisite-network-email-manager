@@ -8,6 +8,7 @@ class SmtpSettings
 {
     public const OPTION_KEY = 'mnem_smtp_settings';
     public const OPTION_FORCE_SENDER = 'mnem_force_sender_settings';
+    public const OPTION_STATUS_UPDATE_INTERVAL = 'mnem_status_update_interval';
 
     public const DEFAULT_SETTINGS = array(
         // Legacy SMTP fields (also used when provider_type = 'smtp').
@@ -254,5 +255,21 @@ class SmtpSettings
     public static function is_global_header_footer_enabled()
     {
         return (int) get_site_option('mnem_force_global_header_footer', 0) === 1;
+    }
+
+    public static function get_status_update_interval(): int
+    {
+        $interval = (int) get_site_option(self::OPTION_STATUS_UPDATE_INTERVAL, 30);
+        $valid_intervals = array(5, 10, 15, 20, 30, 60);
+
+        return in_array($interval, $valid_intervals, true) ? $interval : 30;
+    }
+
+    public static function set_status_update_interval(int $minutes): void
+    {
+        $valid_intervals = array(5, 10, 15, 20, 30, 60);
+        if (in_array($minutes, $valid_intervals, true)) {
+            update_site_option(self::OPTION_STATUS_UPDATE_INTERVAL, $minutes);
+        }
     }
 }

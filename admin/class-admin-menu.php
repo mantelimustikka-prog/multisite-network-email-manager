@@ -152,11 +152,12 @@ class AdminMenu
             ARRAY_A
         );
         $queue_stats = \MNEM\Queue::get_stats(null);
+        $queue_summary = \MNEM\StatusSummary::get_summary(null);
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('queue.php', compact('queue_items', 'queue_stats', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('queue.php', compact('queue_items', 'queue_stats', 'queue_summary', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_suppression()

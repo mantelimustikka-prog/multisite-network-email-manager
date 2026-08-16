@@ -280,8 +280,8 @@ class QueueTest extends TestCase
         $this->assertStringContainsString("status = 'clicked'", $queries);
         $this->assertStringContainsString("opened = '2026-08-11 12:00:00'", $queries);
         $this->assertStringContainsString("clicked = '2026-08-11 12:00:00'", $queries);
-        $this->assertStringContainsString('opens_count = 0', $queries);
-        $this->assertStringContainsString('clicks_count = 1', $queries);
+        $this->assertStringContainsString('opens_count = COALESCE(opens_count, 0) + 0', $queries);
+        $this->assertStringContainsString('clicks_count = COALESCE(clicks_count, 0) + 1', $queries);
         $this->assertStringNotContainsString("recipient_email = 'user@example.com'", $queries);
     }
 
@@ -312,8 +312,8 @@ class QueueTest extends TestCase
 
         $queries = implode("\n", $GLOBALS['wpdb']->queries);
         $this->assertStringContainsString("status = 'opened'", $queries);
-        $this->assertStringContainsString('opens_count = 3', $queries);
-        $this->assertStringContainsString('clicks_count = 1', $queries);
+        $this->assertStringContainsString('opens_count = COALESCE(opens_count, 0) + 1', $queries);
+        $this->assertStringContainsString('clicks_count = COALESCE(clicks_count, 0) + 0', $queries);
     }
 
     public function test_map_webhook_status_maps_provider_events()

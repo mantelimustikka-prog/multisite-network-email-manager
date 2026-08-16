@@ -21,6 +21,7 @@ $provider_labels = array(
     'postmark' => 'Postmark',
     'smtp2go'  => 'SMTP2GO',
 );
+$status_update_interval = \MNEM\SmtpSettings::get_status_update_interval();
 
 $provider_field_defs = array(
     'mailgun'  => array('api_key' => 'API Key', 'domain' => 'Domain'),
@@ -193,6 +194,19 @@ $provider_field_defs = array(
                         <option value="mnem_6_hours" <?php selected($cron_status['interval'], 'mnem_6_hours'); ?>><?php esc_html_e('6 hours', 'multisite-network-email-manager'); ?></option>
                         <option value="mnem_12_hours" <?php selected($cron_status['interval'], 'mnem_12_hours'); ?>><?php esc_html_e('12 hours', 'multisite-network-email-manager'); ?></option>
                         <option value="daily" <?php selected($cron_status['interval'], 'daily'); ?>><?php esc_html_e('Daily', 'multisite-network-email-manager'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="mnem-status-update-interval"><?php esc_html_e('Status Update Interval', 'multisite-network-email-manager'); ?></label></th>
+                <td>
+                    <select name="status_update_interval" id="mnem-status-update-interval">
+                        <option value="5" <?php selected($status_update_interval, 5); ?>><?php esc_html_e('5 minutes', 'multisite-network-email-manager'); ?></option>
+                        <option value="10" <?php selected($status_update_interval, 10); ?>><?php esc_html_e('10 minutes', 'multisite-network-email-manager'); ?></option>
+                        <option value="15" <?php selected($status_update_interval, 15); ?>><?php esc_html_e('15 minutes', 'multisite-network-email-manager'); ?></option>
+                        <option value="20" <?php selected($status_update_interval, 20); ?>><?php esc_html_e('20 minutes', 'multisite-network-email-manager'); ?></option>
+                        <option value="30" <?php selected($status_update_interval, 30); ?>><?php esc_html_e('30 minutes', 'multisite-network-email-manager'); ?></option>
+                        <option value="60" <?php selected($status_update_interval, 60); ?>><?php esc_html_e('60 minutes', 'multisite-network-email-manager'); ?></option>
                     </select>
                 </td>
             </tr>
