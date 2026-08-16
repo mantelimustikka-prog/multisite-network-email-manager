@@ -49,54 +49,150 @@ class AdminMenu
             exit;
         }
 
-        $all_network_users = self::get_all_network_users();
         $all_sites = self::get_all_sites_with_user_count();
         $all_roles = self::get_all_network_roles();
+        $batch_sizes = self::get_allowed_network_user_batch_sizes();
+        $default_batch_size = in_array(1000, $batch_sizes, true) ? 1000 : (int) $batch_sizes[0];
 
         $this->render_view('subscriber-lists-bulk-add.php', compact(
             'active_list',
-            'all_network_users',
             'all_sites',
-            'all_roles'
+            'all_roles',
+            'batch_sizes',
+            'default_batch_size'
         ));
     }
 
-    private static function get_all_network_users()
+    public static function get_allowed_network_user_batch_sizes()
+    {
+        return array(500, 1000, 1500, 2000, 5000, 10000);
+    }
+
+    public static function get_network_users_batch($batch_size, $offset)
     {
         $users = array();
+        $batch_size = max(0, (int) $batch_size);
+        $offset = max(0, (int) $offset);
 
-        if (!function_exists('get_sites')) {
-            return $users;
+        if (!class_exists('\WP_User_Query')) {
+            return array(
+                'users' => $users,
+                'total' => 0,
+                'loaded' => 0,
+                'offset' => $offset,
+                'next_offset' => $offset,
+                'has_more' => false,
+                'batch_size' => $batch_size,
+            );
         }
 
-        $sites = get_sites(array('number' => 0));
+        $query = new \WP_User_Query(array(
+            'blog_id' => 0,
+            'number' => $batch_size,
+            'offset' => $offset,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'count_total' => true,
+            'fields' => array('ID', 'user_login', 'user_email'),
+        ));
+        $queried_users = $query->get_results();
+        $total = (int) $query->get_total();
+        $user_ids = array_map(static function ($user) {
+            return (int) $user->ID;
+        }, $queried_users);
+        $site_names_by_id = array();
+        $memberships_by_user = array();
 
-        foreach ($sites as $site) {
-            $site_users = get_users(array(
-                'blog_id' => $site->blog_id,
-                'number' => -1,
-                'fields' => array('ID', 'user_login', 'user_email'),
-            ));
-
-            foreach ($site_users as $user) {
-                $user_id = (int) $user->ID;
-                $site_id = (int) $site->blog_id;
-
-                $user_object = new \WP_User($user_id, '', $site_id);
-                $role = !empty($user_object->roles[0]) ? $user_object->roles[0] : 'subscriber';
-
-                $users[] = array(
-                    'user_id'   => $user_id,
-                    'login'     => $user->user_login,
-                    'email'     => $user->user_email,
-                    'site_id'   => $site_id,
-                    'site_name' => $site->blogname,
-                    'role'      => $role,
-                );
+        if (function_exists('get_sites')) {
+            foreach (get_sites(array('number' => 0)) as $site) {
+                $site_names_by_id[(int) $site->blog_id] = $site->blogname;
             }
         }
 
-        return $users;
+        global $wpdb;
+        if (!empty($user_ids) && isset($wpdb->usermeta, $wpdb->base_prefix)) {
+            $placeholders = implode(',', array_fill(0, count($user_ids), '%d'));
+            $capabilities_pattern = $wpdb->esc_like($wpdb->base_prefix) . '%capabilities';
+            $membership_rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id IN ({$placeholders}) AND (meta_key = %s OR meta_key LIKE %s)",
+                    array_merge($user_ids, array($wpdb->base_prefix . 'capabilities', $capabilities_pattern))
+                )
+            );
+
+            foreach ($membership_rows as $membership_row) {
+                if (!preg_match('/^' . preg_quote($wpdb->base_prefix, '/') . '(?:(\d+)_)?capabilities$/', (string) $membership_row->meta_key, $matches)) {
+                    continue;
+                }
+
+                $site_id = isset($matches[1]) && $matches[1] !== '' ? (int) $matches[1] : 1;
+                $capabilities = maybe_unserialize($membership_row->meta_value);
+                if (!is_array($capabilities)) {
+                    continue;
+                }
+
+                $roles = array_keys(array_filter($capabilities));
+                if (empty($roles)) {
+                    continue;
+                }
+
+                $user_id = (int) $membership_row->user_id;
+                if (!isset($memberships_by_user[$user_id])) {
+                    $memberships_by_user[$user_id] = array();
+                }
+
+                $memberships_by_user[$user_id][$site_id] = $roles;
+            }
+        }
+
+        foreach ($queried_users as $user) {
+            $user_id = (int) $user->ID;
+            $site_ids = array();
+            $site_names = array();
+            $roles = array();
+
+            if (isset($memberships_by_user[$user_id])) {
+                foreach ($memberships_by_user[$user_id] as $site_id => $site_roles) {
+                    $site_ids[] = (int) $site_id;
+                    $site_names[] = isset($site_names_by_id[(int) $site_id]) ? $site_names_by_id[(int) $site_id] : sprintf(__('Site %d', 'multisite-network-email-manager'), $site_id);
+                    $roles = array_merge($roles, $site_roles);
+                }
+            }
+
+            $site_ids = array_values(array_unique(array_filter(array_map('intval', $site_ids))));
+            $site_names = array_values(array_unique(array_filter($site_names)));
+            $roles = array_values(array_unique(array_filter($roles)));
+
+            if (empty($roles)) {
+                $roles = array('subscriber');
+            }
+
+            $users[] = array(
+                'user_id' => $user_id,
+                'login' => $user->user_login,
+                'email' => $user->user_email,
+                'site_id' => !empty($site_ids) ? (int) $site_ids[0] : 0,
+                'site_ids' => $site_ids,
+                'site_name' => !empty($site_names) ? implode(', ', $site_names) : __('No site membership', 'multisite-network-email-manager'),
+                'role' => implode(', ', array_map(static function ($role) {
+                    return ucfirst(str_replace(array('-', '_'), ' ', (string) $role));
+                }, $roles)),
+                'roles' => $roles,
+            );
+        }
+
+        $loaded = count($users);
+        $next_offset = $offset + $loaded;
+
+        return array(
+            'users' => $users,
+            'total' => $total,
+            'loaded' => $loaded,
+            'offset' => $offset,
+            'next_offset' => $next_offset,
+            'has_more' => $next_offset < $total,
+            'batch_size' => $batch_size,
+        );
     }
 
     private static function get_all_sites_with_user_count()
