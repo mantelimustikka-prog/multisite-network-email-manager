@@ -93,14 +93,14 @@ class CliCommand
 
         foreach ($central_tables as $key => $table_name) {
             $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_name)) === $table_name;
-            $central_counts[$key] = $exists ? (int) $wpdb->get_var('SELECT COUNT(1) FROM ' . self::quote_table_name($table_name)) : 0;
+            $central_counts[$key] = $exists ? self::get_table_row_count($wpdb, $table_name) : 0;
             $column_exists[$key] = $exists ? (bool) $wpdb->get_var($wpdb->prepare(
                 'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
                 $table_name,
                 'site_id'
             )) : false;
             $zero_site_counts[$key] = ($exists && $column_exists[$key])
-                ? (int) $wpdb->get_var('SELECT COUNT(1) FROM ' . self::quote_table_name($table_name) . ' WHERE site_id = 0')
+                ? self::get_zero_site_id_row_count($wpdb, $table_name)
                 : 0;
         }
 
@@ -208,7 +208,7 @@ class CliCommand
             $matches[] = array(
                 'table' => (string) $table_name,
                 'site_id' => $site_id,
-                'rows' => (int) $wpdb->get_var('SELECT COUNT(1) FROM ' . self::quote_table_name((string) $table_name)),
+                'rows' => self::get_table_row_count($wpdb, (string) $table_name),
             );
         }
 
@@ -224,9 +224,34 @@ class CliCommand
         return $total;
     }
 
+    private static function get_table_row_count($wpdb, $table_name)
+    {
+        $quoted_table = self::quote_table_name($table_name);
+        if ($quoted_table === '') {
+            return 0;
+        }
+
+        return (int) $wpdb->get_var('SELECT COUNT(1) FROM ' . $quoted_table);
+    }
+
+    private static function get_zero_site_id_row_count($wpdb, $table_name)
+    {
+        $quoted_table = self::quote_table_name($table_name);
+        if ($quoted_table === '') {
+            return 0;
+        }
+
+        return (int) $wpdb->get_var('SELECT COUNT(1) FROM ' . $quoted_table . ' WHERE site_id = 0');
+    }
+
     private static function quote_table_name($table_name)
     {
-        $clean_name = preg_replace('/[^A-Za-z0-9_]/', '', (string) $table_name);
+        $table_name = (string) $table_name;
+        $clean_name = preg_replace('/[^A-Za-z0-9_]/', '', $table_name);
+        if ($clean_name === '' || $clean_name !== $table_name) {
+            return '';
+        }
+
         return '`' . $clean_name . '`';
     }
 }

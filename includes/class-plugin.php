@@ -13,7 +13,9 @@ class Plugin
             Installer::install();
         }
 
-        CliCommand::register_commands();
+        if (defined('WP_CLI') && WP_CLI) {
+            CliCommand::register_commands();
+        }
 
         if (function_exists('is_admin') && is_admin()) {
             try {
