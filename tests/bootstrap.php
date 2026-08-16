@@ -757,6 +757,7 @@ require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
 require_once __DIR__ . '/../includes/class-cron.php';
 require_once __DIR__ . '/../includes/class-installer.php';
+require_once __DIR__ . '/../includes/class-cli-command.php';
 require_once __DIR__ . '/../includes/class-user-events-campaign.php';
 require_once __DIR__ . '/../includes/class-user-events.php';
 require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';

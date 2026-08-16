@@ -13,6 +13,10 @@ class Plugin
             Installer::install();
         }
 
+        if (defined('WP_CLI') && WP_CLI) {
+            CliCommand::register_commands();
+        }
+
         if (function_exists('is_admin') && is_admin()) {
             try {
                 $admin = new \MNEM\Admin\NetworkAdmin();
