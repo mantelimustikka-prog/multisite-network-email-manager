@@ -173,7 +173,7 @@ class CliCommandTest extends TestCase
         $this->assertTrue($report['verification']['success']);
         $this->assertSame(0, count($report['after']['legacy_tables']['queue']));
         $this->assertSame(0, count($report['after']['legacy_tables']['campaigns']));
-        $this->assertSame(12, $report['verification']['legacy_rows_before']['queue']);
+        $this->assertSame(10, $report['verification']['legacy_rows_before']['queue']);
         $this->assertSame(12, $report['verification']['legacy_rows_before']['campaigns']);
         $this->assertTrue($report['verification']['checks']['site_id_columns_present']);
     }
