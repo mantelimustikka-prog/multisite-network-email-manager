@@ -202,4 +202,27 @@ class NetworkAdminTest extends TestCase
         $this->assertSame(1, get_site_option(\MNEM\SmtpSettings::OPTION_FORCE_SENDER));
         $this->assertStringContainsString('mnem_notice=sender_settings_saved', $GLOBALS['mnem_last_redirect']);
     }
+
+    public function test_handle_save_general_settings_saves_campaign_rate_limits()
+    {
+        $_POST = array(
+            'mnem_action' => 'save_general_settings',
+            '_wpnonce' => 'test-nonce',
+            'mnem_queue_retention_days' => 120,
+            'mnem_campaign_rate_limit_per_minute' => 75,
+            'mnem_campaign_rate_limit_per_hour' => 1200,
+            'mnem_campaign_rate_limit_per_day' => 15000,
+            'mnem_campaign_delay_between_sends' => 250,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_save_general_settings();
+
+        $this->assertSame(120, \MNEM\SmtpSettings::get_queue_retention_days());
+        $this->assertSame(75, \MNEM\SmtpSettings::get_campaign_rate_limit_per_minute());
+        $this->assertSame(1200, \MNEM\SmtpSettings::get_campaign_rate_limit_per_hour());
+        $this->assertSame(15000, \MNEM\SmtpSettings::get_campaign_rate_limit_per_day());
+        $this->assertSame(250, \MNEM\SmtpSettings::get_campaign_delay_between_sends());
+        $this->assertStringContainsString('mnem_notice=general_settings_saved', $GLOBALS['mnem_last_redirect']);
+    }
 }

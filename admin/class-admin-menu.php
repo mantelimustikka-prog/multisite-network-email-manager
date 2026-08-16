@@ -90,11 +90,15 @@ class AdminMenu
         $cron_status = \MNEM\Cron::get_status();
         $status_update_interval = \MNEM\SmtpSettings::get_status_update_interval();
         $queue_retention_days = \MNEM\SmtpSettings::get_queue_retention_days();
+        $campaign_rate_limit_per_minute = \MNEM\SmtpSettings::get_campaign_rate_limit_per_minute();
+        $campaign_rate_limit_per_hour = \MNEM\SmtpSettings::get_campaign_rate_limit_per_hour();
+        $campaign_rate_limit_per_day = \MNEM\SmtpSettings::get_campaign_rate_limit_per_day();
+        $campaign_delay_between_sends = \MNEM\SmtpSettings::get_campaign_delay_between_sends();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()

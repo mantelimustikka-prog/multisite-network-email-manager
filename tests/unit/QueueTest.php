@@ -235,6 +235,43 @@ class QueueTest extends TestCase
         $this->assertStringNotContainsString('row@example.com', $headers);
     }
 
+    public function test_process_batch_stops_when_minute_rate_limit_is_exceeded()
+    {
+        $GLOBALS['mnem_transients'] = array();
+        $identifier = 'campaign_send_' . gmdate('Y-m-d-H-i');
+        set_transient('mnem_rate_limit_' . $identifier, 1, 60);
+        $GLOBALS['mnem_site_options']['mnem_campaign_rate_limit_per_minute'] = 1;
+
+        $was_get_col_called = false;
+
+        $GLOBALS['wpdb'] = new class($was_get_col_called) extends wpdb {
+            private $was_get_col_called;
+
+            public function __construct(&$was_get_col_called)
+            {
+                $this->was_get_col_called = &$was_get_col_called;
+            }
+
+            public function get_col($query)
+            {
+                $this->was_get_col_called = true;
+                $this->queries[] = $query;
+                return array(11);
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $processed = Queue::process_batch(1);
+
+        $this->assertSame(0, $processed);
+        $this->assertFalse($was_get_col_called);
+    }
+
     public function test_get_display_status_uses_engagement_and_delivery_priority()
     {
         $this->assertSame('Opened', Queue::get_display_status(array('status' => 'opened')));

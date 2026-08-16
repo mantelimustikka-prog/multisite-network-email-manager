@@ -209,7 +209,26 @@ class NetworkAdmin
 
         \MNEM\SmtpSettings::set_queue_retention_days($days);
 
-        \MNEM\Logger::info('General settings saved.', array('queue_retention_days' => $days));
+        if (isset($_POST['mnem_campaign_rate_limit_per_minute'])) {
+            \MNEM\SmtpSettings::set_campaign_rate_limit_per_minute((int) $_POST['mnem_campaign_rate_limit_per_minute']);
+        }
+        if (isset($_POST['mnem_campaign_rate_limit_per_hour'])) {
+            \MNEM\SmtpSettings::set_campaign_rate_limit_per_hour((int) $_POST['mnem_campaign_rate_limit_per_hour']);
+        }
+        if (isset($_POST['mnem_campaign_rate_limit_per_day'])) {
+            \MNEM\SmtpSettings::set_campaign_rate_limit_per_day((int) $_POST['mnem_campaign_rate_limit_per_day']);
+        }
+        if (isset($_POST['mnem_campaign_delay_between_sends'])) {
+            \MNEM\SmtpSettings::set_campaign_delay_between_sends((int) $_POST['mnem_campaign_delay_between_sends']);
+        }
+
+        \MNEM\Logger::info('General settings saved.', array(
+            'queue_retention_days' => $days,
+            'campaign_rate_limit_per_minute' => \MNEM\SmtpSettings::get_campaign_rate_limit_per_minute(),
+            'campaign_rate_limit_per_hour' => \MNEM\SmtpSettings::get_campaign_rate_limit_per_hour(),
+            'campaign_rate_limit_per_day' => \MNEM\SmtpSettings::get_campaign_rate_limit_per_day(),
+            'campaign_delay_between_sends' => \MNEM\SmtpSettings::get_campaign_delay_between_sends(),
+        ));
 
         $this->redirect_with_notice('mnem-settings', 'general_settings_saved', array('tab' => 'general'));
     }

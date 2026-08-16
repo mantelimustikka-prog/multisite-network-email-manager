@@ -285,4 +285,52 @@ class SmtpSettings
         $days = max(1, min($days, 3650));
         update_site_option('mnem_queue_retention_days', $days);
     }
+
+    public static function get_campaign_rate_limit_per_minute(): int
+    {
+        $limit = (int) get_site_option('mnem_campaign_rate_limit_per_minute', 60);
+        return max(0, $limit);
+    }
+
+    public static function set_campaign_rate_limit_per_minute(int $limit): void
+    {
+        $limit = max(0, $limit);
+        update_site_option('mnem_campaign_rate_limit_per_minute', $limit);
+    }
+
+    public static function get_campaign_rate_limit_per_hour(): int
+    {
+        $limit = (int) get_site_option('mnem_campaign_rate_limit_per_hour', 1000);
+        return max(0, $limit);
+    }
+
+    public static function set_campaign_rate_limit_per_hour(int $limit): void
+    {
+        $limit = max(0, $limit);
+        update_site_option('mnem_campaign_rate_limit_per_hour', $limit);
+    }
+
+    public static function get_campaign_rate_limit_per_day(): int
+    {
+        $limit = (int) get_site_option('mnem_campaign_rate_limit_per_day', 10000);
+        return max(0, $limit);
+    }
+
+    public static function set_campaign_rate_limit_per_day(int $limit): void
+    {
+        $limit = max(0, $limit);
+        update_site_option('mnem_campaign_rate_limit_per_day', $limit);
+    }
+
+    public static function get_campaign_delay_between_sends(): int
+    {
+        $delay = (int) get_site_option('mnem_campaign_delay_between_sends', 100);
+        return max(0, $delay);
+    }
+
+    public static function set_campaign_delay_between_sends(int $delay): void
+    {
+        $delay = max(0, $delay);
+        update_site_option('mnem_campaign_delay_between_sends', $delay);
+    }
 }
