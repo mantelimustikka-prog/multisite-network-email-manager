@@ -30,14 +30,13 @@ class TableDiagnosticsTest extends TestCase
         $schema = \MNEM\Installer::get_table_schema('wp_');
 
         $this->assertArrayHasKey('mnem_queue', $schema);
-        $this->assertArrayHasKey('mnem_email_tracking', $schema);
         $this->assertArrayHasKey('mnem_campaigns', $schema);
         $this->assertArrayHasKey('mnem_suppression', $schema);
         $this->assertArrayHasKey('mnem_logs', $schema);
         $this->assertArrayHasKey('mnem_subscriber_lists', $schema);
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
-        $this->assertArrayHasKey('site_id', $schema['mnem_email_tracking']['columns']);
-        $this->assertSame('wp_mnem_email_tracking', $schema['mnem_email_tracking']['name']);
+        $this->assertArrayHasKey('opened', $schema['mnem_queue']['columns']);
+        $this->assertArrayHasKey('clicked', $schema['mnem_queue']['columns']);
         $this->assertNotEmpty($schema['mnem_queue']['create_sql']);
     }
 
@@ -50,12 +49,9 @@ class TableDiagnosticsTest extends TestCase
 
         $schema = \MNEM\Installer::get_table_schema('wp_2_');
 
-        $this->assertSame('wp_mnem_email_tracking', $schema['mnem_email_tracking']['name']);
-        $this->assertStringContainsString('CREATE TABLE wp_mnem_email_tracking', $schema['mnem_email_tracking']['create_sql']);
-        $this->assertStringContainsString('site_id bigint(20) unsigned NOT NULL DEFAULT 0', $schema['mnem_email_tracking']['create_sql']);
-        // All tables must use base_prefix (network-wide), not the subsite prefix.
         $this->assertSame('wp_mnem_queue', $schema['mnem_queue']['name']);
         $this->assertStringContainsString('CREATE TABLE wp_mnem_queue', $schema['mnem_queue']['create_sql']);
+        $this->assertStringContainsString("status enum('pending','processing','sent','delivered','opened','clicked','bounce','soft_bounce','invalid_email','deferred','complaint','unsubscribed','suppressed','failed','rejected')", $schema['mnem_queue']['create_sql']);
         $this->assertSame('wp_mnem_campaigns', $schema['mnem_campaigns']['name']);
         $this->assertStringContainsString('CREATE TABLE wp_mnem_campaigns', $schema['mnem_campaigns']['create_sql']);
     }

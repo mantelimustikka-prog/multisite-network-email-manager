@@ -92,6 +92,7 @@ defined('ABSPATH') || exit;
                     <?php foreach ($queue_items as $item) : ?>
                         <?php $is_deletable = in_array($item['status'], \MNEM\Queue::DELETABLE_STATUSES, true); ?>
                         <?php $display_status = \MNEM\Queue::get_display_status($item); ?>
+                        <?php $status_slug = isset($item['status']) ? strtolower((string) $item['status']) : 'failed'; ?>
                         <tr>
                             <th scope="row" class="check-column">
                                 <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" value="<?php echo esc_attr((string) $item['id']); ?>"<?php echo $is_deletable ? '' : ' disabled="disabled"'; ?> />
@@ -101,11 +102,11 @@ defined('ABSPATH') || exit;
                             <td><?php echo esc_html((string) $item['campaign_id']); ?></td>
                             <td><?php echo esc_html($item['recipient_email']); ?></td>
                             <td><?php echo esc_html($item['subject']); ?></td>
-                            <td><span class="mnem-badge mnem-status-<?php echo esc_attr(strtolower($display_status)); ?>"><?php echo esc_html($display_status); ?></span></td>
+                            <td><span class="mnem-badge mnem-status-<?php echo esc_attr($status_slug); ?>"><?php echo esc_html($display_status); ?></span></td>
                             <td><?php echo esc_html((string) $item['attempts']); ?></td>
                             <td><?php echo esc_html($item['scheduled_at']); ?></td>
-                            <td><?php echo esc_html((string) (isset($item['opens']) ? (int) $item['opens'] : 0)); ?></td>
-                            <td><?php echo esc_html((string) (isset($item['clicks']) ? (int) $item['clicks'] : 0)); ?></td>
+                            <td><?php echo esc_html(!empty($item['opened']) ? (string) $item['opened'] : '—'); ?></td>
+                            <td><?php echo esc_html(!empty($item['clicked']) ? (string) $item['clicked'] : '—'); ?></td>
                             <td><?php echo esc_html(!empty($item['sent_at']) ? $item['sent_at'] : '—'); ?></td>
                             <td>
                                 <button

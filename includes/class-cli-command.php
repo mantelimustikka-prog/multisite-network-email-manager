@@ -84,7 +84,6 @@ class CliCommand
         $central_tables = array(
             'queue' => $base_prefix . 'mnem_queue',
             'campaigns' => $base_prefix . 'mnem_campaigns',
-            'email_tracking' => $base_prefix . 'mnem_email_tracking',
         );
 
         $column_exists = array();
@@ -127,8 +126,7 @@ class CliCommand
     private static function verify_consolidation(array $before, array $after)
     {
         $columns_ok = !empty($after['site_id_column_exists']['queue'])
-            && !empty($after['site_id_column_exists']['campaigns'])
-            && !empty($after['site_id_column_exists']['email_tracking']);
+            && !empty($after['site_id_column_exists']['campaigns']);
 
         $legacy_removed = empty($after['legacy_tables']['queue']) && empty($after['legacy_tables']['campaigns']);
 
@@ -139,8 +137,7 @@ class CliCommand
         $campaign_consolidated = (int) $before['legacy_totals']['campaigns'] === 0 || $campaign_delta >= (int) $before['legacy_totals']['campaigns'];
 
         $site_ids_set = ((int) $after['zero_site_id_counts']['queue'] === 0)
-            && ((int) $after['zero_site_id_counts']['campaigns'] === 0)
-            && ((int) $after['zero_site_id_counts']['email_tracking'] === 0);
+            && ((int) $after['zero_site_id_counts']['campaigns'] === 0);
 
         $success = $columns_ok && $legacy_removed && $queue_consolidated && $campaign_consolidated && $site_ids_set;
 

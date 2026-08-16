@@ -281,7 +281,7 @@ class RestApi
         $table = $wpdb->base_prefix . 'mnem_queue';
         $items = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT q.id, q.site_id, q.campaign_id, q.recipient_email, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.opens, q.clicks, q.created_at, (SELECT et.delivery_status FROM {$wpdb->base_prefix}mnem_email_tracking et WHERE et.queue_id = q.id ORDER BY et.created_at DESC LIMIT 1) AS delivery_status FROM {$table} q WHERE q.site_id = %d ORDER BY q.created_at DESC LIMIT %d",
+                "SELECT id, site_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
                 $site_id,
                 100
             ),
@@ -571,29 +571,27 @@ class RestApi
             $recipient = isset($event['recipient']) ? (string) $event['recipient'] : '';
             $message_id = isset($event['message_id']) ? (string) $event['message_id'] : '';
             $timestamp = isset($event['timestamp']) ? (string) $event['timestamp'] : '';
+            $payload = isset($event['payload']) && is_array($event['payload']) ? $event['payload'] : array();
+            $status = Queue::map_webhook_status($provider, $event_type, $payload);
 
             Logger::info('Webhook event processed.', array(
                 'provider'   => $provider,
                 'event_type' => $event_type,
+                'status'     => $status,
                 'recipient'  => $recipient,
                 'message_id' => $message_id,
             ));
 
-            EmailTracking::handle_webhook_event($provider, $event_type, $recipient, $message_id, $timestamp);
+            if ($status === '') {
+                continue;
+            }
 
-            // Auto-suppress on hard bounce events.
-            $bounce_events = array(
-                'mailgun'  => array('failed', 'bounced'),
-                'sendgrid' => array('bounce'),
-                'brevo'    => array('hard_bounce'),
-                'postmark' => array('Bounce', 'HardBounce'),
-                'smtp2go'  => array('bounce', 'failed'),
-            );
+            Queue::update_status_from_webhook($provider, $message_id, $status, $payload, $recipient, $timestamp);
 
-            if ($recipient !== '' && isset($bounce_events[$provider]) && in_array($event_type, $bounce_events[$provider], true)) {
+            if ($recipient !== '' && in_array($status, array('bounce', 'invalid_email'), true)) {
                 $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-                Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' bounce: ' . $event_type);
-                Logger::info('Auto-suppressed bounced address.', array('email' => $recipient, 'provider' => $provider, 'event' => $event_type));
+                Suppression::add($site_id, $recipient, 'Auto-suppressed on ' . $provider . ' event: ' . $status);
+                Logger::info('Auto-suppressed address after provider webhook.', array('email' => $recipient, 'provider' => $provider, 'event' => $status));
             }
         }
 
@@ -616,6 +614,7 @@ class RestApi
                     'recipient' => isset($event_data['recipient']) ? (string) $event_data['recipient'] : '',
                     'message_id' => isset($event_data['message']['headers']['message-id']) ? (string) $event_data['message']['headers']['message-id'] : '',
                     'timestamp' => isset($event_data['timestamp']) ? gmdate('Y-m-d H:i:s', (int) $event_data['timestamp']) : '',
+                    'payload' => $event_data,
                 );
                 break;
             case 'sendgrid':
@@ -627,8 +626,9 @@ class RestApi
                     $events[] = array(
                         'event_type' => isset($item['event']) ? (string) $item['event'] : '',
                         'recipient' => isset($item['email']) ? (string) $item['email'] : '',
-                        'message_id' => isset($item['sg_message_id']) ? (string) $item['sg_message_id'] : '',
+                        'message_id' => isset($item['message-id']) ? (string) $item['message-id'] : (isset($item['sg_message_id']) ? (string) $item['sg_message_id'] : ''),
                         'timestamp' => isset($item['timestamp']) ? gmdate('Y-m-d H:i:s', (int) $item['timestamp']) : '',
+                        'payload' => $item,
                     );
                 }
                 break;
@@ -638,6 +638,7 @@ class RestApi
                     'recipient' => isset($data['email']) ? (string) $data['email'] : '',
                     'message_id' => isset($data['message-id']) ? (string) $data['message-id'] : '',
                     'timestamp' => isset($data['ts_event']) ? gmdate('Y-m-d H:i:s', (int) $data['ts_event']) : '',
+                    'payload' => $data,
                 );
                 break;
             case 'postmark':
@@ -646,6 +647,7 @@ class RestApi
                     'recipient' => isset($data['Recipient']) ? (string) $data['Recipient'] : (isset($data['Email']) ? (string) $data['Email'] : ''),
                     'message_id' => isset($data['MessageID']) ? (string) $data['MessageID'] : '',
                     'timestamp' => isset($data['ReceivedAt']) ? (string) $data['ReceivedAt'] : '',
+                    'payload' => $data,
                 );
                 break;
             case 'smtp2go':
@@ -654,6 +656,7 @@ class RestApi
                     'recipient' => isset($data['recipient']) ? (string) $data['recipient'] : '',
                     'message_id' => isset($data['request_id']) ? (string) $data['request_id'] : '',
                     'timestamp' => isset($data['time']) ? (string) $data['time'] : '',
+                    'payload' => $data,
                 );
                 break;
         }

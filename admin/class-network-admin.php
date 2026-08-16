@@ -27,7 +27,6 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
-        add_action('wp_ajax_mnem_get_email_preview', array($this, 'ajax_get_email_preview'));
         add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
         add_action('wp_ajax_mnem_table_diagnostics_recreate', array($this, 'ajax_table_diagnostics_recreate'));
         add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
@@ -43,7 +42,7 @@ class NetworkAdmin
 
     public function handle_smtp_save()
     {
-        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email', 'save_cron_settings', 'save_email_tracking_settings'), true)) {
+        if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('save_smtp_settings', 'send_test_email', 'save_cron_settings'), true)) {
             return;
         }
 
@@ -52,9 +51,8 @@ class NetworkAdmin
         }
 
         $action = isset($_POST['mnem_action']) ? sanitize_text_field(wp_unslash($_POST['mnem_action'])) : '';
-        $nonce_action = $action === 'save_email_tracking_settings' ? 'mnem_email_tracking_settings' : 'mnem_smtp_settings';
-        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', $nonce_action)) {
-            $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => $action === 'save_email_tracking_settings' ? 'email-tracking' : 'smtp'));
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_smtp_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'smtp_nonce_failed', array('tab' => 'smtp'));
             return;
         }
 
@@ -69,14 +67,6 @@ class NetworkAdmin
             $interval = isset($_POST['cron_interval']) ? sanitize_text_field(wp_unslash($_POST['cron_interval'])) : \MNEM\Cron::DEFAULT_INTERVAL;
             \MNEM\Cron::set_interval($interval);
             $this->redirect_with_notice('mnem-settings', 'cron_settings_saved', array('tab' => 'smtp'));
-            return;
-        }
-
-        if ($_POST['mnem_action'] === 'save_email_tracking_settings') {
-            $enabled = isset($_POST['keep_email_previews']) && (int) $_POST['keep_email_previews'] === 1;
-            $retention_days = isset($_POST['email_preview_retention_days']) ? max(0, (int) $_POST['email_preview_retention_days']) : 30;
-            \MNEM\EmailTracking::save_settings($enabled, $retention_days);
-            $this->redirect_with_notice('mnem-settings', 'email_tracking_saved', array('tab' => 'email-tracking'));
             return;
         }
 
@@ -615,7 +605,7 @@ class NetworkAdmin
         global $wpdb;
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, status, attempts, scheduled_at, sent_at, opens, clicks, created_at FROM {$wpdb->base_prefix}mnem_queue WHERE id = %d",
+                "SELECT id, site_id, blog_id, campaign_id, recipient_email, subject, body, from_email, from_name, headers, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$wpdb->base_prefix}mnem_queue WHERE id = %d",
                 $queue_id
             ),
             ARRAY_A
@@ -627,24 +617,6 @@ class NetworkAdmin
         }
 
         wp_send_json_success($row);
-    }
-
-    public function ajax_get_email_preview()
-    {
-        $this->ensure_ajax_permissions();
-        $email_id = isset($_POST['email_id']) ? (int) $_POST['email_id'] : 0;
-        if ($email_id <= 0) {
-            wp_send_json_error(array('message' => 'Invalid email ID.'), 400);
-            return;
-        }
-
-        $email = \MNEM\EmailTracking::get_email($email_id);
-        if (empty($email)) {
-            wp_send_json_error(array('message' => 'Email preview not found.'), 404);
-            return;
-        }
-
-        wp_send_json_success($email);
     }
 
     public function ajax_table_diagnostics_recreate()

@@ -79,7 +79,6 @@ class CliCommandTest extends TestCase
             public $tables = array(
                 'wp_mnem_queue' => array('rows' => 2, 'site_id_column' => true, 'zero_site_rows' => 0),
                 'wp_mnem_campaigns' => array('rows' => 1, 'site_id_column' => true, 'zero_site_rows' => 0),
-                'wp_mnem_email_tracking' => array('rows' => 3, 'site_id_column' => false, 'zero_site_rows' => 0),
                 'wp_2_mnem_queue' => array('rows' => 4, 'site_id_column' => true, 'zero_site_rows' => 4),
                 'wp_3_mnem_queue' => array('rows' => 6, 'site_id_column' => true, 'zero_site_rows' => 6),
                 'wp_2_mnem_campaigns' => array('rows' => 5, 'site_id_column' => true, 'zero_site_rows' => 5),
