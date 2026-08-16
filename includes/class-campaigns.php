@@ -365,9 +365,11 @@ class Campaigns
 
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
         $campaigns_table = $wpdb->base_prefix . 'mnem_campaigns';
+        $success_placeholders = implode(', ', array_fill(0, count(Queue::SUCCESS_STATUSES), '%s'));
+        $failed_placeholders = implode(', ', array_fill(0, count(Queue::NON_SUCCESS_FINAL_STATUSES), '%s'));
         $queued_total = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d", $id));
-        $sent_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status = %s", $id, 'sent'));
-        $queue_failed_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status = %s", $id, 'failed'));
+        $sent_count = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status IN ({$success_placeholders})", $id), Queue::SUCCESS_STATUSES)));
+        $queue_failed_count = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status IN ({$failed_placeholders})", $id), Queue::NON_SUCCESS_FINAL_STATUSES)));
         $pending_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE campaign_id = %d AND status IN (%s, %s)", $id, 'pending', 'processing'));
         $last_attempt = $wpdb->get_var($wpdb->prepare("SELECT MAX(COALESCE(sent_at, scheduled_at)) FROM {$queue_table} WHERE campaign_id = %d", $id));
         $enqueue_failed = isset($campaign['enqueue_failed_count']) ? (int) $campaign['enqueue_failed_count'] : 0;

@@ -54,8 +54,7 @@ class EmailTracker
     {
         $email_id = self::resolve_email_id_from_token($token);
         if ($email_id > 0) {
-            TrackingEvents::record_event($email_id, 'open');
-            self::mark_as_opened($email_id);
+            Queue::record_local_event($email_id, 'opened');
         }
 
         return base64_decode('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==');
@@ -74,8 +73,7 @@ class EmailTracker
         }
 
         if ($email_id > 0 && $decoded !== '') {
-            TrackingEvents::record_event($email_id, 'click', $decoded);
-            self::mark_as_opened($email_id);
+            Queue::record_local_event($email_id, 'clicked', array('url' => $decoded));
         }
 
         return $decoded;
@@ -83,12 +81,30 @@ class EmailTracker
 
     public static function get_open_count(int $email_id): int
     {
-        return TrackingEvents::get_open_count($email_id);
+        global $wpdb;
+
+        if ($email_id <= 0) {
+            return 0;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $opened = (string) $wpdb->get_var($wpdb->prepare("SELECT opened FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+
+        return $opened !== '' ? 1 : 0;
     }
 
     public static function get_click_count(int $email_id): int
     {
-        return TrackingEvents::get_click_count($email_id);
+        global $wpdb;
+
+        if ($email_id <= 0) {
+            return 0;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $clicked = (string) $wpdb->get_var($wpdb->prepare("SELECT clicked FROM {$table} WHERE id = %d LIMIT %d", $email_id, 1));
+
+        return $clicked !== '' ? 1 : 0;
     }
 
     public static function get_email_status(int $email_id): string
@@ -105,44 +121,13 @@ class EmailTracker
             return 'Opened';
         }
 
-        $tracking_table = $wpdb->base_prefix . 'mnem_email_tracking';
-        $delivery_status = (string) $wpdb->get_var($wpdb->prepare(
-            "SELECT delivery_status FROM {$tracking_table} WHERE queue_id = %d ORDER BY created_at DESC LIMIT %d",
-            $email_id,
-            1
-        ));
-        if ($delivery_status === 'delivered' || $delivery_status === 'opened') {
-            return 'Delivered';
-        }
-
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
-        $sent_at = (string) $wpdb->get_var($wpdb->prepare("SELECT sent_at FROM {$queue_table} WHERE id = %d LIMIT %d", $email_id, 1));
-        if ($sent_at !== '') {
-            return 'Sent';
+        $status = (string) $wpdb->get_var($wpdb->prepare("SELECT status FROM {$queue_table} WHERE id = %d LIMIT %d", $email_id, 1));
+        if ($status !== '') {
+            return Queue::get_display_status(array('status' => $status));
         }
 
         return 'Failed';
-    }
-
-    private static function mark_as_opened(int $email_id): void
-    {
-        global $wpdb;
-
-        $table = $wpdb->base_prefix . 'mnem_email_tracking';
-        $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$table} SET delivery_status = %s, updated_at = %s WHERE queue_id = %d AND delivery_status IN (%s, %s)",
-                'opened',
-                gmdate('Y-m-d H:i:s'),
-                $email_id,
-                'pending',
-                'delivered'
-            )
-        );
-
-        if (class_exists(__NAMESPACE__ . '\\Queue')) {
-            Queue::refresh_tracking_data($email_id);
-        }
     }
 
     private static function generate_token(int $email_id): string

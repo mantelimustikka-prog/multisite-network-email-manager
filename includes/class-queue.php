@@ -9,6 +9,11 @@ class Queue
     public const MAX_ATTEMPTS = 3;
     public const BACKOFF_BASE = 300;
     public const DELETABLE_STATUSES = array('pending', 'failed');
+    public const SUCCESS_STATUSES = array('sent', 'delivered', 'opened', 'clicked');
+    // Deferred remains recoverable, so it is excluded here even though we still count it as a non-success final-ish state in dashboards.
+    public const TERMINAL_ISSUE_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
+    public const NON_SUCCESS_FINAL_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
+    public const WEBHOOK_STATUSES = array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const SOURCE_CORE = 'core';
     public const SOURCE_CAMPAIGN = 'campaign';
     public const SOURCE_USER_EVENT = 'user_event';
@@ -314,14 +319,6 @@ class Queue
                 }
             }
 
-            // Always record the send attempt - both success and failure - so Email History is complete.
-            $tracking_headers = $headers;
-            unset($tracking_headers['__attachments']);
-            $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
-            $tracking_row = $row;
-            $tracking_row['body'] = $body;
-            EmailTracking::store_sent_email($id, $tracking_row, $result, $tracking_headers, $row_site_id, self::resolve_email_type($tracking_row));
-            self::refresh_tracking_data($id);
         } catch (\Throwable $e) {
             $status = 'failed';
             $result = array('success' => false, 'message' => $e->getMessage(), 'provider' => '', 'message_id' => '', 'metadata' => array());
@@ -336,10 +333,6 @@ class Queue
                     $id
                 )
             );
-            // Still record the failed attempt so Email History is complete.
-            // $row is guaranteed non-empty here: process_item() returns early above if get_row() fails.
-            $row_site_id = isset($row['site_id']) ? (int) $row['site_id'] : (isset($row['blog_id']) ? (int) $row['blog_id'] : 1);
-            EmailTracking::store_sent_email($id, $row, $result, array(), $row_site_id, self::resolve_email_type($row));
         } finally {
         }
 
@@ -358,29 +351,18 @@ class Queue
         );
     }
 
-    private static function resolve_email_type(array $row): string
-    {
-        $meta = json_decode(isset($row['metadata']) ? (string) $row['metadata'] : '[]', true);
-        $meta = is_array($meta) ? $meta : array();
-        if (!empty($meta['email_type']) && $meta['email_type'] === 'test') {
-            return 'test';
-        }
-        if (!empty($row['campaign_id'])) {
-            return 'campaign';
-        }
-        return 'transactional';
-    }
-
     public static function get_stats(?int $site_id = null)
     {
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_queue';
+        $success_placeholders = implode(', ', array_fill(0, count(self::SUCCESS_STATUSES), '%s'));
+        $final_issue_placeholders = implode(', ', array_fill(0, count(self::NON_SUCCESS_FINAL_STATUSES), '%s'));
         if ($site_id === null) {
             $pending = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'pending'));
             $processing = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'processing'));
-            $sent = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'sent'));
-            $failed = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE status = %s", 'failed'));
+            $sent = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$table} WHERE status IN ({$success_placeholders})"), self::SUCCESS_STATUSES)));
+            $failed = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$table} WHERE status IN ({$final_issue_placeholders})"), self::NON_SUCCESS_FINAL_STATUSES)));
             $next_retry = $wpdb->get_row(
                 $wpdb->prepare(
                     "SELECT scheduled_at, attempts FROM {$table} WHERE status = %s AND attempts > %d ORDER BY scheduled_at ASC LIMIT %d",
@@ -393,8 +375,8 @@ class Queue
         } else {
             $pending = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'pending'));
             $processing = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'processing'));
-            $sent = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'sent'));
-            $failed = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status = %s", $site_id, 'failed'));
+            $sent = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status IN ({$success_placeholders})", $site_id), self::SUCCESS_STATUSES)));
+            $failed = (int) $wpdb->get_var(call_user_func_array(array($wpdb, 'prepare'), array_merge(array("SELECT COUNT(1) FROM {$table} WHERE site_id = %d AND status IN ({$final_issue_placeholders})", $site_id), self::NON_SUCCESS_FINAL_STATUSES)));
             $next_retry = $wpdb->get_row(
                 $wpdb->prepare(
                     "SELECT scheduled_at, attempts FROM {$table} WHERE site_id = %d AND status = %s AND attempts > %d ORDER BY scheduled_at ASC LIMIT %d",
@@ -614,7 +596,7 @@ class Queue
         return gmdate('Y-m-d H:i:s', time() + $delay);
     }
 
-    public static function refresh_tracking_data(int $queue_id): void
+    public static function record_local_event(int $queue_id, string $status, array $metadata = array()): void
     {
         global $wpdb;
 
@@ -622,14 +604,44 @@ class Queue
             return;
         }
 
-        $opens = EmailTracker::get_open_count($queue_id);
-        $clicks = EmailTracker::get_click_count($queue_id);
         $table = $wpdb->base_prefix . 'mnem_queue';
+        $timestamp = self::current_time_mysql();
+        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
+        if (!is_array($row)) {
+            return;
+        }
+
+        $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
+        $opened = isset($row['opened']) ? (string) $row['opened'] : '';
+        $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
+        if ($status === 'opened' && $opened === '') {
+            $opened = $timestamp;
+        }
+        if ($status === 'clicked') {
+            if ($opened === '') {
+                $opened = $timestamp;
+            }
+            if ($clicked === '') {
+                $clicked = $timestamp;
+            }
+        }
+
+        $final_status = self::resolve_status_update($current_status, $status);
+        $provider_metadata = self::merge_provider_metadata(isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '', array(
+            'last_local_tracking_event' => array(
+                'status' => $status,
+                'metadata' => $metadata,
+                'recorded_at' => $timestamp,
+            ),
+        ));
+
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET opens = %d, clicks = %d WHERE id = %d",
-                $opens,
-                $clicks,
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, provider_metadata = %s WHERE id = %d",
+                $final_status,
+                $opened !== '' ? $opened : null,
+                $clicked !== '' ? $clicked : null,
+                $provider_metadata,
                 $queue_id
             )
         );
@@ -637,30 +649,190 @@ class Queue
 
     public static function get_display_status(array $item): string
     {
-        $opens = isset($item['opens']) ? (int) $item['opens'] : 0;
-        $clicks = isset($item['clicks']) ? (int) $item['clicks'] : 0;
-        if ($opens > 0 || $clicks > 0) {
-            return 'Opened';
-        }
-
-        $delivery_status = isset($item['delivery_status']) ? strtolower((string) $item['delivery_status']) : '';
-        if ($delivery_status === 'delivered' || $delivery_status === 'opened') {
-            return 'Delivered';
-        }
-
-        if (!empty($item['sent_at'])) {
-            return 'Sent';
-        }
-
         $queue_status = isset($item['status']) ? strtolower((string) $item['status']) : '';
-        if ($queue_status === 'pending') {
-            return 'Pending';
-        }
-        if ($queue_status === 'processing') {
-            return 'Processing';
+        if ($queue_status === '') {
+            $queue_status = !empty($item['sent_at']) ? 'sent' : 'failed';
         }
 
-        return 'Failed';
+        return ucwords(str_replace('_', ' ', $queue_status));
+    }
+
+    public static function update_status_from_webhook(string $provider, string $message_id, string $status, array $payload = array(), string $recipient = '', string $timestamp = ''): bool
+    {
+        global $wpdb;
+
+        $status = sanitize_text_field($status);
+        if (!in_array($status, self::WEBHOOK_STATUSES, true)) {
+            return false;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $recipient = sanitize_email($recipient);
+        $timestamp = $timestamp !== '' ? sanitize_text_field($timestamp) : self::current_time_mysql();
+        $row = null;
+
+        if ($message_id !== '') {
+            $row = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND provider_message_id = %s ORDER BY id DESC LIMIT %d",
+                    $provider,
+                    $message_id,
+                    1
+                ),
+                ARRAY_A
+            );
+        }
+
+        if (!is_array($row) && $recipient !== '') {
+            $fallback_statuses = array_merge(self::SUCCESS_STATUSES, array('deferred'));
+            $fallback_placeholders = implode(', ', array_fill(0, count($fallback_statuses), '%s'));
+            $row = $wpdb->get_row(
+                call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        array(
+                            "SELECT id, status, opened, clicked, provider_metadata FROM {$table} WHERE provider_type = %s AND recipient_email = %s AND status IN ({$fallback_placeholders}) ORDER BY id DESC LIMIT %d",
+                            $provider,
+                            $recipient,
+                        ),
+                        $fallback_statuses,
+                        array(1)
+                    )
+                ),
+                ARRAY_A
+            );
+        }
+
+        if (!is_array($row) || empty($row['id'])) {
+            return false;
+        }
+
+        $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
+        $opened = isset($row['opened']) ? (string) $row['opened'] : '';
+        $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
+        if ($status === 'opened' && $opened === '') {
+            $opened = $timestamp;
+        }
+        if ($status === 'clicked') {
+            if ($opened === '') {
+                $opened = $timestamp;
+            }
+            if ($clicked === '') {
+                $clicked = $timestamp;
+            }
+        }
+
+        $provider_metadata = self::merge_provider_metadata(isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '', array(
+            'last_webhook_event' => array(
+                'provider' => $provider,
+                'status' => $status,
+                'payload' => $payload,
+                'received_at' => $timestamp,
+                'message_id' => $message_id,
+                'recipient' => $recipient,
+            ),
+        ));
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, provider_metadata = %s WHERE id = %d",
+                self::resolve_status_update($current_status, $status),
+                $opened !== '' ? $opened : null,
+                $clicked !== '' ? $clicked : null,
+                $provider_metadata,
+                (int) $row['id']
+            )
+        );
+
+        return true;
+    }
+
+    public static function map_webhook_status(string $provider, string $event_type, array $payload = array()): string
+    {
+        $provider = strtolower(trim($provider));
+        $event_type = strtolower(trim($event_type));
+
+        switch ($provider) {
+            case 'sendgrid':
+                $reason = strtolower((string) ($payload['reason'] ?? ''));
+                $map = array(
+                    'processed' => 'sent',
+                    'delivered' => 'delivered',
+                    'open' => 'opened',
+                    'click' => 'clicked',
+                    'deferred' => 'deferred',
+                    'bounce' => 'bounce',
+                    'spamreport' => 'complaint',
+                    'unsubscribe' => 'unsubscribed',
+                    'group_unsubscribe' => 'unsubscribed',
+                    'dropped' => strpos($reason, 'invalid') !== false ? 'invalid_email' : 'failed',
+                );
+                break;
+            case 'mailgun':
+                $severity = strtolower((string) ($payload['severity'] ?? ($payload['delivery-status']['severity'] ?? '')));
+                $map = array(
+                    'accepted' => 'sent',
+                    'delivered' => 'delivered',
+                    'opened' => 'opened',
+                    'clicked' => 'clicked',
+                    'complained' => 'complaint',
+                    'unsubscribed' => 'unsubscribed',
+                    'failed' => $severity === 'temporary' ? 'soft_bounce' : 'bounce',
+                );
+                break;
+            case 'brevo':
+                $map = array(
+                    'sent' => 'sent',
+                    'delivered' => 'delivered',
+                    'opened' => 'opened',
+                    'unique_opened' => 'opened',
+                    'click' => 'clicked',
+                    'hard_bounce' => 'bounce',
+                    'soft_bounce' => 'soft_bounce',
+                    'invalid_email' => 'invalid_email',
+                    'deferred' => 'deferred',
+                    'spam' => 'complaint',
+                    'complaint' => 'complaint',
+                    'unsubscribed' => 'unsubscribed',
+                    'blocked' => 'suppressed',
+                    'error' => 'failed',
+                );
+                break;
+            case 'postmark':
+                $bounce_type = strtolower((string) ($payload['Type'] ?? ''));
+                $map = array(
+                    'delivery' => 'delivered',
+                    'open' => 'opened',
+                    'click' => 'clicked',
+                    'spamcomplaint' => 'complaint',
+                    'subscriptionchange' => 'unsubscribed',
+                    'bounce' => $bounce_type === 'transient' ? 'soft_bounce' : 'bounce',
+                );
+                break;
+            case 'smtp2go':
+                $map = array(
+                    'processed' => 'sent',
+                    'sent' => 'sent',
+                    'delivered' => 'delivered',
+                    'open' => 'opened',
+                    'click' => 'clicked',
+                    'bounce' => 'bounce',
+                    'soft_bounce' => 'soft_bounce',
+                    'invalid' => 'invalid_email',
+                    'deferred' => 'deferred',
+                    'spam' => 'complaint',
+                    'unsubscribe' => 'unsubscribed',
+                    'blocked' => 'suppressed',
+                    'rejected' => 'rejected',
+                    'failed' => 'failed',
+                );
+                break;
+            default:
+                $map = array();
+                break;
+        }
+
+        return isset($map[$event_type]) ? $map[$event_type] : '';
     }
 
     public static function is_suppressed(int $site_id, string $email)
@@ -683,6 +855,45 @@ class Queue
     private static function current_time_mysql()
     {
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
+    }
+
+    private static function resolve_status_update(string $current_status, string $new_status): string
+    {
+        if ($new_status === '') {
+            return $current_status;
+        }
+
+        if (in_array($current_status, self::TERMINAL_ISSUE_STATUSES, true) && in_array($new_status, self::SUCCESS_STATUSES, true)) {
+            return $current_status;
+        }
+
+        if ($new_status === 'sent' && !in_array($current_status, array('pending', 'processing', 'failed'), true)) {
+            return $current_status;
+        }
+
+        if ($new_status === 'delivered' && in_array($current_status, array('opened', 'clicked'), true)) {
+            return $current_status;
+        }
+
+        if ($new_status === 'opened' && $current_status === 'clicked') {
+            return $current_status;
+        }
+
+        return $new_status;
+    }
+
+    private static function merge_provider_metadata(string $existing, array $updates): string
+    {
+        $metadata = json_decode($existing, true);
+        if (!is_array($metadata)) {
+            $metadata = array();
+        }
+
+        foreach ($updates as $key => $value) {
+            $metadata[$key] = $value;
+        }
+
+        return wp_json_encode($metadata);
     }
 
     private static function extract_first_email(string $recipient)

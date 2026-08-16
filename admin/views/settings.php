@@ -27,10 +27,6 @@ defined('ABSPATH') || exit;
            href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=header-footer')); ?>">
             <?php esc_html_e('Global Header &amp; Footer', 'multisite-network-email-manager'); ?>
         </a>
-        <a class="nav-tab<?php echo $active_tab === 'email-tracking' ? ' nav-tab-active' : ''; ?>"
-           href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=email-tracking')); ?>">
-            <?php esc_html_e('Email Tracking', 'multisite-network-email-manager'); ?>
-        </a>
     </nav>
 
     <div class="mnem-tab-content" style="margin-top: 20px;">

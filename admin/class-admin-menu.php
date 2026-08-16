@@ -29,7 +29,6 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Queue', 'Queue', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
-        add_submenu_page('mnem-dashboard', 'Email History', 'Email History', 'manage_network_options', 'mnem-email-history', array($this, 'render_email_history'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
@@ -79,15 +78,13 @@ class AdminMenu
             $smtp_status = 'Not Configured';
         }
 
-        $tracking_enabled = \MNEM\EmailTracking::is_enabled();
-
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings', 'tracking_enabled'));
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings'));
     }
 
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'email-tracking');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'smtp';
         }
@@ -148,7 +145,7 @@ class AdminMenu
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
         $queue_items = (array) $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT q.id, q.blog_id, q.campaign_id, q.recipient_email, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.opens, q.clicks, q.created_at, (SELECT et.delivery_status FROM {$wpdb->base_prefix}mnem_email_tracking et WHERE et.queue_id = q.id ORDER BY et.created_at DESC LIMIT 1) AS delivery_status FROM {$queue_table} q ORDER BY q.created_at DESC LIMIT %d OFFSET %d",
+                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, created_at, provider_message_id, provider_metadata FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
                 50,
                 0
             ),
@@ -169,15 +166,6 @@ class AdminMenu
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
 
         $this->render_view('suppression.php', compact('suppression_entries', 'site_id', 'notice'));
-    }
-
-    public function render_email_history()
-    {
-        $search = isset($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '';
-        $history = \MNEM\EmailTracking::get_history($search, 200);
-        $items = isset($history['items']) && is_array($history['items']) ? $history['items'] : array();
-
-        $this->render_view('email-history.php', compact('items', 'search'));
     }
 
     public function render_logs()
@@ -262,7 +250,6 @@ class AdminMenu
             'campaign_save_failed' => 'Campaign could not be saved.',
             'campaign_delete_failed' => 'Campaign could not be deleted.',
             'smtp_saved' => 'SMTP settings saved.',
-            'email_tracking_saved' => 'Email tracking settings saved.',
             'smtp_failed' => 'SMTP settings could not be saved.',
             'cron_settings_saved' => 'Cron settings saved.',
             'sender_settings_saved' => 'Sender settings saved.',

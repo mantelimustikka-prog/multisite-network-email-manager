@@ -70,11 +70,11 @@ class QueueTest extends TestCase
                     return 1;
                 }
 
-                if (strpos($query, "status = 'sent'") !== false) {
+                if (strpos($query, "status IN ('sent', 'delivered', 'opened', 'clicked')") !== false) {
                     return 7;
                 }
 
-                if (strpos($query, "status = 'failed'") !== false) {
+                if (strpos($query, "status IN ('bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected')") !== false) {
                     return 2;
                 }
 
@@ -237,43 +237,54 @@ class QueueTest extends TestCase
 
     public function test_get_display_status_uses_engagement_and_delivery_priority()
     {
-        $this->assertSame('Opened', Queue::get_display_status(array(
-            'opens' => 1,
-            'clicks' => 0,
-            'delivery_status' => 'delivered',
-            'sent_at' => '2026-08-01 00:00:00',
-        )));
-        $this->assertSame('Delivered', Queue::get_display_status(array(
-            'opens' => 0,
-            'clicks' => 0,
-            'delivery_status' => 'delivered',
-            'sent_at' => '2026-08-01 00:00:00',
-        )));
-        $this->assertSame('Sent', Queue::get_display_status(array(
-            'opens' => 0,
-            'clicks' => 0,
-            'delivery_status' => 'pending',
-            'sent_at' => '2026-08-01 00:00:00',
-        )));
-        $this->assertSame('Failed', Queue::get_display_status(array(
-            'opens' => 0,
-            'clicks' => 0,
-            'delivery_status' => 'pending',
-            'sent_at' => '',
-        )));
-        $this->assertSame('Pending', Queue::get_display_status(array(
-            'status' => 'pending',
-            'opens' => 0,
-            'clicks' => 0,
-            'delivery_status' => 'pending',
-            'sent_at' => '',
-        )));
-        $this->assertSame('Processing', Queue::get_display_status(array(
-            'status' => 'processing',
-            'opens' => 0,
-            'clicks' => 0,
-            'delivery_status' => 'pending',
-            'sent_at' => '',
-        )));
+        $this->assertSame('Opened', Queue::get_display_status(array('status' => 'opened')));
+        $this->assertSame('Delivered', Queue::get_display_status(array('status' => 'delivered')));
+        $this->assertSame('Soft Bounce', Queue::get_display_status(array('status' => 'soft_bounce')));
+        $this->assertSame('Sent', Queue::get_display_status(array('sent_at' => '2026-08-01 00:00:00')));
+        $this->assertSame('Pending', Queue::get_display_status(array('status' => 'pending')));
+        $this->assertSame('Processing', Queue::get_display_status(array('status' => 'processing')));
+    }
+
+    public function test_update_status_from_webhook_updates_queue_timestamps_and_status()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "provider_message_id = 'message-123'") === false) {
+                    return null;
+                }
+                return array(
+                    'id' => 44,
+                    'status' => 'delivered',
+                    'opened' => '',
+                    'clicked' => '',
+                    'provider_metadata' => '{}',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $updated = Queue::update_status_from_webhook('sendgrid', 'message-123', 'clicked', array('event' => 'click'), 'user@example.com', '2026-08-11 12:00:00');
+
+        $this->assertTrue($updated);
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("provider_message_id = 'message-123'", $queries);
+        $this->assertStringContainsString("status = 'clicked'", $queries);
+        $this->assertStringContainsString("opened = '2026-08-11 12:00:00'", $queries);
+        $this->assertStringContainsString("clicked = '2026-08-11 12:00:00'", $queries);
+        $this->assertStringNotContainsString("recipient_email = 'user@example.com'", $queries);
+    }
+
+    public function test_map_webhook_status_maps_provider_events()
+    {
+        $this->assertSame('bounce', Queue::map_webhook_status('sendgrid', 'bounce'));
+        $this->assertSame('soft_bounce', Queue::map_webhook_status('mailgun', 'failed', array('severity' => 'temporary')));
+        $this->assertSame('complaint', Queue::map_webhook_status('postmark', 'SpamComplaint'));
     }
 }

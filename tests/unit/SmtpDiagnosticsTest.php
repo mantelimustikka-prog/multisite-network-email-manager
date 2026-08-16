@@ -194,7 +194,6 @@ class SmtpDiagnosticsTest extends TestCase
         $this->assertStringContainsString('<p>Header</p>', $GLOBALS['mnem_last_wp_mail']['message']);
         $this->assertStringContainsString('<p>Footer</p>', $GLOBALS['mnem_last_wp_mail']['message']);
         $this->assertStringContainsString('INSERT INTO wp_mnem_queue', $queries);
-        $this->assertStringContainsString('INSERT INTO wp_mnem_email_tracking', $queries);
         $this->assertSame('smtp', $result['details']['provider']);
         $this->assertArrayHasKey('message_id', $result['details']);
     }
