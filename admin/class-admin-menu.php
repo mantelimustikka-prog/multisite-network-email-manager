@@ -161,6 +161,7 @@ class AdminMenu
         $offset = ($current_page - 1) * $per_page;
 
         // Total count of ALL records (for header).
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table}");
 
         // Build WHERE clause for status filter.
@@ -185,6 +186,7 @@ class AdminMenu
         );
 
         // All unique statuses for the filter dropdown.
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $all_statuses = (array) $wpdb->get_col("SELECT DISTINCT status FROM {$queue_table} ORDER BY status ASC");
 
         $total_pages = $per_page > 0 ? (int) ceil($total_filtered / $per_page) : 1;
