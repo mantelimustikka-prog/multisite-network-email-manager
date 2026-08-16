@@ -251,7 +251,7 @@ class Campaigns
         }
         $queued = 0;
         $enqueue_failed = 0;
-        $recipient_users = self::get_recipient_users_by_email($campaign);
+        $recipient_users = self::get_recipient_users_by_email((int) $campaign['site_id'], $recipients);
 
         foreach ($recipients as $recipient_email) {
             $email_content = self::build_recipient_email_content(
@@ -485,6 +485,11 @@ class Campaigns
         return array_values(array_unique($emails));
     }
 
+    /**
+     * @param array<string,mixed> $campaign
+     * @param array<string,mixed>|object|string|null $recipient_user
+     * @return array{subject:string,body:string}
+     */
     private static function build_recipient_email_content(array $campaign, string $recipient_email, $recipient_user = null)
     {
         $variables = array(
@@ -498,23 +503,42 @@ class Campaigns
         );
     }
 
-    private static function get_recipient_users_by_email(array $campaign)
+    /**
+     * @param string[] $recipients
+     * @return array<string,mixed>
+     */
+    private static function get_recipient_users_by_email(int $site_id, array $recipients)
     {
-        if (!function_exists('get_users')) {
-            return array();
+        $indexed_users = array();
+        $normalized_recipients = array_values(array_unique(array_filter(array_map('strtolower', array_map('trim', $recipients)))));
+
+        if (empty($normalized_recipients)) {
+            return $indexed_users;
         }
 
-        $users = get_users(
-            array(
-                'blog_id' => isset($campaign['site_id']) ? (int) $campaign['site_id'] : 1,
-            )
-        );
-        $indexed_users = array();
+        if (function_exists('get_user_by')) {
+            foreach ($normalized_recipients as $recipient_email) {
+                $user = get_user_by('email', $recipient_email);
+                $email = self::extract_recipient_email($user);
+                $is_site_member = !function_exists('is_user_member_of_blog')
+                    || (is_object($user) && isset($user->ID) && is_user_member_of_blog((int) $user->ID, $site_id));
+                if ($email !== '' && $is_site_member) {
+                    $indexed_users[$email] = $user;
+                }
+            }
+        } elseif (function_exists('get_users')) {
+            $users = get_users(
+                array(
+                    'blog_id' => $site_id > 0 ? $site_id : 1,
+                    'number' => 0,
+                )
+            );
 
-        foreach ((array) $users as $user) {
-            $email = self::extract_recipient_email($user);
-            if ($email !== '') {
-                $indexed_users[$email] = $user;
+            foreach ((array) $users as $user) {
+                $email = self::extract_recipient_email($user);
+                if ($email !== '' && in_array($email, $normalized_recipients, true)) {
+                    $indexed_users[$email] = $user;
+                }
             }
         }
 
