@@ -115,6 +115,249 @@ class TableDiagnostics
         return self::run_maintenance_query('REPAIR TABLE', 'Table repair completed.', true);
     }
 
+    public static function get_database_statistics()
+    {
+        $diagnostics = self::collect_diagnostics();
+        $stats = array(
+            'total_tables'       => count($diagnostics['tables']),
+            'total_records'      => 0,
+            'total_size_bytes'   => 0,
+            'tables_by_size'     => array(),
+            'tables_by_records'  => array(),
+        );
+
+        foreach ($diagnostics['tables'] as $table) {
+            if (empty($table['exists'])) {
+                continue;
+            }
+
+            $stats['total_records']    += $table['rows'];
+            $stats['total_size_bytes'] += $table['size_bytes'];
+
+            $stats['tables_by_size'][] = array(
+                'name'       => $table['name'],
+                'size_bytes' => $table['size_bytes'],
+                'size_human' => $table['size_human'],
+            );
+
+            $stats['tables_by_records'][] = array(
+                'name' => $table['name'],
+                'rows' => $table['rows'],
+            );
+        }
+
+        usort(
+            $stats['tables_by_size'],
+            function ($a, $b) {
+                return $b['size_bytes'] - $a['size_bytes'];
+            }
+        );
+
+        usort(
+            $stats['tables_by_records'],
+            function ($a, $b) {
+                return $b['rows'] - $a['rows'];
+            }
+        );
+
+        return $stats;
+    }
+
+    public static function check_data_integrity()
+    {
+        global $wpdb;
+
+        $issues             = array();
+        $queue_table        = $wpdb->base_prefix . 'mnem_queue';
+        $campaigns_table    = $wpdb->base_prefix . 'mnem_campaigns';
+        $suppression_table  = $wpdb->base_prefix . 'mnem_suppression';
+
+        // Check 1: Orphaned queue records (no matching campaign).
+        $orphaned_queue = (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$queue_table} q
+             WHERE q.campaign_id > 0
+             AND NOT EXISTS (SELECT 1 FROM {$campaigns_table} c WHERE c.id = q.campaign_id)"
+        );
+        if ($orphaned_queue > 0) {
+            $issues[] = array(
+                'severity'    => 'warning',
+                'type'        => 'orphaned_queue_records',
+                'title'       => 'Orphaned Queue Records',
+                'description' => "Found {$orphaned_queue} queue records with non-existent campaign references.",
+                'count'       => $orphaned_queue,
+                'action'      => 'cleanup_orphaned_queue',
+            );
+        }
+
+        // Check 2: Invalid email addresses in queue.
+        $invalid_emails_queue = (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$queue_table} WHERE recipient_email = '' OR recipient_email IS NULL"
+        );
+        if ($invalid_emails_queue > 0) {
+            $issues[] = array(
+                'severity'    => 'error',
+                'type'        => 'invalid_emails_queue',
+                'title'       => 'Invalid Email Addresses (Queue)',
+                'description' => "Found {$invalid_emails_queue} queue records with empty/invalid email addresses.",
+                'count'       => $invalid_emails_queue,
+                'action'      => 'cleanup_invalid_emails_queue',
+            );
+        }
+
+        // Check 3: Invalid email addresses in suppression.
+        $invalid_emails_suppression = (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$suppression_table} WHERE email = '' OR email IS NULL"
+        );
+        if ($invalid_emails_suppression > 0) {
+            $issues[] = array(
+                'severity'    => 'error',
+                'type'        => 'invalid_emails_suppression',
+                'title'       => 'Invalid Email Addresses (Suppression)',
+                'description' => "Found {$invalid_emails_suppression} suppression records with empty/invalid email addresses.",
+                'count'       => $invalid_emails_suppression,
+                'action'      => 'cleanup_invalid_emails_suppression',
+            );
+        }
+
+        // Check 4: Duplicate suppression entries.
+        $duplicate_suppressions = (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM (
+                SELECT email, site_id, COUNT(*) as cnt FROM {$suppression_table}
+                WHERE email IS NOT NULL AND email <> ''
+                GROUP BY site_id, email HAVING cnt > 1
+            ) as dupes"
+        );
+        if ($duplicate_suppressions > 0) {
+            $issues[] = array(
+                'severity'    => 'warning',
+                'type'        => 'duplicate_suppressions',
+                'title'       => 'Duplicate Suppression Entries',
+                'description' => "Found {$duplicate_suppressions} duplicate email addresses in suppression list.",
+                'count'       => $duplicate_suppressions,
+                'action'      => 'cleanup_duplicate_suppressions',
+            );
+        }
+
+        // Check 5: Stuck processing emails (older than 1 hour).
+        $stuck_processing = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(1) FROM {$queue_table} WHERE status = %s AND scheduled_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+                'processing'
+            )
+        );
+        if ($stuck_processing > 0) {
+            $issues[] = array(
+                'severity'    => 'warning',
+                'type'        => 'stuck_processing',
+                'title'       => 'Stuck Processing Emails',
+                'description' => "Found {$stuck_processing} emails stuck in 'processing' status for over 1 hour.",
+                'count'       => $stuck_processing,
+                'action'      => 'recover_stuck_processing',
+            );
+        }
+
+        return $issues;
+    }
+
+    public static function cleanup_orphaned_queue()
+    {
+        global $wpdb;
+
+        $queue_table     = $wpdb->base_prefix . 'mnem_queue';
+        $campaigns_table = $wpdb->base_prefix . 'mnem_campaigns';
+
+        $deleted = $wpdb->query(
+            "DELETE FROM {$queue_table} q
+             WHERE q.campaign_id > 0
+             AND NOT EXISTS (SELECT 1 FROM {$campaigns_table} c WHERE c.id = q.campaign_id)"
+        );
+
+        \MNEM\Logger::info('Cleanup: Deleted orphaned queue records', array('count' => $deleted));
+
+        return array(
+            'success' => true,
+            'message' => "Deleted {$deleted} orphaned queue records.",
+            'deleted' => $deleted,
+        );
+    }
+
+    public static function cleanup_invalid_emails_queue()
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+
+        $deleted = $wpdb->query(
+            "DELETE FROM {$queue_table} WHERE recipient_email = '' OR recipient_email IS NULL"
+        );
+
+        \MNEM\Logger::info('Cleanup: Deleted invalid email addresses from queue', array('count' => $deleted));
+
+        return array(
+            'success' => true,
+            'message' => "Deleted {$deleted} queue records with invalid emails.",
+            'deleted' => $deleted,
+        );
+    }
+
+    public static function cleanup_invalid_emails_suppression()
+    {
+        global $wpdb;
+
+        $suppression_table = $wpdb->base_prefix . 'mnem_suppression';
+
+        $deleted = $wpdb->query(
+            "DELETE FROM {$suppression_table} WHERE email = '' OR email IS NULL"
+        );
+
+        \MNEM\Logger::info('Cleanup: Deleted invalid email addresses from suppression', array('count' => $deleted));
+
+        return array(
+            'success' => true,
+            'message' => "Deleted {$deleted} suppression records with invalid emails.",
+            'deleted' => $deleted,
+        );
+    }
+
+    public static function cleanup_duplicate_suppressions()
+    {
+        global $wpdb;
+
+        $suppression_table = $wpdb->base_prefix . 'mnem_suppression';
+
+        // Keep the oldest record for each email/site_id combo, delete duplicates.
+        $deleted = $wpdb->query(
+            "DELETE FROM {$suppression_table}
+             WHERE email IS NOT NULL AND email <> ''
+             AND id NOT IN (
+                SELECT MIN(id) FROM (
+                    SELECT MIN(id) as id FROM {$suppression_table}
+                    WHERE email IS NOT NULL AND email <> ''
+                    GROUP BY site_id, email
+                ) as keep_ids
+             )"
+        );
+
+        \MNEM\Logger::info('Cleanup: Removed duplicate suppression entries', array('count' => $deleted));
+
+        return array(
+            'success' => true,
+            'message' => "Deleted {$deleted} duplicate suppression entries.",
+            'deleted' => $deleted,
+        );
+    }
+
+    public static function recover_stuck_processing()
+    {
+        $recovered = \MNEM\Queue::recover_stuck_processing_rows();
+
+        return array(
+            'success'   => true,
+            'message'   => "Recovered {$recovered} stuck processing emails.",
+            'recovered' => $recovered,
+        );
+    }
+
     public static function export_report($format = 'json')
     {
         $diagnostics = self::collect_diagnostics();
@@ -293,6 +536,11 @@ class TableDiagnostics
 
         $parts = explode('_', (string) $collation, 2);
         return isset($parts[0]) ? $parts[0] : '';
+    }
+
+    public static function format_bytes_public($bytes)
+    {
+        return self::format_bytes($bytes);
     }
 
     private static function format_bytes($bytes)
