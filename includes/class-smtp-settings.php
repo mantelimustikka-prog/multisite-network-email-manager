@@ -273,4 +273,16 @@ class SmtpSettings
             do_action('mnem_status_update_interval_changed');
         }
     }
+
+    public static function get_queue_retention_days(): int
+    {
+        $days = (int) get_site_option('mnem_queue_retention_days', 90);
+        return max(1, min($days, 3650));
+    }
+
+    public static function set_queue_retention_days(int $days): void
+    {
+        $days = max(1, min($days, 3650));
+        update_site_option('mnem_queue_retention_days', $days);
+    }
 }

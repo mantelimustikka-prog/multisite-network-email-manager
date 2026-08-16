@@ -102,6 +102,7 @@ register_deactivation_hook(
     __FILE__,
     static function () {
         \MNEM\Installer::deactivate();
+        \MNEM\QueueCleanupCron::deactivate();
     }
 );
 

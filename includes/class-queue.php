@@ -632,10 +632,10 @@ class Queue
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
         $opens_increment = 0;
         $clicks_increment = 0;
-        if ($status === 'opened' && $opened === '') {
-            $opened = $timestamp;
-        }
         if ($status === 'opened') {
+            if ($opened === '') {
+                $opened = $timestamp;
+            }
             $opens_increment = 1;
         }
         if ($status === 'clicked') {
@@ -751,10 +751,10 @@ class Queue
         $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
         $opens_increment = 0;
         $clicks_increment = 0;
-        if ($status === 'opened' && $opened === '') {
-            $opened = $timestamp;
-        }
         if ($status === 'opened') {
+            if ($opened === '') {
+                $opened = $timestamp;
+            }
             $opens_increment = 1;
         }
         if ($status === 'clicked') {
