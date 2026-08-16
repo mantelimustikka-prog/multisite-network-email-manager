@@ -30,7 +30,6 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
-        add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
     }
 
@@ -38,11 +37,9 @@ class AdminMenu
     {
         global $wpdb;
 
-        $logs_table = $wpdb->base_prefix . 'mnem_logs';
         $plugin_version = defined('MNEM_VERSION') ? MNEM_VERSION : '1.0.0';
         $queue_stats = \MNEM\Queue::get_stats(null);
         $suppression_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$wpdb->base_prefix}mnem_suppression WHERE site_id >= %d", 0));
-        $recent_logs = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, level, message, created_at FROM {$logs_table} ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
         $smtp_configured = \MNEM\SmtpSettings::is_active_provider_configured();
         $campaigns = (array) $wpdb->get_results($wpdb->prepare("SELECT id, site_id, name, subject, status, total_recipients, sent_count, failed_count, last_send_attempt_at FROM {$wpdb->base_prefix}mnem_campaigns ORDER BY created_at DESC LIMIT %d", 10), ARRAY_A);
         $site_breakdown = (array) $wpdb->get_results($wpdb->prepare("SELECT blog_id, status, COUNT(1) AS total FROM {$wpdb->base_prefix}mnem_queue GROUP BY blog_id, status ORDER BY blog_id ASC LIMIT %d", 200), ARRAY_A);
@@ -78,15 +75,15 @@ class AdminMenu
             $smtp_status = 'Not Configured';
         }
 
-        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'recent_logs', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings'));
+        $this->render_view('dashboard.php', compact('plugin_version', 'queue_stats', 'suppression_count', 'smtp_configured', 'campaigns', 'site_breakdown', 'notice', 'notice_message', 'notice_class', 'campaign_sends_paused', 'processed', 'retried', 'cron_status', 'failed_rule_triggers', 'smtp_status', 'smtp_warnings'));
     }
 
     public function render_settings()
     {
-        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'smtp';
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'general';
         $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'general');
         if (!in_array($active_tab, $allowed_tabs, true)) {
-            $active_tab = 'smtp';
+            $active_tab = 'general';
         }
 
         $settings = \MNEM\SmtpSettings::get_all();
@@ -212,22 +209,6 @@ class AdminMenu
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
 
         $this->render_view('suppression.php', compact('suppression_entries', 'site_id', 'notice'));
-    }
-
-    public function render_logs()
-    {
-        global $wpdb;
-
-        $logs_table = $wpdb->base_prefix . 'mnem_logs';
-        $logs = (array) $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT blog_id, level, message, created_at FROM {$logs_table} ORDER BY created_at DESC LIMIT %d",
-                50
-            ),
-            ARRAY_A
-        );
-
-        $this->render_view('logs.php', compact('logs'));
     }
 
     public function render_user_event_rules()

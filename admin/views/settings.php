@@ -15,6 +15,10 @@ defined('ABSPATH') || exit;
     <?php endif; ?>
 
     <nav class="nav-tab-wrapper mnem-settings-tabs" style="border-bottom: 1px solid #ccc; margin: 20px 0 0;">
+        <a class="nav-tab<?php echo $active_tab === 'general' ? ' nav-tab-active' : ''; ?>"
+           href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=general')); ?>">
+            <?php esc_html_e('General Settings', 'multisite-network-email-manager'); ?>
+        </a>
         <a class="nav-tab<?php echo $active_tab === 'smtp' ? ' nav-tab-active' : ''; ?>"
            href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=smtp')); ?>">
             <?php esc_html_e('SMTP Settings', 'multisite-network-email-manager'); ?>
@@ -30,10 +34,6 @@ defined('ABSPATH') || exit;
         <a class="nav-tab<?php echo $active_tab === 'status-updates' ? ' nav-tab-active' : ''; ?>"
            href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=status-updates')); ?>">
             <?php esc_html_e('Status Updates', 'multisite-network-email-manager'); ?>
-        </a>
-        <a class="nav-tab<?php echo $active_tab === 'general' ? ' nav-tab-active' : ''; ?>"
-           href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-settings&tab=general')); ?>">
-            <?php esc_html_e('General Settings', 'multisite-network-email-manager'); ?>
         </a>
     </nav>
 

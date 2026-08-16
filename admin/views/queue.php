@@ -65,11 +65,35 @@ defined('ABSPATH') || exit;
     $filter_form_url = network_admin_url('admin.php?page=mnem-queue');
     ?>
 
-    <div class="mnem-panel mnem-queue-filters" style="padding: 12px 16px;">
-        <form method="get" action="<?php echo esc_url(network_admin_url('admin.php')); ?>">
-            <input type="hidden" name="page" value="mnem-queue" />
+    <!-- Bulk action POST form (hidden - controls reference it via form="mnem-bulk-form") -->
+    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-bulk-form" class="mnem-queue-bulk-form">
+        <?php wp_nonce_field('mnem_queue_item_delete'); ?>
+        <input type="hidden" name="redirect_page" value="mnem-queue" />
+        <input type="hidden" name="status_filter" value="<?php echo esc_attr($status_filter); ?>" />
+        <input type="hidden" name="per_page" value="<?php echo esc_attr((string) $per_page); ?>" />
+    </form>
+
+    <!-- Filter GET form (hidden - controls reference it via form="mnem-filter-form") -->
+    <form method="get" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-filter-form">
+        <input type="hidden" name="page" value="mnem-queue" />
+    </form>
+
+    <div class="mnem-panel" style="padding: 12px 16px;">
+        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+
+            <!-- Bulk Actions -->
+            <label for="mnem-bulk-action"><strong><?php esc_html_e('Bulk Actions:', 'multisite-network-email-manager'); ?></strong></label>
+            <select name="bulk_action" id="mnem-bulk-action" form="mnem-bulk-form"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>
+                <option value="">-- Select Action --</option>
+                <option value="delete_pending">Delete All Pending</option>
+                <option value="delete_failed">Delete All Failed</option>
+                <option value="delete_selected">Delete Selected Items</option>
+            </select>
+            <button type="submit" form="mnem-bulk-form" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
+
+            <!-- Status Filter -->
             <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
-            <select name="status_filter" id="mnem-status-filter">
+            <select name="status_filter" id="mnem-status-filter" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
                 <option value=""><?php esc_html_e('All Statuses', 'multisite-network-email-manager'); ?></option>
                 <?php foreach ($all_statuses as $s) : ?>
                     <option value="<?php echo esc_attr($s); ?>"<?php selected($status_filter, $s); ?>>
@@ -77,49 +101,33 @@ defined('ABSPATH') || exit;
                     </option>
                 <?php endforeach; ?>
             </select>
-            &nbsp;
+            <?php if ($status_filter !== '') : ?>
+                <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-queue&per_page=' . $per_page)); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
+            <?php endif; ?>
+
+            <!-- Per Page -->
             <label for="mnem-per-page"><strong><?php esc_html_e('Per page:', 'multisite-network-email-manager'); ?></strong></label>
-            <select name="per_page" id="mnem-per-page">
+            <select name="per_page" id="mnem-per-page" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
                 <?php foreach (array(10, 20, 50, 100, 200, 500) as $opt) : ?>
                     <option value="<?php echo esc_attr((string) $opt); ?>"<?php selected($per_page, $opt); ?>><?php echo esc_html((string) $opt); ?></option>
                 <?php endforeach; ?>
             </select>
-            &nbsp;
-            <button type="submit" class="button"><?php esc_html_e('Filter', 'multisite-network-email-manager'); ?></button>
-            <?php if ($status_filter !== '') : ?>
-                <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-queue&per_page=' . $per_page)); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
-            <?php endif; ?>
-        </form>
-    </div>
 
-    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" class="mnem-queue-bulk-form">
-        <?php wp_nonce_field('mnem_queue_item_delete'); ?>
-        <input type="hidden" name="redirect_page" value="mnem-queue" />
+            <span class="description">
+                <?php
+                $range_start = $total_filtered > 0 ? (($current_page - 1) * $per_page) + 1 : 0;
+                $range_end   = min($current_page * $per_page, $total_filtered);
+                printf(
+                    esc_html__('Showing %1$s-%2$s of %3$s records', 'multisite-network-email-manager'),
+                    esc_html(number_format($range_start)),
+                    esc_html(number_format($range_end)),
+                    esc_html(number_format($total_filtered))
+                );
+                ?>
+            </span>
 
-        <div class="mnem-panel mnem-queue-bulk-actions">
-            <div class="mnem-actions">
-                <label for="mnem-bulk-action"><strong>Bulk Actions:</strong></label>
-                <select name="bulk_action" id="mnem-bulk-action"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>
-                    <option value="">-- Select Action --</option>
-                    <option value="delete_pending">Delete All Pending</option>
-                    <option value="delete_failed">Delete All Failed</option>
-                    <option value="delete_selected">Delete Selected Items</option>
-                </select>
-                <button type="submit" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
-                <span class="description">
-                    <?php
-                    $range_start = $total_filtered > 0 ? (($current_page - 1) * $per_page) + 1 : 0;
-                    $range_end   = min($current_page * $per_page, $total_filtered);
-                    printf(
-                        esc_html__('Showing %1$s-%2$s of %3$s records', 'multisite-network-email-manager'),
-                        esc_html(number_format($range_start)),
-                        esc_html(number_format($range_end)),
-                        esc_html(number_format($total_filtered))
-                    );
-                    ?>
-                </span>
-            </div>
         </div>
+    </div>
 
         <?php if ($total_pages > 1) : ?>
         <div class="tablenav top" style="margin-bottom: 8px;">
@@ -183,7 +191,7 @@ defined('ABSPATH') || exit;
                         <?php $status_slug = isset($item['status']) ? strtolower((string) $item['status']) : 'failed'; ?>
                         <tr>
                             <th scope="row" class="check-column">
-                                <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" value="<?php echo esc_attr((string) $item['id']); ?>"<?php echo $is_deletable ? '' : ' disabled="disabled"'; ?> />
+                                <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" form="mnem-bulk-form" value="<?php echo esc_attr((string) $item['id']); ?>"<?php echo $is_deletable ? '' : ' disabled="disabled"'; ?> />
                             </th>
                             <td><?php echo esc_html((string) $item['id']); ?></td>
                             <td><?php echo esc_html((string) $item['blog_id']); ?></td>
@@ -214,8 +222,6 @@ defined('ABSPATH') || exit;
                                         data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
                                         data-status="<?php echo esc_attr($item['status']); ?>"
                                     >Delete</button>
-                                <?php else : ?>
-                                    <span class="description">Not deletable</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -244,7 +250,6 @@ defined('ABSPATH') || exit;
             <br class="clear" />
         </div>
         <?php endif; ?>
-    </form>
     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-single-queue-delete-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="mnem_action" value="delete_queue_item" />
