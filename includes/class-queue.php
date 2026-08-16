@@ -155,6 +155,7 @@ class Queue
         }
 
         $processed = 0;
+        $total_ids = count($ids);
         $delay_ms = SmtpSettings::get_campaign_delay_between_sends();
 
         foreach ($ids as $id) {
@@ -180,7 +181,7 @@ class Queue
                 RateLimiter::record_action($identifier_hour, 3600);
                 RateLimiter::record_action($identifier_day, 86400);
 
-                if ($delay_ms > 0 && $processed < count($ids)) {
+                if ($delay_ms > 0 && $processed < $total_ids) {
                     usleep($delay_ms * 1000);
                 }
             }
