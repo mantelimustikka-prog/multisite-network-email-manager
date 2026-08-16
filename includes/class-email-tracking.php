@@ -97,12 +97,11 @@ class EmailTracking
 
         // Determine the initial delivery status.
         // SMTP sends have no webhook follow-up, so mark them delivered immediately on success.
-        // Test emails are also sent directly (not via queue) and will never receive a webhook.
-        // For API providers handling transactional/campaign mail, leave as 'pending' so the
-        // provider webhook can later upgrade it to 'delivered', 'bounced', etc.
+        // For API providers handling mail, leave as 'pending' so provider webhook/pixel/click
+        // tracking can later upgrade it to delivered/opened/failed states.
         if (!empty($send_result['success'])) {
             $provider = isset($send_result['provider']) ? (string) $send_result['provider'] : '';
-            $initial_status = ($provider === 'smtp' || $email_type === 'test') ? 'delivered' : 'pending';
+            $initial_status = $provider === 'smtp' ? 'delivered' : 'pending';
         } else {
             $initial_status = 'failed';
         }
@@ -243,7 +242,7 @@ class EmailTracking
         $row = null;
         if ($site_id !== null) {
             $scoped_args = $where_args;
-            $query = "SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} AND site_id = %d ORDER BY created_at DESC LIMIT %d";
+            $query = "SELECT email_id, queue_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} AND site_id = %d ORDER BY created_at DESC LIMIT %d";
             $scoped_args[] = $site_id;
             $scoped_args[] = 1;
             $row = $wpdb->get_row($wpdb->prepare($query, ...$scoped_args), ARRAY_A);
@@ -254,7 +253,7 @@ class EmailTracking
             $fallback_args[] = 1;
             $row = $wpdb->get_row(
                 $wpdb->prepare(
-                    "SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d",
+                    "SELECT email_id, queue_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d",
                     ...$fallback_args
                 ),
                 ARRAY_A
@@ -283,6 +282,9 @@ class EmailTracking
         }
 
         $delivery_status = $update['status'] !== '' ? $update['status'] : (isset($row['delivery_status']) ? (string) $row['delivery_status'] : 'pending');
+        if (($update['open'] || $update['click']) && in_array($delivery_status, array('pending', 'delivered'), true)) {
+            $delivery_status = 'opened';
+        }
         $now = gmdate('Y-m-d H:i:s');
 
         $wpdb->query(
@@ -297,6 +299,16 @@ class EmailTracking
                 (int) $row['email_id']
             )
         );
+
+        $queue_id = isset($row['queue_id']) ? (int) $row['queue_id'] : 0;
+        if ($queue_id > 0) {
+            if ($update['open']) {
+                TrackingEvents::record_event($queue_id, 'open');
+            }
+            if ($update['click']) {
+                TrackingEvents::record_event($queue_id, 'click');
+            }
+        }
     }
 
     /**
@@ -349,6 +361,10 @@ class EmailTracking
             $status = 'bounced';
         } elseif (isset($failed_events[$provider]) && in_array($event, $failed_events[$provider], true)) {
             $status = 'failed';
+        }
+
+        if ($status === '' && (isset($open_events[$provider]) && in_array($event, $open_events[$provider], true) || isset($click_events[$provider]) && in_array($event, $click_events[$provider], true))) {
+            $status = 'opened';
         }
 
         return array(

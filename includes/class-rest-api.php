@@ -78,6 +78,26 @@ class RestApi
 
         register_rest_route(
             self::NAMESPACE,
+            '/track-open',
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'track_open'),
+                'permission_callback' => '__return_true',
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
+            '/track-click',
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'track_click'),
+                'permission_callback' => '__return_true',
+            )
+        );
+
+        register_rest_route(
+            self::NAMESPACE,
             '/campaigns',
             array(
                 array(
@@ -261,7 +281,7 @@ class RestApi
         $table = $wpdb->base_prefix . 'mnem_queue';
         $items = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, site_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, processed_at, created_at FROM {$table} WHERE site_id = %d ORDER BY created_at DESC LIMIT %d",
+                "SELECT q.id, q.site_id, q.campaign_id, q.recipient_email, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.opens, q.clicks, q.created_at, (SELECT et.delivery_status FROM {$wpdb->base_prefix}mnem_email_tracking et WHERE et.queue_id = q.id ORDER BY et.created_at DESC LIMIT 1) AS delivery_status FROM {$table} q WHERE q.site_id = %d ORDER BY q.created_at DESC LIMIT %d",
                 $site_id,
                 100
             ),
@@ -284,6 +304,44 @@ class RestApi
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
 
         return array('retried' => Queue::retry_failed($site_id));
+    }
+
+    public function track_open($request)
+    {
+        $token = method_exists($request, 'get_param') ? (string) $request->get_param('token') : '';
+        $gif = EmailTracker::handle_pixel_request($token);
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+        if (!headers_sent()) {
+            header('Content-Type: image/gif');
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+        }
+        echo $gif;
+        exit;
+    }
+
+    public function track_click($request)
+    {
+        $token = method_exists($request, 'get_param') ? (string) $request->get_param('token') : '';
+        $url = method_exists($request, 'get_param') ? (string) $request->get_param('url') : '';
+        $redirect = EmailTracker::handle_link_click($token, $url);
+        if ($redirect === '') {
+            $redirect = function_exists('home_url') ? home_url('/') : '/';
+        }
+        if (function_exists('wp_sanitize_redirect')) {
+            $redirect = wp_sanitize_redirect($redirect);
+        }
+
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+        if (function_exists('wp_redirect')) {
+            wp_redirect($redirect, 302);
+        } else {
+            header('Location: ' . $redirect, true, 302);
+        }
+        exit;
     }
 
     public function get_campaigns()

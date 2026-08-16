@@ -131,6 +131,43 @@ class Installer
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                 $wpdb->query("ALTER TABLE `{$tracking_table}` ADD COLUMN email_type enum('transactional','campaign','test') NOT NULL DEFAULT 'transactional' AFTER click_timestamps, ADD KEY email_type (email_type)");
             }
+
+            $delivery_status_type = (string) $wpdb->get_var($wpdb->prepare(
+                'SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                $tracking_table,
+                'delivery_status'
+            ));
+            if ($delivery_status_type !== '' && strpos($delivery_status_type, "'opened'") === false) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$tracking_table}` MODIFY COLUMN delivery_status enum('pending','delivered','opened','bounced','failed') NOT NULL DEFAULT 'pending'");
+            }
+        }
+
+        // Migration: queue schema updates.
+        $queue_table = $tracking_prefix . 'mnem_queue';
+        $queue_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $queue_table));
+        if ($queue_exists === $queue_table) {
+            $processed_exists = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                $queue_table,
+                'processed_at'
+            ));
+            if ($processed_exists > 0) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$queue_table}` DROP COLUMN processed_at");
+            }
+
+            foreach (array('opens', 'clicks') as $column_name) {
+                $column_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                    $queue_table,
+                    $column_name
+                ));
+                if ($column_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$queue_table}` ADD COLUMN `{$column_name}` int(11) NOT NULL DEFAULT 0 AFTER sent_at");
+                }
+            }
         }
 
         // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
@@ -227,8 +264,9 @@ class Installer
                     'status' => "enum('pending','processing','sent','failed')",
                     'attempts' => 'int(11)',
                     'scheduled_at' => 'datetime',
-                    'processed_at' => 'datetime',
                     'sent_at' => 'datetime',
+                    'opens' => 'int(11)',
+                    'clicks' => 'int(11)',
                     'created_at' => 'datetime',
                     'provider_type' => 'varchar(20)',
                     'provider_message_id' => 'varchar(255)',
@@ -258,8 +296,9 @@ class Installer
                     status enum('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
                     attempts int(11) NOT NULL DEFAULT 0,
                     scheduled_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    processed_at datetime NULL,
                     sent_at datetime NULL,
+                    opens int(11) NOT NULL DEFAULT 0,
+                    clicks int(11) NOT NULL DEFAULT 0,
                     created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     provider_type varchar(20) NOT NULL DEFAULT '',
                     provider_message_id varchar(255) NOT NULL DEFAULT '',
@@ -414,7 +453,7 @@ class Installer
                     'subject' => 'text',
                     'body' => 'longtext',
                     'headers' => 'longtext',
-                    'delivery_status' => "enum('pending','delivered','bounced','failed')",
+                    'delivery_status' => "enum('pending','delivered','opened','bounced','failed')",
                     'open_count' => 'int(11)',
                     'open_timestamps' => 'longtext',
                     'click_count' => 'int(11)',
@@ -441,7 +480,7 @@ class Installer
                     subject text NOT NULL,
                     body longtext NOT NULL,
                     headers longtext NULL,
-                    delivery_status enum('pending','delivered','bounced','failed') NOT NULL DEFAULT 'pending',
+                    delivery_status enum('pending','delivered','opened','bounced','failed') NOT NULL DEFAULT 'pending',
                     open_count int(11) NOT NULL DEFAULT 0,
                     open_timestamps longtext NULL,
                     click_count int(11) NOT NULL DEFAULT 0,
@@ -457,6 +496,42 @@ class Installer
                     KEY delivery_status (delivery_status),
                     KEY email_type (email_type),
                     KEY created_at (created_at)
+                ){$charset_suffix};",
+            ),
+            'mnem_email_tracking_events' => array(
+                'name' => $tracking_prefix . 'mnem_email_tracking_events',
+                'columns' => array(
+                    'event_id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'email_id' => 'bigint(20) unsigned',
+                    'event_type' => "enum('open','click')",
+                    'link_url' => 'varchar(2048)',
+                    'timestamp' => 'datetime',
+                    'user_agent' => 'varchar(500)',
+                    'ip_address' => 'varchar(45)',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('event_id'),
+                    'site_id' => array('site_id'),
+                    'email_id' => array('email_id'),
+                    'event_type' => array('event_type'),
+                    'timestamp' => array('timestamp'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_email_tracking_events (
+                    event_id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    email_id bigint(20) unsigned NOT NULL,
+                    event_type enum('open','click') NOT NULL,
+                    link_url varchar(2048) NULL,
+                    timestamp datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    user_agent varchar(500) NULL,
+                    ip_address varchar(45) NULL,
+                    PRIMARY KEY  (event_id),
+                    KEY site_id (site_id),
+                    KEY email_id (email_id),
+                    KEY event_type (event_type),
+                    KEY timestamp (timestamp),
+                    UNIQUE KEY event_email (site_id, email_id, event_type, timestamp)
                 ){$charset_suffix};",
             ),
         );

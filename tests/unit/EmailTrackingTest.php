@@ -46,6 +46,7 @@ class EmailTrackingTest extends TestCase
                 $this->queries[] = $query;
                 return array(
                     'email_id' => 15,
+                    'queue_id' => 0,
                     'site_id' => 1,
                     'delivery_status' => 'pending',
                     'open_count' => 1,
@@ -67,9 +68,9 @@ class EmailTrackingTest extends TestCase
         $queries = $GLOBALS['wpdb']->queries;
         $this->assertNotEmpty($queries);
         $joined_queries = implode("\n", $queries);
-        $this->assertStringContainsString("SELECT email_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
+        $this->assertStringContainsString("SELECT email_id, queue_id, site_id, delivery_status, open_count, open_timestamps, click_count, click_timestamps FROM wp_mnem_email_tracking WHERE provider_message_id = 'message-123'", $joined_queries);
         $this->assertStringContainsString("open_count = 2", $joined_queries);
-        $this->assertStringContainsString("delivery_status = 'pending'", $joined_queries);
+        $this->assertStringContainsString("delivery_status = 'opened'", $joined_queries);
         $this->assertStringContainsString("WHERE email_id = 15", $joined_queries);
     }
 

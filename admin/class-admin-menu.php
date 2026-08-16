@@ -148,7 +148,7 @@ class AdminMenu
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
         $queue_items = (array) $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, processed_at, sent_at, created_at FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                "SELECT q.id, q.blog_id, q.campaign_id, q.recipient_email, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.opens, q.clicks, q.created_at, (SELECT et.delivery_status FROM {$wpdb->base_prefix}mnem_email_tracking et WHERE et.queue_id = q.id ORDER BY et.created_at DESC LIMIT 1) AS delivery_status FROM {$queue_table} q ORDER BY q.created_at DESC LIMIT %d OFFSET %d",
                 50,
                 0
             ),
