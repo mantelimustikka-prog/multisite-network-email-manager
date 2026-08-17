@@ -18,8 +18,9 @@ class NetworkAdminTest extends TestCase
     {
         parent::setUp();
         $GLOBALS['mnem_hooks'] = array();
+        $GLOBALS['mnem_site_options'] = array();
         $GLOBALS['mnem_site_options'][\MNEM\SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
-        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce']);
+        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email']);
         $_POST = array();
         $_GET = array();
     }
@@ -328,5 +329,118 @@ class NetworkAdminTest extends TestCase
         $this->assertSame(0, $GLOBALS['mnem_last_json_response']['data']['loaded']);
         $this->assertFalse($GLOBALS['mnem_last_json_response']['data']['has_more']);
         $this->assertIsArray($GLOBALS['mnem_last_json_response']['data']['users']);
+    }
+
+    public function test_ajax_get_queue_preview_wraps_body_with_global_header_footer_when_forced()
+    {
+        update_site_option('mnem_force_global_header_footer', 1);
+        update_site_option('mnem_global_header', '<p>Header</p>');
+        update_site_option('mnem_global_footer', '<p>Footer</p>');
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 18,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'user@example.com',
+                    'subject' => 'Subject',
+                    'body' => '<p>Body</p>',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'status' => 'sent',
+                    'attempts' => 1,
+                    'scheduled_at' => '2026-08-17 12:00:00',
+                    'sent_at' => '2026-08-17 12:05:00',
+                    'opened' => 0,
+                    'clicked' => 0,
+                    'opens_count' => 0,
+                    'clicks_count' => 0,
+                    'created_at' => '2026-08-17 11:55:00',
+                    'provider_message_id' => '',
+                    'provider_metadata' => '{}',
+                );
+            }
+        };
+        $_POST['queue_id'] = 18;
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_get_queue_preview();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $body = $GLOBALS['mnem_last_json_response']['data']['body'];
+        $this->assertStringContainsString('<p>Header</p>', $body);
+        $this->assertStringContainsString('<p>Body</p>', $body);
+        $this->assertStringContainsString('<p>Footer</p>', $body);
+    }
+
+    public function test_handle_send_campaign_test_email_wraps_body_with_global_header_footer_when_forced()
+    {
+        update_site_option('mnem_force_global_header_footer', 1);
+        update_site_option('mnem_global_header', '<p>Header</p>');
+        update_site_option('mnem_global_footer', '<p>Footer</p>');
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'subject' => 'Subject',
+                    'body' => '<p>Body</p>',
+                );
+            }
+        };
+        $_POST = array(
+            'campaign_id' => 5,
+            'test_email' => 'tester@example.com',
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->handle_send_campaign_test_email();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame('tester@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
+        $body = $GLOBALS['mnem_last_wp_mail']['message'];
+        $this->assertStringContainsString('<p>Header</p>', $body);
+        $this->assertStringContainsString('<p>Body</p>', $body);
+        $this->assertStringContainsString('<p>Footer</p>', $body);
+    }
+
+    public function test_handle_preview_campaign_test_email_wraps_body_with_global_header_footer_when_forced()
+    {
+        update_site_option('mnem_force_global_header_footer', 1);
+        update_site_option('mnem_global_header', '<p>Header</p>');
+        update_site_option('mnem_global_footer', '<p>Footer</p>');
+        $GLOBALS['mnem_current_user_email'] = 'previewer@example.com';
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 7,
+                    'subject' => 'Subject',
+                    'body' => '<p>Body</p>',
+                );
+            }
+        };
+        $_POST = array(
+            'campaign_id' => 7,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->handle_preview_campaign_test_email();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame('previewer@example.com', $GLOBALS['mnem_last_json_response']['data']['to']);
+        $body = $GLOBALS['mnem_last_json_response']['data']['body'];
+        $this->assertStringContainsString('<p>Header</p>', $body);
+        $this->assertStringContainsString('<p>Body</p>', $body);
+        $this->assertStringContainsString('<p>Footer</p>', $body);
     }
 }
