@@ -471,10 +471,12 @@ class AdminMenu
             'campaign_resumed' => 'Campaign sending has resumed.',
             'queue_processed' => 'Queue processed successfully.',
             'queue_retried' => 'Failed queue items were rescheduled.',
+            'queue_item_sent_now' => 'Queue item sent immediately.',
             'queue_item_deleted' => 'Queue item deleted.',
             'queue_items_deleted' => $count === 1 ? '1 queue item deleted.' : sprintf('%d queue items deleted.', $count),
             'queue_deleted_by_status' => sprintf('%d %s item%s deleted.', $count, $status, $count === 1 ? '' : 's'),
             'queue_delete_failed' => 'Failed to delete queue item.',
+            'queue_send_failed' => 'Failed to send queue item immediately.',
             'queue_nothing_selected' => 'No items selected for deletion.',
             'campaign_nonce_failed' => 'Campaign security check failed.',
             'queue_nonce_failed' => 'Queue security check failed.',
@@ -521,7 +523,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
             return 'notice notice-error';
         }
 

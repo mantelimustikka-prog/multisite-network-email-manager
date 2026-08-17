@@ -267,6 +267,15 @@ defined('ABSPATH') || exit;
                                     data-status="<?php echo esc_attr($item['status']); ?>"
                                     data-created-at="<?php echo esc_attr($item['created_at']); ?>"
                                 >Preview</button>
+                                <?php if ($item['status'] !== 'processing') : ?>
+                                    <button
+                                        type="button"
+                                        class="button button-small mnem-send-queue-item-now"
+                                        data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
+                                        data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
+                                        data-status="<?php echo esc_attr($item['status']); ?>"
+                                    >Send Now!</button>
+                                <?php endif; ?>
                                 <?php if ($is_deletable) : ?>
                                     <button
                                         type="button"

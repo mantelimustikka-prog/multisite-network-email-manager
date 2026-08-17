@@ -33,6 +33,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
+        add_action('wp_ajax_mnem_send_queue_item_now', array($this, 'ajax_send_queue_item_now'));
         add_action('wp_ajax_mnem_table_diagnostics_recreate', array($this, 'ajax_table_diagnostics_recreate'));
         add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
         add_action('wp_ajax_mnem_table_diagnostics_repair', array($this, 'ajax_table_diagnostics_repair'));
@@ -751,6 +752,46 @@ class NetworkAdmin
         }
 
         wp_send_json_success($row);
+    }
+
+    public function ajax_send_queue_item_now()
+    {
+        $this->ensure_ajax_permissions();
+
+        $queue_id = isset($_POST['queue_id']) ? (int) $_POST['queue_id'] : 0;
+        if ($queue_id <= 0) {
+            wp_send_json_error(array('message' => 'Invalid queue ID.'), 400);
+            return;
+        }
+
+        $result = \MNEM\Queue::send_now($queue_id);
+        if (!empty($result['success'])) {
+            \MNEM\Logger::info('Manual queue item send completed.', array(
+                'queue_id' => $queue_id,
+                'status' => isset($result['status']) ? (string) $result['status'] : 'sent',
+                'provider' => isset($result['provider']) ? (string) $result['provider'] : '',
+                'message_id' => isset($result['message_id']) ? (string) $result['message_id'] : '',
+            ));
+
+            wp_send_json_success(array(
+                'message' => 'Queue item sent successfully.',
+                'notice' => 'queue_item_sent_now',
+                'result' => $result,
+            ));
+            return;
+        }
+
+        \MNEM\Logger::warning('Manual queue item send failed.', array(
+            'queue_id' => $queue_id,
+            'status' => isset($result['status']) ? (string) $result['status'] : 'failed',
+            'message' => isset($result['message']) ? (string) $result['message'] : '',
+        ));
+
+        wp_send_json_error(array(
+            'message' => !empty($result['message']) ? (string) $result['message'] : 'Queue item could not be sent.',
+            'notice' => 'queue_send_failed',
+            'result' => $result,
+        ), 400);
     }
 
     public function handle_table_diagnostics_cleanup()
