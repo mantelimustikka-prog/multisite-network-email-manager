@@ -355,15 +355,18 @@ class Queue
             $sent = !empty($result['success']);
 
             if ($sent) {
+                // Persist status and the fully-formatted body (header/footer, tracking pixel, rewritten links)
+                // in a single query so the queue preview shows the exact email that was sent.
                 $wpdb->query(
                     $wpdb->prepare(
-                        "UPDATE {$table} SET status = %s, attempts = %d, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s WHERE id = %d",
+                        "UPDATE {$table} SET status = %s, attempts = %d, sent_at = %s, provider_type = %s, provider_message_id = %s, provider_metadata = %s, body = %s WHERE id = %d",
                         'sent',
                         $attempts,
                         $attempted_at,
                         $provider_type,
                         $provider_message_id,
                         $provider_metadata,
+                        $body,
                         $id
                     )
                 );
