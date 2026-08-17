@@ -7,6 +7,7 @@ defined('ABSPATH') || exit;
 class NetworkAdmin
 {
     private const CKEDITOR_VERSION = '41.4.2';
+    private const ACE_VERSION = '1.36.0';
 
     public function init()
     {
@@ -622,6 +623,16 @@ class NetworkAdmin
         }
 
         if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings'), true)) {
+            return;
+        }
+
+        if (in_array($page, array('mnem-campaigns', 'mnem-dashboard'), true)) {
+            if (function_exists('wp_enqueue_script')) {
+                wp_enqueue_script('mnem-ace', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_VERSION, true);
+            }
+        }
+
+        if (!in_array($page, array('mnem-campaigns', 'mnem-settings'), true)) {
             return;
         }
 

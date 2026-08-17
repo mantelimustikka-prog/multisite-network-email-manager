@@ -213,14 +213,11 @@
                 $wrap.find('[data-mnem-editor-toggle]').text('Switch to Code Editor');
                 $wrap.find('.mnem-editor-mode-label').text('Using Visual Editor');
             }
-            var editor = window.ace.edit($textarea.get(0).parentNode || $textarea.get(0));
-            if (!editor || !editor.session) {
-                editor = window.ace.edit(document.createElement('div'));
-            }
             var container = document.createElement('div');
             container.style.height = configuredHeight;
-            $textarea.before(container).hide();
-            editor = window.ace.edit(container);
+            $textarea.before(container);
+            $textarea.hide();
+            var editor = window.ace.edit(container);
             editor.session.setMode('ace/mode/' + mode);
             editor.setValue($textarea.val(), -1);
             editor.on('change', function () {
@@ -230,6 +227,7 @@
                 $textarea.val(editor.getValue());
             });
             $textarea.data('mnemAceInstance', editor);
+            $textarea.data('mnemAceContainer', $(container));
             $textarea.data('mnemAceInitialized', true);
         });
     }
@@ -240,6 +238,7 @@
         var $button = $(this);
         var $wrap = $button.closest('[data-mnem-editor-toggle-wrap]');
         var $label = $wrap.find('.mnem-editor-mode-label');
+        var $textarea = $wrap.find('[data-mnem-ace]');
         var currentPref = '';
         try {
             currentPref = window.localStorage ? (window.localStorage.getItem('mnem_editor_preference') || '') : '';
@@ -252,12 +251,25 @@
                 window.localStorage.setItem('mnem_editor_preference', newPref);
             }
         } catch (e) {}
+        var $aceContainer = $textarea.data('mnemAceContainer');
         if (newPref === 'visual') {
             $button.text('Switch to Code Editor');
             $label.text('Using Visual Editor');
+            if ($aceContainer) {
+                $aceContainer.hide();
+            }
+            $textarea.show();
         } else {
             $button.text('Switch to Visual Editor');
             $label.text('Using Code Editor');
+            $textarea.hide();
+            if ($aceContainer) {
+                $aceContainer.show();
+                var editor = $textarea.data('mnemAceInstance');
+                if (editor) {
+                    editor.resize();
+                }
+            }
         }
     });
 
