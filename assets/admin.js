@@ -178,14 +178,14 @@
 
                 // Apply height to the editable area.
                 $(editor.ui.getEditableElement()).css('min-height', configuredHeight);
+
+                $textarea.data('mnemCKEditorInitialized', true);
             }).catch(function (error) {
                 // eslint-disable-next-line no-console
                 if (window.console && window.console.error) {
                     window.console.error('CKEditor 5 init error:', error);
                 }
             });
-
-            $textarea.data('mnemCKEditorInitialized', true);
         });
     }
 

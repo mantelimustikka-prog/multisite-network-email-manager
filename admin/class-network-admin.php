@@ -27,7 +27,8 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_process_queue', array($this, 'ajax_process_queue'));
         add_action('wp_ajax_mnem_process_queue_now', array($this, 'ajax_process_queue_now'));
         add_action('wp_ajax_mnem_retry_failed_queue', array($this, 'ajax_retry_failed_queue'));
-        add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));        add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));
+        add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
