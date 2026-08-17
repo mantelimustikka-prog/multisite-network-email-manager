@@ -191,6 +191,76 @@
 
     $(initCKEditors);
 
+    function initAceEditors() {
+        if (typeof window.ace === 'undefined') {
+            return;
+        }
+        var pref = '';
+        try {
+            pref = window.localStorage ? (window.localStorage.getItem('mnem_editor_preference') || '') : '';
+        } catch (e) {
+            pref = '';
+        }
+        $('[data-mnem-ace]').each(function () {
+            var $textarea = $(this);
+            if ($textarea.data('mnemAceInitialized')) {
+                return;
+            }
+            var mode = $textarea.data('mnemAce') || 'html';
+            var configuredHeight = String($textarea.data('mnemAceHeight') || '450px');
+            var $wrap = $textarea.closest('[data-mnem-editor-toggle-wrap]');
+            if ($wrap.length && pref === 'visual') {
+                $wrap.find('[data-mnem-editor-toggle]').text('Switch to Code Editor');
+                $wrap.find('.mnem-editor-mode-label').text('Using Visual Editor');
+            }
+            var editor = window.ace.edit($textarea.get(0).parentNode || $textarea.get(0));
+            if (!editor || !editor.session) {
+                editor = window.ace.edit(document.createElement('div'));
+            }
+            var container = document.createElement('div');
+            container.style.height = configuredHeight;
+            $textarea.before(container).hide();
+            editor = window.ace.edit(container);
+            editor.session.setMode('ace/mode/' + mode);
+            editor.setValue($textarea.val(), -1);
+            editor.on('change', function () {
+                $textarea.val(editor.getValue());
+            });
+            $textarea.closest('form').on('submit.mnemAceSync', function () {
+                $textarea.val(editor.getValue());
+            });
+            $textarea.data('mnemAceInstance', editor);
+            $textarea.data('mnemAceInitialized', true);
+        });
+    }
+
+    $(initAceEditors);
+
+    $(document).on('click', '[data-mnem-editor-toggle]', function () {
+        var $button = $(this);
+        var $wrap = $button.closest('[data-mnem-editor-toggle-wrap]');
+        var $label = $wrap.find('.mnem-editor-mode-label');
+        var currentPref = '';
+        try {
+            currentPref = window.localStorage ? (window.localStorage.getItem('mnem_editor_preference') || '') : '';
+        } catch (e) {
+            currentPref = '';
+        }
+        var newPref = currentPref === 'visual' ? 'code' : 'visual';
+        try {
+            if (window.localStorage) {
+                window.localStorage.setItem('mnem_editor_preference', newPref);
+            }
+        } catch (e) {}
+        if (newPref === 'visual') {
+            $button.text('Switch to Code Editor');
+            $label.text('Using Visual Editor');
+        } else {
+            $button.text('Switch to Visual Editor');
+            $label.text('Using Code Editor');
+        }
+    });
+
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
     }
