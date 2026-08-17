@@ -44,22 +44,13 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be prepended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
-            <strong class="mnem-editor-toggle__status" data-mnem-editor-status><?php esc_html_e('Using Code Editor', 'multisite-network-email-manager'); ?></strong>
-            <button type="button" class="button" data-mnem-editor-toggle-button
-                data-code-label="<?php esc_attr_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>"
-                data-visual-label="<?php esc_attr_e('Switch to Code Editor', 'multisite-network-email-manager'); ?>">
-                <?php esc_html_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>
-            </button>
-        </div>
         <textarea
             name="global_header"
             id="mnem_global_header"
             rows="10"
-            class="large-text mnem-ace-editor-source"
-            data-mnem-ace="html"
-            data-mnem-ace-height="300px"
-            data-mnem-editor-toggle="1"
+            class="large-text mnem-ckeditor-source"
+            data-mnem-ckeditor="1"
+            data-mnem-ckeditor-height="300px"
         ><?php echo esc_textarea($global_header); ?></textarea>
     </div>
 
@@ -68,22 +59,13 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be appended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
-            <strong class="mnem-editor-toggle__status" data-mnem-editor-status><?php esc_html_e('Using Code Editor', 'multisite-network-email-manager'); ?></strong>
-            <button type="button" class="button" data-mnem-editor-toggle-button
-                data-code-label="<?php esc_attr_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>"
-                data-visual-label="<?php esc_attr_e('Switch to Code Editor', 'multisite-network-email-manager'); ?>">
-                <?php esc_html_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>
-            </button>
-        </div>
         <textarea
             name="global_footer"
             id="mnem_global_footer"
             rows="10"
-            class="large-text mnem-ace-editor-source"
-            data-mnem-ace="html"
-            data-mnem-ace-height="300px"
-            data-mnem-editor-toggle="1"
+            class="large-text mnem-ckeditor-source"
+            data-mnem-ckeditor="1"
+            data-mnem-ckeditor-height="300px"
         ><?php echo esc_textarea($global_footer); ?></textarea>
     </div>
 

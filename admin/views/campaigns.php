@@ -125,11 +125,7 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                         <tr>
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
                             <td>
-                                <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
-                                    <strong class="mnem-editor-toggle__status" data-mnem-editor-status>Using Code Editor</strong>
-                                    <button type="button" class="button" data-mnem-editor-toggle-button data-code-label="Switch to Visual Editor" data-visual-label="Switch to Code Editor" <?php echo $is_cancelled ? 'disabled' : ''; ?>>Switch to Visual Editor</button>
-                                </div>
-                                <textarea class="large-text mnem-ace-editor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ace="html" data-mnem-ace-height="450px" data-mnem-editor-toggle="1" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
+                                <textarea class="large-text mnem-ckeditor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ckeditor="1" data-mnem-ckeditor-height="450px" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
                                 <p class="description">Available variables: {user_name}, {user_email}, {site_name}, {date}</p>
                             </td>
                         </tr>
