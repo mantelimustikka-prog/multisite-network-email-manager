@@ -265,6 +265,15 @@ if (!function_exists('get_current_user_id')) {
     }
 }
 
+if (!function_exists('wp_get_current_user')) {
+    function wp_get_current_user()
+    {
+        return (object) array(
+            'user_email' => isset($GLOBALS['mnem_current_user_email']) ? (string) $GLOBALS['mnem_current_user_email'] : 'admin@example.com',
+        );
+    }
+}
+
 if (!function_exists('wp_nonce_field')) {
     function wp_nonce_field($action)
     {
