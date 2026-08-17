@@ -7,7 +7,7 @@ defined('ABSPATH') || exit;
 class NetworkAdmin
 {
     private const CKEDITOR_VERSION = '41.4.2';
-    private const ACE_VERSION = '1.36.0';
+    private const ACE_VERSION = '1.36.2';
     private const ACE_SRI = 'sha384-r3kq+DdnMQs5JrtmfwuynWOueMIzHeLhciMG/RoD6A6XgzUR5Czjk1zjfWCQ6OcD';
 
     public function init()
@@ -650,6 +650,10 @@ class NetworkAdmin
     public function add_script_integrity($tag, $handle, $src)
     {
         if ($handle !== 'mnem-ace-editor') {
+            return $tag;
+        }
+
+        if (strpos($tag, ' integrity=') !== false) {
             return $tag;
         }
 
