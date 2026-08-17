@@ -629,6 +629,10 @@ class NetworkAdmin
         if (function_exists('wp_enqueue_script')) {
             wp_enqueue_script('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_EDITOR_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_EDITOR_VERSION, true);
         }
+
+        if ($page === 'mnem-campaigns' && function_exists('wp_enqueue_editor')) {
+            wp_enqueue_editor();
+        }
     }
 
     public function add_script_integrity($tag, $handle, $src)

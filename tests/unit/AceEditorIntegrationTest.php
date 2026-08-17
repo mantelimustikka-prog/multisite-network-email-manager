@@ -14,6 +14,9 @@ class AceEditorIntegrationTest extends TestCase
         $this->assertNotFalse($contents);
         $this->assertStringContainsString('data-mnem-ace="html"', $contents);
         $this->assertStringContainsString('mnem-ace-editor-source', $contents);
+        $this->assertStringContainsString('data-mnem-editor-toggle="1"', $contents);
+        $this->assertStringContainsString('Switch to Visual Editor', $contents);
+        $this->assertStringContainsString('Using Code Editor', $contents);
         $this->assertStringNotContainsString('wp_editor(', $contents);
     }
 
@@ -25,5 +28,16 @@ class AceEditorIntegrationTest extends TestCase
         $this->assertNotFalse($contents);
         $this->assertStringContainsString('data-mnem-ace="html"', $contents);
         $this->assertStringContainsString('mnem-ace-editor-source', $contents);
+    }
+
+    public function test_admin_js_persists_campaign_editor_preference(): void
+    {
+        $path = __DIR__ . '/../../assets/admin.js';
+        $contents = file_get_contents($path);
+
+        $this->assertNotFalse($contents);
+        $this->assertStringContainsString('mnem_editor_preference', $contents);
+        $this->assertStringContainsString('data-mnem-editor-toggle-wrap', $contents);
+        $this->assertStringContainsString('Switch to Code Editor', $contents);
     }
 }
