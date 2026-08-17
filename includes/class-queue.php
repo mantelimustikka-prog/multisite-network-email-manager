@@ -117,6 +117,14 @@ class Queue
         $now = self::current_time_mysql();
         $limit = max(1, $limit);
 
+        $rate_limit_per_minute = SmtpSettings::get_campaign_rate_limit_per_minute();
+        $rate_limit_per_hour = SmtpSettings::get_campaign_rate_limit_per_hour();
+        $rate_limit_per_day = SmtpSettings::get_campaign_rate_limit_per_day();
+
+        $identifier_minute = 'campaign_send_' . gmdate('Y-m-d-H-i');
+        $identifier_hour = 'campaign_send_' . gmdate('Y-m-d-H');
+        $identifier_day = 'campaign_send_' . gmdate('Y-m-d');
+
         $processed = 0;
         $transactional_ids = self::get_pending_ids_by_source($table, $now, $limit, self::get_transactional_sources());
         foreach ($transactional_ids as $id) {
@@ -135,14 +143,6 @@ class Queue
             Logger::info('Campaign queue processing skipped because sending is paused.');
             return $processed;
         }
-
-        $rate_limit_per_minute = SmtpSettings::get_campaign_rate_limit_per_minute();
-        $rate_limit_per_hour = SmtpSettings::get_campaign_rate_limit_per_hour();
-        $rate_limit_per_day = SmtpSettings::get_campaign_rate_limit_per_day();
-
-        $identifier_minute = 'campaign_send_' . gmdate('Y-m-d-H-i');
-        $identifier_hour = 'campaign_send_' . gmdate('Y-m-d-H');
-        $identifier_day = 'campaign_send_' . gmdate('Y-m-d');
 
         if (!RateLimiter::is_allowed($identifier_minute, $rate_limit_per_minute, 60)) {
             Logger::warning('Campaign send rate limit exceeded (per minute)');
