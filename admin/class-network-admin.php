@@ -744,8 +744,6 @@ class NetworkAdmin
             return;
         }
 
-        $row['body'] = $this->maybe_wrap_with_global_header_footer((string) $row['body']);
-
         wp_send_json_success($row);
     }
 
