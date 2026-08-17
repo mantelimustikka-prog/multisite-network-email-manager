@@ -8,6 +8,7 @@ class NetworkAdmin
 {
     private const CKEDITOR_VERSION = '41.4.2';
     private const ACE_VERSION = '1.36.0';
+    private const ACE_SRI = 'sha384-r3kq+DdnMQs5JrtmfwuynWOueMIzHeLhciMG/RoD6A6XgzUR5Czjk1zjfWCQ6OcD';
 
     public function init()
     {
@@ -24,6 +25,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
         add_action('admin_init', array($this, 'handle_user_event_rule_action'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
+        add_filter('script_loader_tag', array($this, 'add_script_integrity'), 10, 3);
         add_action('wp_ajax_mnem_dashboard_stats', array($this, 'ajax_dashboard_stats'));
         add_action('wp_ajax_mnem_process_queue', array($this, 'ajax_process_queue'));
         add_action('wp_ajax_mnem_process_queue_now', array($this, 'ajax_process_queue_now'));
@@ -628,7 +630,7 @@ class NetworkAdmin
 
         if (in_array($page, array('mnem-campaigns', 'mnem-dashboard'), true)) {
             if (function_exists('wp_enqueue_script')) {
-                wp_enqueue_script('mnem-ace', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_VERSION, true);
+                wp_enqueue_script('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_VERSION, true);
             }
         }
 
@@ -643,6 +645,19 @@ class NetworkAdmin
         if (function_exists('wp_enqueue_script')) {
             wp_enqueue_script('mnem-ckeditor', 'https://cdn.ckeditor.com/ckeditor5/' . self::CKEDITOR_VERSION . '/classic/ckeditor.js', array(), self::CKEDITOR_VERSION, true);
         }
+    }
+
+    public function add_script_integrity($tag, $handle, $src)
+    {
+        if ($handle !== 'mnem-ace-editor') {
+            return $tag;
+        }
+
+        return str_replace(
+            '<script ',
+            '<script integrity="' . self::ACE_SRI . '" crossorigin="anonymous" ',
+            $tag
+        );
     }
 
     public function ajax_dashboard_stats()
