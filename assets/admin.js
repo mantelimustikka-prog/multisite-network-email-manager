@@ -131,26 +131,89 @@
 
         var editorLib = window.CKEDITOR;
         var ClassicEditor = editorLib.ClassicEditor;
-        var Essentials = editorLib.Essentials;
-        var Paragraph = editorLib.Paragraph;
-        var Heading = editorLib.Heading;
-        var Bold = editorLib.Bold;
-        var Italic = editorLib.Italic;
-        var Underline = editorLib.Underline;
-        var Strikethrough = editorLib.Strikethrough;
-        var Link = editorLib.Link;
-        var List = editorLib.List;
-        var Indent = editorLib.Indent;
-        var Table = editorLib.Table;
-        var TableToolbar = editorLib.TableToolbar;
-        var CodeBlock = editorLib.CodeBlock;
-        var BlockQuote = editorLib.BlockQuote;
-        var HtmlEmbed = editorLib.HtmlEmbed;
-        var SourceEditing = editorLib.SourceEditing;
 
         if (typeof ClassicEditor === 'undefined') {
             return;
         }
+
+        var pluginNames = [
+            'Essentials',
+            'Paragraph',
+            'Heading',
+            'Bold',
+            'Italic',
+            'Underline',
+            'Strikethrough',
+            'Link',
+            'List',
+            'Indent',
+            'Table',
+            'TableToolbar',
+            'CodeBlock',
+            'BlockQuote',
+            'HtmlEmbed',
+            'SourceEditing'
+        ];
+        var plugins = pluginNames.map(function (pluginName) {
+            return editorLib[pluginName];
+        }).filter(function (plugin) {
+            return typeof plugin !== 'undefined';
+        });
+        if (!plugins.length || typeof editorLib.Essentials === 'undefined' || typeof editorLib.Paragraph === 'undefined') {
+            return;
+        }
+
+        var enabledToolbarItems = {
+            sourceEditing: typeof editorLib.SourceEditing !== 'undefined',
+            heading: typeof editorLib.Heading !== 'undefined',
+            bold: typeof editorLib.Bold !== 'undefined',
+            italic: typeof editorLib.Italic !== 'undefined',
+            underline: typeof editorLib.Underline !== 'undefined',
+            strikethrough: typeof editorLib.Strikethrough !== 'undefined',
+            link: typeof editorLib.Link !== 'undefined',
+            htmlEmbed: typeof editorLib.HtmlEmbed !== 'undefined',
+            // List plugin provides both list controls.
+            bulletedList: typeof editorLib.List !== 'undefined',
+            numberedList: typeof editorLib.List !== 'undefined',
+            // Indent plugin provides both indent controls.
+            indent: typeof editorLib.Indent !== 'undefined',
+            outdent: typeof editorLib.Indent !== 'undefined',
+            insertTable: typeof editorLib.Table !== 'undefined',
+            codeBlock: typeof editorLib.CodeBlock !== 'undefined',
+            blockQuote: typeof editorLib.BlockQuote !== 'undefined',
+            undo: typeof editorLib.Essentials !== 'undefined',
+            redo: typeof editorLib.Essentials !== 'undefined'
+        };
+        var requestedToolbar = [
+            'sourceEditing', '|',
+            'heading', '|',
+            'bold', 'italic', 'underline', 'strikethrough', '|',
+            'link', 'htmlEmbed', '|',
+            'bulletedList', 'numberedList', 'indent', 'outdent', '|',
+            'insertTable', '|',
+            'codeBlock', '|',
+            'blockQuote', '|',
+            'undo', 'redo'
+        ];
+        var toolbarItems = requestedToolbar.filter(function (item) {
+            if (item === '|') {
+                return true;
+            }
+
+            return !!enabledToolbarItems[item];
+        });
+        var compactToolbarItems = [];
+        toolbarItems.forEach(function (item) {
+            if (item === '|' && (!compactToolbarItems.length || compactToolbarItems[compactToolbarItems.length - 1] === '|')) {
+                return;
+            }
+
+            compactToolbarItems.push(item);
+        });
+        if (compactToolbarItems.length && compactToolbarItems[compactToolbarItems.length - 1] === '|') {
+            compactToolbarItems.pop();
+        }
+        toolbarItems = compactToolbarItems;
 
         $('[data-mnem-ckeditor="1"]').each(function () {
             var $textarea = $(this);
@@ -159,27 +222,10 @@
             }
             var configuredHeight = String($textarea.data('mnemCkeditorHeight') || '450px');
             var isReadOnly = $textarea.is('[readonly], [disabled]');
-            var plugins = [
-                Essentials, Paragraph, Heading, Bold, Italic, Underline, Strikethrough,
-                Link, List, Indent, Table, TableToolbar, CodeBlock, BlockQuote, HtmlEmbed, SourceEditing
-            ].filter(function (plugin) {
-                return typeof plugin !== 'undefined';
-            });
-
             ClassicEditor.create($textarea.get(0), {
                 plugins: plugins,
                 toolbar: {
-                    items: [
-                        'sourceEditing', '|',
-                        'heading', '|',
-                        'bold', 'italic', 'underline', 'strikethrough', '|',
-                        'link', 'htmlEmbed', '|',
-                        'bulletedList', 'numberedList', 'indent', 'outdent', '|',
-                        'insertTable', '|',
-                        'codeBlock', '|',
-                        'blockQuote', '|',
-                        'undo', 'redo'
-                    ]
+                    items: toolbarItems
                 },
                 image: {
                     toolbar: ['imageStyle:inline', 'imageStyle:block', 'imageStyle:side', '|', 'imageTextAlternative']
