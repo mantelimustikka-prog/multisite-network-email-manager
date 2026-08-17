@@ -269,7 +269,162 @@ class QueueTest extends TestCase
         $processed = Queue::process_batch(1);
 
         $this->assertSame(0, $processed);
-        $this->assertFalse($was_get_col_called);
+        $this->assertTrue($was_get_col_called);
+    }
+
+    public function test_process_batch_prioritizes_transactional_emails_when_campaign_rate_limit_is_exceeded()
+    {
+        $GLOBALS['mnem_transients'] = array();
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        $GLOBALS['mnem_site_options']['mnem_campaign_rate_limit_per_minute'] = 1;
+        $GLOBALS['mnem_site_options']['mnem_campaign_rate_limit_per_hour'] = 0;
+        $GLOBALS['mnem_site_options']['mnem_campaign_rate_limit_per_day'] = 0;
+        $GLOBALS['mnem_site_options']['mnem_campaign_delay_between_sends'] = 0;
+        $identifier = 'campaign_send_' . gmdate('Y-m-d-H-i');
+        set_transient('mnem_rate_limit_' . $identifier, 1, 60);
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "source IN ('core', 'plugin', 'user_event')") !== false) {
+                    return array(21);
+                }
+                if (strpos($query, "source IN ('campaign')") !== false) {
+                    return array(22);
+                }
+
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'WHERE id = 21') !== false) {
+                    return array(
+                        'id' => 21,
+                        'site_id' => 1,
+                        'blog_id' => 1,
+                        'campaign_id' => 0,
+                        'recipient_email' => 'transactional@example.com',
+                        'subject' => 'Transactional Subject',
+                        'body' => 'Transactional Body',
+                        'from_email' => 'from@example.com',
+                        'from_name' => 'From Name',
+                        'headers' => '[]',
+                        'attachments' => '[]',
+                        'metadata' => '{}',
+                        'attempts' => 0,
+                    );
+                }
+                if (strpos($query, 'WHERE id = 22') !== false) {
+                    return array(
+                        'id' => 22,
+                        'site_id' => 1,
+                        'blog_id' => 1,
+                        'campaign_id' => 90,
+                        'recipient_email' => 'campaign@example.com',
+                        'subject' => 'Campaign Subject',
+                        'body' => 'Campaign Body',
+                        'from_email' => 'from@example.com',
+                        'from_name' => 'From Name',
+                        'headers' => '[]',
+                        'attachments' => '[]',
+                        'metadata' => '{}',
+                        'attempts' => 0,
+                    );
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+
+                return 0;
+            }
+        };
+
+        $processed = Queue::process_batch(5);
+
+        $this->assertSame(1, $processed);
+        $this->assertSame('transactional@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
+        $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
+    public function test_send_now_processes_failed_queue_item_immediately()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 12,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'user@example.com',
+                    'subject' => 'Subject',
+                    'body' => 'Body',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 2,
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = Queue::send_now(12);
+
+        $this->assertTrue($result['processed']);
+        $this->assertTrue($result['success']);
+        $this->assertSame('sent', $result['status']);
+        $this->assertSame('user@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
+        $this->assertStringContainsString("status <> 'processing'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_get_display_status_uses_engagement_and_delivery_priority()

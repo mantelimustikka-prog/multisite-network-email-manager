@@ -41,6 +41,7 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_send_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_send_campaign_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_preview_campaign_test_email', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_send_queue_item_now', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_recreate', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_optimize', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_repair', $GLOBALS['mnem_hooks']);
@@ -69,6 +70,70 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('mnem_last_json_response', $GLOBALS);
         $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
         $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+    }
+
+    public function test_ajax_send_queue_item_now_rejects_invalid_queue_id()
+    {
+        $_POST['queue_id'] = 0;
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_send_queue_item_now();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertSame('Invalid queue ID.', $GLOBALS['mnem_last_json_response']['data']['message']);
+    }
+
+    public function test_ajax_send_queue_item_now_returns_success_notice_for_send_now()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 18,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'user@example.com',
+                    'subject' => 'Subject',
+                    'body' => 'Body',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 1,
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+        $_POST['queue_id'] = 18;
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_send_queue_item_now();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame('queue_item_sent_now', $GLOBALS['mnem_last_json_response']['data']['notice']);
+        $this->assertSame('user@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
     }
 
     public function test_handle_queue_item_delete_action_redirects_after_single_delete()

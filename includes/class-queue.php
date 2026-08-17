@@ -117,6 +117,25 @@ class Queue
         $now = self::current_time_mysql();
         $limit = max(1, $limit);
 
+        $processed = 0;
+        $transactional_ids = self::get_pending_ids_by_source($table, $now, $limit, self::get_transactional_sources());
+        foreach ($transactional_ids as $id) {
+            $result = self::process_item((int) $id);
+            if (!empty($result['processed'])) {
+                ++$processed;
+            }
+        }
+
+        $remaining = $limit - $processed;
+        if ($remaining < 1) {
+            return $processed;
+        }
+
+        if ((int) get_site_option('mnem_campaign_sends_paused', 0) === 1) {
+            Logger::info('Campaign queue processing skipped because sending is paused.');
+            return $processed;
+        }
+
         $rate_limit_per_minute = SmtpSettings::get_campaign_rate_limit_per_minute();
         $rate_limit_per_hour = SmtpSettings::get_campaign_rate_limit_per_hour();
         $rate_limit_per_day = SmtpSettings::get_campaign_rate_limit_per_day();
@@ -127,38 +146,28 @@ class Queue
 
         if (!RateLimiter::is_allowed($identifier_minute, $rate_limit_per_minute, 60)) {
             Logger::warning('Campaign send rate limit exceeded (per minute)');
-            return 0;
+            return $processed;
         }
 
         if (!RateLimiter::is_allowed($identifier_hour, $rate_limit_per_hour, 3600)) {
             Logger::warning('Campaign send rate limit exceeded (per hour)');
-            return 0;
+            return $processed;
         }
 
         if (!RateLimiter::is_allowed($identifier_day, $rate_limit_per_day, 86400)) {
             Logger::warning('Campaign send rate limit exceeded (per day)');
-            return 0;
+            return $processed;
         }
 
-        $ids = $wpdb->get_col(
-            $wpdb->prepare(
-                "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d ORDER BY blog_id ASC, scheduled_at ASC LIMIT %d",
-                'pending',
-                $now,
-                self::MAX_ATTEMPTS,
-                $limit
-            )
-        );
-
-        if (empty($ids)) {
-            return 0;
+        $campaign_ids = self::get_pending_ids_by_source($table, $now, $remaining, array(self::SOURCE_CAMPAIGN));
+        if (empty($campaign_ids)) {
+            return $processed;
         }
 
-        $processed = 0;
-        $total_ids = count($ids);
+        $total_campaign_ids = count($campaign_ids);
         $delay_ms = SmtpSettings::get_campaign_delay_between_sends();
 
-        foreach ($ids as $id) {
+        foreach ($campaign_ids as $index => $id) {
             if ($rate_limit_per_minute > 0 && !RateLimiter::is_allowed($identifier_minute, $rate_limit_per_minute, 60)) {
                 Logger::info('Campaign send stopped due to per-minute rate limit');
                 break;
@@ -181,7 +190,7 @@ class Queue
                 RateLimiter::record_action($identifier_hour, 3600);
                 RateLimiter::record_action($identifier_day, 86400);
 
-                if ($delay_ms > 0 && $processed < $total_ids) {
+                if ($delay_ms > 0 && $index < ($total_campaign_ids - 1)) {
                     usleep($delay_ms * 1000);
                 }
             }
@@ -193,28 +202,55 @@ class Queue
     /**
      * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string}
      */
-    public static function process_item(int $id): array
+    public static function send_now(int $id): array
+    {
+        if ($id <= 0) {
+            return array(
+                'processed' => false,
+                'success' => false,
+                'status' => 'invalid',
+                'message' => 'Invalid queue item.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
+        }
+
+        return self::process_item($id, true);
+    }
+
+    public static function process_item(int $id, bool $force = false): array
     {
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_queue';
         $claim_time = self::current_time_mysql();
-        $claimed = $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status = %s",
-                'processing',
-                $claim_time,
-                $id,
-                'pending'
+        $claimed = $force
+            ? $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status <> %s",
+                    'processing',
+                    $claim_time,
+                    $id,
+                    'processing'
+                )
             )
-        );
+            : $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status = %s",
+                    'processing',
+                    $claim_time,
+                    $id,
+                    'pending'
+                )
+            );
 
         if (!$claimed) {
             return array(
                 'processed' => false,
                 'success' => false,
                 'status' => 'not_claimed',
-                'message' => 'Queue item is not ready to process.',
+                'message' => $force ? 'Queue item is already processing or unavailable.' : 'Queue item is not ready to process.',
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
@@ -408,6 +444,48 @@ class Queue
             'provider' => $provider_type,
             'message_id' => $provider_message_id,
         );
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function get_transactional_sources(): array
+    {
+        return array(
+            self::SOURCE_CORE,
+            self::SOURCE_PLUGIN,
+            self::SOURCE_USER_EVENT,
+        );
+    }
+
+    /**
+     * @param array<int,string> $sources
+     * @return array<int,mixed>
+     */
+    private static function get_pending_ids_by_source(string $table, string $now, int $limit, array $sources): array
+    {
+        global $wpdb;
+
+        if ($limit < 1 || empty($sources)) {
+            return array();
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($sources), '%s'));
+        $query = call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                array(
+                    "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d AND source IN ({$placeholders}) ORDER BY created_at ASC, id ASC LIMIT %d",
+                    'pending',
+                    $now,
+                    self::MAX_ATTEMPTS,
+                ),
+                $sources,
+                array($limit)
+            )
+        );
+
+        return (array) $wpdb->get_col($query);
     }
 
     public static function get_stats(?int $site_id = null)

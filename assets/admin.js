@@ -374,6 +374,40 @@
     $(refreshDashboardStats);
     setInterval(refreshDashboardStats, 30000);
 
+    $(document).on('click', '.mnem-send-queue-item-now', function () {
+        var $button = $(this);
+        var queueId = parseInt($button.data('queue-id'), 10) || 0;
+        var recipient = $button.data('recipient') || 'this recipient';
+        var status = String($button.data('status') || 'pending');
+        var originalText = $button.text();
+        var confirmMessage = 'Send this email to ' + recipient + ' immediately?';
+
+        if (status !== 'pending' && status !== 'failed') {
+            confirmMessage = 'This email is currently marked as "' + status + '". Send it again to ' + recipient + ' now?';
+        }
+
+        if (!queueId || !window.confirm(confirmMessage)) {
+            return;
+        }
+
+        $button.prop('disabled', true).text('Sending...');
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_send_queue_item_now',
+            nonce: mnemAdmin.nonce,
+            queue_id: queueId
+        }).done(function (response) {
+            var redirectUrl = new window.URL(window.location.href);
+            redirectUrl.searchParams.set('mnem_notice', (response && response.data && response.data.notice) || 'queue_item_sent_now');
+            window.location.assign(redirectUrl.toString());
+        }).fail(function (jqXHR) {
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            var message = data.message || 'Failed to send queue item immediately.';
+            window.alert(message);
+            $button.prop('disabled', false).text(originalText);
+        });
+    });
+
     $(document).on('click', '[data-mnem-smtp-action="test-connection"]', function(){
         runSmtpAction('mnem_test_connection');
     });
