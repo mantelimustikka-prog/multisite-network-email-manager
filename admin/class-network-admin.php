@@ -1053,6 +1053,16 @@ class NetworkAdmin
         return '';
     }
 
+    private function maybe_wrap_with_global_header_footer(string $body): string
+    {
+        if (get_site_option('mnem_force_global_header_footer') === '1') {
+            $header = (string) get_site_option('mnem_global_header', '');
+            $footer = (string) get_site_option('mnem_global_footer', '');
+            return $header . $body . $footer;
+        }
+        return $body;
+    }
+
     public function handle_send_campaign_test_email()
     {
         check_ajax_referer('mnem_test_email', 'nonce');
@@ -1087,6 +1097,8 @@ class NetworkAdmin
                 $body = str_replace('{{' . $key . '}}', (string) $value, $body);
             }
         }
+
+        $body = $this->maybe_wrap_with_global_header_footer($body);
 
         $from_name = \MNEM\SmtpSettings::get_sender_name();
         $from_email = \MNEM\SmtpSettings::get_sender_email();
@@ -1142,6 +1154,8 @@ class NetworkAdmin
                 $body = str_replace('{{' . $key . '}}', (string) $value, $body);
             }
         }
+
+        $body = $this->maybe_wrap_with_global_header_footer($body);
 
         wp_send_json_success(array(
             'subject' => $subject,
