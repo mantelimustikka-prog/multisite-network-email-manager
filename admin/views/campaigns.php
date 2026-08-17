@@ -125,11 +125,13 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                         <tr>
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
                             <td>
-                                <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
-                                    <strong class="mnem-editor-toggle__status" data-mnem-editor-status>Using Code Editor</strong>
-                                    <button type="button" class="button" data-mnem-editor-toggle-button data-code-label="Switch to Visual Editor" data-visual-label="Switch to Code Editor" <?php echo $is_cancelled ? 'disabled' : ''; ?>>Switch to Visual Editor</button>
+                                <div data-mnem-editor-toggle-wrap="1">
+                                    <div class="mnem-editor-toggle-bar" style="margin-bottom: 4px;">
+                                        <span class="mnem-editor-mode-label">Using Code Editor</span>
+                                        <button type="button" data-mnem-editor-toggle="1" class="button button-small" style="margin-left: 8px;">Switch to Visual Editor</button>
+                                    </div>
+                                    <textarea class="large-text mnem-ace-editor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ace="html" data-mnem-ace-height="450px" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
                                 </div>
-                                <textarea class="large-text mnem-ace-editor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ace="html" data-mnem-ace-height="450px" data-mnem-editor-toggle="1" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
                                 <p class="description">Available variables: {user_name}, {user_email}, {site_name}, {date}</p>
                             </td>
                         </tr>

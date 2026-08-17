@@ -124,193 +124,154 @@
         });
     });
 
+    function initCKEditors() {
+        if (typeof window.ClassicEditor === 'undefined') {
+            return;
+        }
+        $('[data-mnem-ckeditor="1"]').each(function () {
+            var $textarea = $(this);
+            if ($textarea.data('mnemCKEditorInitialized')) {
+                return;
+            }
+            var configuredHeight = String($textarea.data('mnemCkeditorHeight') || '450px');
+            var isReadOnly = $textarea.is('[readonly], [disabled]');
+
+            window.ClassicEditor.create($textarea.get(0), {
+                toolbar: {
+                    items: [
+                        'sourceEditing', '|',
+                        'heading', '|',
+                        'bold', 'italic', 'underline', 'strikethrough', '|',
+                        'link', 'htmlEmbed', '|',
+                        'bulletedList', 'numberedList', 'indent', 'outdent', '|',
+                        'insertTable', '|',
+                        'codeBlock', '|',
+                        'blockQuote', '|',
+                        'undo', 'redo'
+                    ]
+                },
+                image: {
+                    toolbar: ['imageStyle:inline', 'imageStyle:block', 'imageStyle:side', '|', 'imageTextAlternative']
+                },
+                table: {
+                    contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells']
+                },
+                htmlEmbed: {
+                    showPreviews: false
+                }
+            }).then(function (editor) {
+                $textarea.data('mnemCKEditorInstance', editor);
+
+                if (isReadOnly) {
+                    editor.enableReadOnlyMode('mnem-readonly');
+                }
+
+                // Sync editor content back to textarea on form submit.
+                $textarea.closest('form').on('submit.mnemCKEditorSync', function () {
+                    $textarea.val(editor.getData());
+                });
+
+                // Keep textarea value in sync as user types.
+                editor.model.document.on('change:data', function () {
+                    $textarea.val(editor.getData());
+                });
+
+                // Apply height to the editable area.
+                $(editor.ui.getEditableElement()).css('min-height', configuredHeight);
+
+                $textarea.data('mnemCKEditorInitialized', true);
+            }).catch(function (error) {
+                // eslint-disable-next-line no-console
+                if (window.console && window.console.error) {
+                    window.console.error('CKEditor 5 init error:', error);
+                }
+            });
+        });
+    }
+
+    $(initCKEditors);
+
     function initAceEditors() {
         if (typeof window.ace === 'undefined') {
             return;
         }
-        $('[data-mnem-ace="html"]').each(function () {
+        var pref = '';
+        try {
+            pref = window.localStorage ? (window.localStorage.getItem('mnem_editor_preference') || '') : '';
+        } catch (e) {
+            pref = '';
+        }
+        $('[data-mnem-ace]').each(function () {
             var $textarea = $(this);
             if ($textarea.data('mnemAceInitialized')) {
                 return;
             }
-
-            var $editorHost = $('<div class="mnem-ace-editor" aria-label="Campaign body HTML editor"></div>');
+            var mode = $textarea.data('mnemAce') || 'html';
             var configuredHeight = String($textarea.data('mnemAceHeight') || '450px');
-            var textareaId = String($textarea.attr('id') || '');
-            var hasEditorToggle = String($textarea.data('mnemEditorToggle') || '') === '1';
-            var $toggleWrap = hasEditorToggle ? $textarea.siblings('[data-mnem-editor-toggle-wrap]') : $();
-            var $toggleButton = $toggleWrap.find('[data-mnem-editor-toggle-button]');
-            var $toggleStatus = $toggleWrap.find('[data-mnem-editor-status]');
-            var editorPreferenceKey = textareaId ? 'mnem_editor_preference_' + textareaId : 'mnem_editor_preference';
-            var activeEditor = 'ace';
-            $editorHost.css('height', configuredHeight);
-            $editorHost.text($textarea.val() || '');
-            $textarea.after($editorHost).hide();
-
-            var editor = window.ace.edit($editorHost.get(0));
-            editor.session.setMode('ace/mode/html');
-            editor.setTheme('ace/theme/chrome');
-            editor.session.setUseWrapMode(true);
-            editor.setOptions({
-                showPrintMargin: false,
-                fontSize: '13px',
-                tabSize: 2,
-                useSoftTabs: true
-            });
-
-            var isReadOnly = $textarea.is('[readonly], [disabled]');
-            if (isReadOnly) {
-                editor.setReadOnly(true);
-                editor.setHighlightActiveLine(false);
+            var $wrap = $textarea.closest('[data-mnem-editor-toggle-wrap]');
+            if ($wrap.length && pref === 'visual') {
+                $wrap.find('[data-mnem-editor-toggle]').text('Switch to Code Editor');
+                $wrap.find('.mnem-editor-mode-label').text('Using Visual Editor');
             }
-
-            var syncValue = function () {
+            var container = document.createElement('div');
+            container.style.height = configuredHeight;
+            $textarea.before(container);
+            $textarea.hide();
+            var editor = window.ace.edit(container);
+            editor.session.setMode('ace/mode/' + mode);
+            editor.setValue($textarea.val(), -1);
+            editor.on('change', function () {
                 $textarea.val(editor.getValue());
-            };
-
-            editor.session.on('change', syncValue);
-            syncValue();
-
-            if (!hasEditorToggle) {
-                $textarea.closest('form').on('submit.mnemAceSync', syncValue);
-                $textarea.data('mnemAceInitialized', true);
-                return;
-            }
-
-            var getTinyEditor = function () {
-                if (!textareaId || typeof window.tinymce === 'undefined') {
-                    return null;
-                }
-
-                return window.tinymce.get(textareaId);
-            };
-
-            var getTinyWrap = function () {
-                if (!textareaId) {
-                    return $();
-                }
-
-                return $('#wp-' + textareaId + '-wrap');
-            };
-
-            var syncTextareaFromTiny = function () {
-                var tinyEditor = getTinyEditor();
-                if (tinyEditor) {
-                    $textarea.val(tinyEditor.getContent());
-                }
-            };
-
-            var updateToggleUi = function () {
-                if (!$toggleButton.length || !$toggleStatus.length) {
-                    return;
-                }
-
-                if (activeEditor === 'ace') {
-                    $toggleStatus.text('Using Code Editor');
-                    $toggleButton.text($toggleButton.data('codeLabel') || 'Switch to Visual Editor');
-                    return;
-                }
-
-                $toggleStatus.text('Using Visual Editor');
-                $toggleButton.text($toggleButton.data('visualLabel') || 'Switch to Code Editor');
-            };
-
-            var setEditorMode = function (mode) {
-                var tinyEditor = getTinyEditor();
-                var $tinyWrap = getTinyWrap();
-                activeEditor = mode === 'tinymce' ? 'tinymce' : 'ace';
-
-                if (activeEditor === 'tinymce' && tinyEditor && $tinyWrap.length) {
-                    syncValue();
-                    tinyEditor.setContent($textarea.val() || '');
-                    $editorHost.hide();
-                    $tinyWrap.show();
-                } else {
-                    syncTextareaFromTiny();
-                    editor.setValue($textarea.val() || '', -1);
-                    $editorHost.show();
-                    if ($tinyWrap.length) {
-                        $tinyWrap.hide();
-                    }
-                    activeEditor = 'ace';
-                }
-
-                updateToggleUi();
-                try {
-                    window.localStorage.setItem(editorPreferenceKey, activeEditor);
-                } catch (e) {
-                    // Ignore storage failures.
-                }
-            };
-
-            if (
-                textareaId &&
-                !$textarea.is('[readonly], [disabled]') &&
-                typeof window.wp !== 'undefined' &&
-                window.wp.editor &&
-                typeof window.wp.editor.initialize === 'function'
-            ) {
-                window.wp.editor.initialize(textareaId, {
-                    tinymce: {
-                        wpautop: false
-                    },
-                    quicktags: true,
-                    mediaButtons: false
-                });
-            }
-
-            var initializeMode = function (attempt) {
-                attempt = attempt || 0;
-                var preferredMode = 'ace';
-                try {
-                    var storedMode = window.localStorage.getItem(editorPreferenceKey);
-                    if (storedMode === 'tinymce') {
-                        preferredMode = 'tinymce';
-                    }
-                } catch (e) {
-                    // Ignore storage failures.
-                }
-
-                if (preferredMode === 'tinymce' && getTinyEditor() && getTinyWrap().length) {
-                    setEditorMode('tinymce');
-                    return;
-                }
-
-                if (preferredMode === 'tinymce' && attempt < 20) {
-                    window.setTimeout(function () {
-                        initializeMode(attempt + 1);
-                    }, 100);
-                    return;
-                }
-
-                setEditorMode('ace');
-            };
-
-            initializeMode(0);
-
-            if ($toggleButton.length) {
-                $toggleButton.on('click', function () {
-                    if (activeEditor === 'ace') {
-                        setEditorMode('tinymce');
-                        return;
-                    }
-                    setEditorMode('ace');
-                });
-            }
-
-            $textarea.closest('form').on('submit.mnemAceSync', function () {
-                if (activeEditor === 'tinymce') {
-                    syncTextareaFromTiny();
-                    return;
-                }
-
-                syncValue();
             });
+            $textarea.closest('form').on('submit.mnemAceSync', function () {
+                $textarea.val(editor.getValue());
+            });
+            $textarea.data('mnemAceInstance', editor);
+            $textarea.data('mnemAceContainer', $(container));
             $textarea.data('mnemAceInitialized', true);
         });
     }
 
     $(initAceEditors);
+
+    $(document).on('click', '[data-mnem-editor-toggle]', function () {
+        var $button = $(this);
+        var $wrap = $button.closest('[data-mnem-editor-toggle-wrap]');
+        var $label = $wrap.find('.mnem-editor-mode-label');
+        var $textarea = $wrap.find('[data-mnem-ace]');
+        var currentPref = '';
+        try {
+            currentPref = window.localStorage ? (window.localStorage.getItem('mnem_editor_preference') || '') : '';
+        } catch (e) {
+            currentPref = '';
+        }
+        var newPref = currentPref === 'visual' ? 'code' : 'visual';
+        try {
+            if (window.localStorage) {
+                window.localStorage.setItem('mnem_editor_preference', newPref);
+            }
+        } catch (e) {}
+        var $aceContainer = $textarea.data('mnemAceContainer');
+        if (newPref === 'visual') {
+            $button.text('Switch to Code Editor');
+            $label.text('Using Visual Editor');
+            if ($aceContainer) {
+                $aceContainer.hide();
+            }
+            $textarea.show();
+        } else {
+            $button.text('Switch to Visual Editor');
+            $label.text('Using Code Editor');
+            $textarea.hide();
+            if ($aceContainer) {
+                $aceContainer.show();
+                var editor = $textarea.data('mnemAceInstance');
+                if (editor) {
+                    editor.resize();
+                }
+            }
+        }
+    });
 
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
