@@ -141,7 +141,7 @@
             var $toggleWrap = hasEditorToggle ? $textarea.siblings('[data-mnem-editor-toggle-wrap]') : $();
             var $toggleButton = $toggleWrap.find('[data-mnem-editor-toggle-button]');
             var $toggleStatus = $toggleWrap.find('[data-mnem-editor-status]');
-            var editorPreferenceKey = 'mnem_editor_preference';
+            var editorPreferenceKey = textareaId ? 'mnem_editor_preference_' + textareaId : 'mnem_editor_preference';
             var activeEditor = 'ace';
             $editorHost.css('height', configuredHeight);
             $editorHost.text($textarea.val() || '');

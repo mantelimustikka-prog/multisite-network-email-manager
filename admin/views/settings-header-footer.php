@@ -44,30 +44,23 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be prepended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <?php
-        if (function_exists('wp_editor')) {
-            wp_editor(
-                $global_header,
-                'mnem_global_header',
-                array(
-                    'textarea_name' => 'global_header',
-                    'media_buttons' => true,
-                    'textarea_rows' => 10,
-                    'teeny'         => false,
-                )
-            );
-        } else {
-            ?>
-            <textarea
-                name="global_header"
-                id="mnem_global_header"
-                rows="10"
-                class="large-text"
-                style="width: 100%;"
-            ><?php echo esc_textarea($global_header); ?></textarea>
-            <?php
-        }
-        ?>
+        <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
+            <strong class="mnem-editor-toggle__status" data-mnem-editor-status><?php esc_html_e('Using Code Editor', 'multisite-network-email-manager'); ?></strong>
+            <button type="button" class="button" data-mnem-editor-toggle-button
+                data-code-label="<?php esc_attr_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>"
+                data-visual-label="<?php esc_attr_e('Switch to Code Editor', 'multisite-network-email-manager'); ?>">
+                <?php esc_html_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>
+            </button>
+        </div>
+        <textarea
+            name="global_header"
+            id="mnem_global_header"
+            rows="10"
+            class="large-text mnem-ace-editor-source"
+            data-mnem-ace="html"
+            data-mnem-ace-height="300px"
+            data-mnem-editor-toggle="1"
+        ><?php echo esc_textarea($global_header); ?></textarea>
     </div>
 
     <h2><?php esc_html_e('Global Email Footer', 'multisite-network-email-manager'); ?></h2>
@@ -75,30 +68,23 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be appended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <?php
-        if (function_exists('wp_editor')) {
-            wp_editor(
-                $global_footer,
-                'mnem_global_footer',
-                array(
-                    'textarea_name' => 'global_footer',
-                    'media_buttons' => true,
-                    'textarea_rows' => 10,
-                    'teeny'         => false,
-                )
-            );
-        } else {
-            ?>
-            <textarea
-                name="global_footer"
-                id="mnem_global_footer"
-                rows="10"
-                class="large-text"
-                style="width: 100%;"
-            ><?php echo esc_textarea($global_footer); ?></textarea>
-            <?php
-        }
-        ?>
+        <div class="mnem-editor-toggle" data-mnem-editor-toggle-wrap>
+            <strong class="mnem-editor-toggle__status" data-mnem-editor-status><?php esc_html_e('Using Code Editor', 'multisite-network-email-manager'); ?></strong>
+            <button type="button" class="button" data-mnem-editor-toggle-button
+                data-code-label="<?php esc_attr_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>"
+                data-visual-label="<?php esc_attr_e('Switch to Code Editor', 'multisite-network-email-manager'); ?>">
+                <?php esc_html_e('Switch to Visual Editor', 'multisite-network-email-manager'); ?>
+            </button>
+        </div>
+        <textarea
+            name="global_footer"
+            id="mnem_global_footer"
+            rows="10"
+            class="large-text mnem-ace-editor-source"
+            data-mnem-ace="html"
+            data-mnem-ace-height="300px"
+            data-mnem-editor-toggle="1"
+        ><?php echo esc_textarea($global_footer); ?></textarea>
     </div>
 
     <?php submit_button(esc_html__('Save Header &amp; Footer Settings', 'multisite-network-email-manager')); ?>
