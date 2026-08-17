@@ -187,7 +187,7 @@ defined('ABSPATH') || exit;
                         </tr>
                         <tr>
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
-                            <td><textarea class="large-text mnem-ace-editor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ace="html" data-mnem-ace-height="450px" required><?php echo esc_textarea(isset($campaign_body) ? (string) $campaign_body : ''); ?></textarea></td>
+                            <td><textarea class="large-text" id="mnem_campaign_body" name="body" rows="12" data-mnem-ckeditor="1" data-mnem-ckeditor-height="450px" required><?php echo esc_textarea(isset($campaign_body) ? (string) $campaign_body : ''); ?></textarea></td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="mnem_campaign_scope">Recipients</label></th>
