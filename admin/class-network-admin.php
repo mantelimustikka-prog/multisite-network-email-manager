@@ -623,7 +623,7 @@ class NetworkAdmin
             }
         }
 
-        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard'), true)) {
+        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings'), true)) {
             return;
         }
 
@@ -631,7 +631,7 @@ class NetworkAdmin
             wp_enqueue_script('mnem-ace-editor', 'https://cdn.jsdelivr.net/npm/ace-builds@' . self::ACE_EDITOR_VERSION . '/src-min-noconflict/ace.js', array(), self::ACE_EDITOR_VERSION, true);
         }
 
-        if ($page === 'mnem-campaigns' && function_exists('wp_enqueue_editor')) {
+        if (in_array($page, array('mnem-campaigns', 'mnem-settings'), true) && function_exists('wp_enqueue_editor')) {
             wp_enqueue_editor();
         }
     }
