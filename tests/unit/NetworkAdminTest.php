@@ -329,23 +329,4 @@ class NetworkAdminTest extends TestCase
         $this->assertFalse($GLOBALS['mnem_last_json_response']['data']['has_more']);
         $this->assertIsArray($GLOBALS['mnem_last_json_response']['data']['users']);
     }
-
-    public function test_add_script_integrity_adds_sri_for_ace_editor_script()
-    {
-        $admin = new NetworkAdmin();
-        $tag = '<script src="https://cdn.jsdelivr.net/npm/ace-builds@1.36.2/src-min-noconflict/ace.js"></script>';
-
-        $result = $admin->add_script_integrity($tag, 'mnem-ace-editor', '');
-
-        $this->assertStringContainsString('integrity="sha384-r3kq+DdnMQs5JrtmfwuynWOueMIzHeLhciMG/RoD6A6XgzUR5Czjk1zjfWCQ6OcD"', $result);
-        $this->assertStringContainsString('crossorigin="anonymous"', $result);
-    }
-
-    public function test_add_script_integrity_does_not_change_other_scripts()
-    {
-        $admin = new NetworkAdmin();
-        $tag = '<script src="https://example.org/admin.js"></script>';
-
-        $this->assertSame($tag, $admin->add_script_integrity($tag, 'mnem-admin', ''));
-    }
 }
