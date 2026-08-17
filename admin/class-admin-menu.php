@@ -344,8 +344,10 @@ class AdminMenu
 
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
 
-        // Status filter.
+        // Status filter + optional search filters.
         $status_filter = isset($_GET['status_filter']) ? sanitize_text_field(wp_unslash($_GET['status_filter'])) : '';
+        $search_email = isset($_GET['search_email']) ? sanitize_text_field(wp_unslash($_GET['search_email'])) : '';
+        $search_subject = isset($_GET['search_subject']) ? sanitize_text_field(wp_unslash($_GET['search_subject'])) : '';
 
         // Per-page selector with validation.
         $allowed_per_page = array(10, 20, 50, 100, 200, 500);
@@ -362,24 +364,64 @@ class AdminMenu
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table}");
 
-        // Build WHERE clause for status filter.
+        // Build WHERE clause for status and search filters.
+        $where_clauses = array();
+        $where_args = array();
+
         if ($status_filter !== '') {
-            $where_sql = $wpdb->prepare('WHERE status = %s', $status_filter);
-            $total_filtered = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE status = %s", $status_filter));
+            $where_clauses[] = 'status = %s';
+            $where_args[] = $status_filter;
+        }
+
+        if ($search_email !== '') {
+            $where_clauses[] = 'LOWER(recipient_email) LIKE %s';
+            $where_args[] = '%' . strtolower($wpdb->esc_like($search_email)) . '%';
+        }
+
+        if ($search_subject !== '') {
+            $where_clauses[] = 'LOWER(subject) LIKE %s';
+            $where_args[] = '%' . strtolower($wpdb->esc_like($search_subject)) . '%';
+        }
+
+        $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+
+        if (!empty($where_args)) {
+            $count_query = call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("SELECT COUNT(1) FROM {$queue_table} {$where_sql}"),
+                    $where_args
+                )
+            );
+            $total_filtered = (int) $wpdb->get_var($count_query);
         } else {
-            $where_sql = '';
             $total_filtered = $total_all_records;
         }
 
         // Fetch page of records.
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $queue_items = (array) $wpdb->get_results(
-            $wpdb->prepare(
+        $queue_select_columns = 'id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
+        if (!empty($where_args)) {
+            $queue_query = call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("SELECT {$queue_select_columns} FROM {$queue_table} {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d"),
+                    $where_args,
+                    array($per_page, $offset)
+                )
+            );
+        } else {
+            $queue_query = $wpdb->prepare(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                "SELECT id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata FROM {$queue_table} {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                "SELECT {$queue_select_columns} FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
                 $per_page,
                 $offset
-            ),
+            );
+        }
+        $queue_items = (array) $wpdb->get_results(
+            $queue_query,
             ARRAY_A
         );
 
@@ -399,7 +441,8 @@ class AdminMenu
             'queue_items', 'queue_stats', 'queue_summary',
             'notice', 'notice_message', 'notice_class',
             'total_all_records', 'total_filtered', 'total_pages',
-            'current_page', 'per_page', 'status_filter', 'all_statuses'
+            'current_page', 'per_page', 'status_filter', 'all_statuses',
+            'search_email', 'search_subject'
         ));
     }
 

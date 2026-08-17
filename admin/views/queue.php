@@ -109,6 +109,12 @@ defined('ABSPATH') || exit;
     if ($status_filter !== '') {
         $base_url_args['status_filter'] = $status_filter;
     }
+    if ($search_email !== '') {
+        $base_url_args['search_email'] = $search_email;
+    }
+    if ($search_subject !== '') {
+        $base_url_args['search_subject'] = $search_subject;
+    }
     if ($per_page !== 50) {
         $base_url_args['per_page'] = $per_page;
     }
@@ -155,7 +161,19 @@ defined('ABSPATH') || exit;
                 <?php endforeach; ?>
             </select>
             <?php if ($status_filter !== '') : ?>
-                <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-queue&per_page=' . $per_page)); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
+                <?php
+                $clear_filter_args = array(
+                    'page' => 'mnem-queue',
+                    'per_page' => $per_page,
+                );
+                if ($search_email !== '') {
+                    $clear_filter_args['search_email'] = $search_email;
+                }
+                if ($search_subject !== '') {
+                    $clear_filter_args['search_subject'] = $search_subject;
+                }
+                ?>
+                <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
             <?php endif; ?>
 
             <!-- Per Page -->
@@ -165,6 +183,42 @@ defined('ABSPATH') || exit;
                     <option value="<?php echo esc_attr((string) $opt); ?>"<?php selected($per_page, $opt); ?>><?php echo esc_html((string) $opt); ?></option>
                 <?php endforeach; ?>
             </select>
+
+            <!-- Search -->
+            <label for="mnem-search-email"><strong><?php esc_html_e('Email Address:', 'multisite-network-email-manager'); ?></strong></label>
+            <input
+                type="search"
+                id="mnem-search-email"
+                name="search_email"
+                form="mnem-filter-form"
+                value="<?php echo esc_attr($search_email); ?>"
+                placeholder="<?php echo esc_attr(esc_html__('Search recipient email', 'multisite-network-email-manager')); ?>"
+            />
+
+            <label for="mnem-search-subject"><strong><?php esc_html_e('Email Subject:', 'multisite-network-email-manager'); ?></strong></label>
+            <input
+                type="search"
+                id="mnem-search-subject"
+                name="search_subject"
+                form="mnem-filter-form"
+                value="<?php echo esc_attr($search_subject); ?>"
+                placeholder="<?php echo esc_attr(esc_html__('Search email subject', 'multisite-network-email-manager')); ?>"
+            />
+            <button type="submit" form="mnem-filter-form" class="button"><?php esc_html_e('Search', 'multisite-network-email-manager'); ?></button>
+            <?php if ($search_email !== '' || $search_subject !== '') : ?>
+                <?php
+                $clear_search_args = array(
+                    'page' => 'mnem-queue',
+                );
+                if ($status_filter !== '') {
+                    $clear_search_args['status_filter'] = $status_filter;
+                }
+                if ($per_page !== 50) {
+                    $clear_search_args['per_page'] = $per_page;
+                }
+                ?>
+                <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_search_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Search', 'multisite-network-email-manager'); ?></a>
+            <?php endif; ?>
 
             <span class="description">
                 <?php
@@ -180,7 +234,45 @@ defined('ABSPATH') || exit;
             </span>
 
         </div>
+        <?php if ($search_email !== '' || $search_subject !== '') : ?>
+            <p class="description" style="margin-top: 10px;">
+                <strong><?php esc_html_e('Searching for:', 'multisite-network-email-manager'); ?></strong>
+                <?php
+                $search_fragments = array();
+                if ($search_email !== '') {
+                    $search_fragments[] = sprintf(esc_html__('Email: %s', 'multisite-network-email-manager'), esc_html($search_email));
+                }
+                if ($search_subject !== '') {
+                    $search_fragments[] = sprintf(esc_html__('Subject: %s', 'multisite-network-email-manager'), esc_html($search_subject));
+                }
+                echo implode(' | ', $search_fragments);
+                ?>
+            </p>
+        <?php endif; ?>
     </div>
+    <script>
+        (function () {
+            var filterForm = document.getElementById('mnem-filter-form');
+            var searchEmail = document.getElementById('mnem-search-email');
+            var searchSubject = document.getElementById('mnem-search-subject');
+            if (!filterForm || !searchEmail || !searchSubject) {
+                return;
+            }
+
+            var debounceTimer = null;
+            var submitSearch = function () {
+                if (debounceTimer) {
+                    clearTimeout(debounceTimer);
+                }
+                debounceTimer = setTimeout(function () {
+                    filterForm.submit();
+                }, 350);
+            };
+
+            searchEmail.addEventListener('input', submitSearch);
+            searchSubject.addEventListener('input', submitSearch);
+        })();
+    </script>
 
         <?php if ($total_pages > 1) : ?>
         <div class="tablenav top" style="margin-bottom: 8px;">
@@ -190,6 +282,8 @@ defined('ABSPATH') || exit;
                     array_filter(array(
                         'page'          => 'mnem-queue',
                         'status_filter' => $status_filter !== '' ? $status_filter : null,
+                        'search_email'  => $search_email !== '' ? $search_email : null,
+                        'search_subject'=> $search_subject !== '' ? $search_subject : null,
                         'per_page'      => $per_page !== 50 ? $per_page : null,
                     )),
                     '',
