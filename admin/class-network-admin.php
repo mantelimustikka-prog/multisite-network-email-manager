@@ -430,6 +430,10 @@ class NetworkAdmin
             $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_removed' : 'subscriber_operation_failed', $redirect_args);
         }
 
+        if ($action === 'subscriber_unsubscribe_user') {
+            $this->handle_subscriber_unsubscribe_action($list_id, $redirect_args);
+        }
+
         if ($action === 'subscriber_restore_user') {
             $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
             $result = \MNEM\SubscriberLists::resubscribe_user($list_id, $user_id);
@@ -445,6 +449,23 @@ class NetworkAdmin
             \MNEM\Logger::info('Subscriber CSV imported.', array('list_id' => $list_id, 'result' => $result));
             $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_csv_imported', $redirect_args);
         }
+    }
+
+    private function handle_subscriber_unsubscribe_action($list_id, array $redirect_args = array())
+    {
+        $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+        if ((int) $list_id <= 0 || $user_id <= 0 || !\MNEM\SubscriberLists::is_subscribed((int) $list_id, $user_id)) {
+            $this->redirect_with_notice('mnem-subscriber-lists', 'subscriber_operation_failed', $redirect_args);
+            return;
+        }
+
+        $reason = isset($_POST['unsubscribe_reason']) ? sanitize_text_field(wp_unslash($_POST['unsubscribe_reason'])) : '';
+        if ($reason === '') {
+            $reason = 'Unsubscribed by admin';
+        }
+
+        $result = \MNEM\SubscriberLists::unsubscribe_user((int) $list_id, $user_id, $reason);
+        $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_unsubscribed' : 'subscriber_operation_failed', $redirect_args);
     }
 
     public function handle_email_template_action()

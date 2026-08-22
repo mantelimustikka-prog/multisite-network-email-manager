@@ -297,6 +297,39 @@ class NetworkAdminTest extends TestCase
         $this->assertStringContainsString('mnem_notice=general_settings_saved', $GLOBALS['mnem_last_redirect']);
     }
 
+    public function test_handle_subscriber_list_action_unsubscribes_user_with_default_reason()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'subscriber_unsubscribe_user',
+            '_wpnonce' => 'test-nonce',
+            'list_id' => 5,
+            'user_id' => 7,
+            'unsubscribe_reason' => '',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_subscriber_list_action();
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("unsubscribed_reason = 'Unsubscribed by admin'", $queries);
+        $this->assertStringContainsString('mnem_notice=subscriber_unsubscribed', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('list_id=5', $GLOBALS['mnem_last_redirect']);
+    }
+
     public function test_handle_load_batch_users_rejects_invalid_batch_sizes()
     {
         $_POST = array(
