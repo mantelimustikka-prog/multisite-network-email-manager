@@ -13,8 +13,34 @@ defined('ABSPATH') || exit;
     <?php endif; ?>
 
     <div class="mnem-grid">
+        <?php if (!$active_list) : ?>
+            <div class="mnem-panel mnem-panel-wide">
+                <h2>All Lists</h2>
+                <table class="widefat striped">
+                    <thead><tr><th>Name</th><th>Count</th><th>Created</th><th>Actions</th></tr></thead>
+                    <tbody>
+                    <?php foreach ((array) $lists as $list) : ?>
+                        <tr>
+                            <td><?php echo esc_html((string) $list['name']); ?></td>
+                            <td><?php echo esc_html((string) \MNEM\SubscriberLists::get_list_subscribers_count((int) $list['id'])); ?></td>
+                            <td><?php echo esc_html((string) $list['created_at']); ?></td>
+                            <td>
+                                <a class="button" href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-subscriber-lists&list_id=' . (int) $list['id'])); ?>">Manage</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+
         <div class="mnem-panel mnem-panel-wide">
             <h2><?php echo $active_list ? 'Edit List' : 'Create New List'; ?></h2>
+            <?php if ($active_list) : ?>
+                <p>
+                    <a class="button" href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-subscriber-lists')); ?>">Back to All Lists</a>
+                </p>
+            <?php endif; ?>
             <form method="post">
                 <?php wp_nonce_field('mnem_subscriber_lists'); ?>
                 <input type="hidden" name="mnem_action" value="subscriber_save_list" />
@@ -41,25 +67,6 @@ defined('ABSPATH') || exit;
                     <?php submit_button('Delete List', 'delete', 'submit', false); ?>
                 </form>
             <?php endif; ?>
-        </div>
-
-        <div class="mnem-panel mnem-panel-wide">
-            <h2>All Lists</h2>
-            <table class="widefat striped">
-                <thead><tr><th>Name</th><th>Count</th><th>Created</th><th>Actions</th></tr></thead>
-                <tbody>
-                <?php foreach ((array) $lists as $list) : ?>
-                    <tr>
-                        <td><?php echo esc_html((string) $list['name']); ?></td>
-                        <td><?php echo esc_html((string) \MNEM\SubscriberLists::get_list_subscribers_count((int) $list['id'])); ?></td>
-                        <td><?php echo esc_html((string) $list['created_at']); ?></td>
-                        <td>
-                            <a class="button" href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-subscriber-lists&list_id=' . (int) $list['id'])); ?>">Manage</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
         </div>
 
         <?php if ($active_list) : ?>
