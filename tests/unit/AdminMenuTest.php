@@ -184,4 +184,101 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('search_subject=Welcome', $output);
         $this->assertStringContainsString('Clear Search', $output);
     }
+
+    public function test_render_subscriber_lists_applies_search_and_pagination_controls()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status = 'subscribed'") !== false) {
+                    return 1;
+                }
+                if (strpos($query, "subscription_status = 'unsubscribed'") !== false) {
+                    return 1;
+                }
+                return 0;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_subscriber_lists') !== false) {
+                    return array(
+                        array(
+                            'id' => 5,
+                            'name' => 'Weekly Updates',
+                            'description' => '',
+                            'created_at' => '2026-08-17 10:00:00',
+                        ),
+                    );
+                }
+
+                if (strpos($query, "subscription_status = 'subscribed'") !== false) {
+                    return array(
+                        array(
+                            'user_id' => 7,
+                            'user_login' => 'alice',
+                            'user_email' => 'alice@example.com',
+                            'subscribed_at' => '2026-08-17 10:00:00',
+                            'unsubscribed_at' => null,
+                            'unsubscribed_reason' => '',
+                        ),
+                    );
+                }
+
+                if (strpos($query, "subscription_status = 'unsubscribed'") !== false) {
+                    return array(
+                        array(
+                            'user_id' => 8,
+                            'user_login' => 'alice-old',
+                            'user_email' => 'alice-old@example.com',
+                            'subscribed_at' => '2026-08-10 10:00:00',
+                            'unsubscribed_at' => '2026-08-20 10:00:00',
+                            'unsubscribed_reason' => 'Requested',
+                        ),
+                    );
+                }
+
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_subscriber_lists WHERE id = 5') !== false) {
+                    return array(
+                        'id' => 5,
+                        'name' => 'Weekly Updates',
+                        'description' => '',
+                        'created_at' => '2026-08-17 10:00:00',
+                    );
+                }
+                return null;
+            }
+        };
+
+        $_GET = array(
+            'page' => 'mnem-subscriber-lists',
+            'list_id' => 5,
+            'subscriber_search' => 'Alice',
+            'subscriber_per_page' => 100,
+            'subscribed_paged' => 1,
+            'unsubscribed_paged' => 1,
+        );
+
+        $menu = new AdminMenu();
+        ob_start();
+        $menu->render_subscriber_lists();
+        $output = ob_get_clean();
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("LOWER(u.user_login) LIKE '%alice%'", $queries);
+        $this->assertStringContainsString("LOWER(u.user_email) LIKE '%alice%'", $queries);
+        $this->assertStringContainsString('LIMIT 100 OFFSET 0', $queries);
+        $this->assertStringContainsString('Search &amp; Pagination', $output);
+        $this->assertStringContainsString('Clear Search', $output);
+        $this->assertStringContainsString('Showing 1-1 of 1 records', $output);
+        $this->assertStringContainsString('Unsubscribe', $output);
+    }
 }
