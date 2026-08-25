@@ -38,11 +38,8 @@ $variables = \MNEM\EmailTemplates::get_available_variables();
                     <tr>
                         <th><label for="mnem_template_body">Body</label></th>
                         <td>
-                            <?php if (function_exists('wp_editor')) : ?>
-                                <?php wp_editor('', 'mnem_template_body_editor', array('textarea_name' => 'template_body', 'textarea_rows' => 10, 'media_buttons' => true)); ?>
-                            <?php else : ?>
-                                <textarea id="mnem_template_body" name="template_body" rows="8" class="large-text"></textarea>
-                            <?php endif; ?>
+                            <div id="mnem_template_body" class="mnem-quill-editor" data-mnem-quill="1" data-mnem-quill-height="450px"></div>
+                            <textarea name="template_body" class="mnem-quill-source" style="display:none;"></textarea>
                         </td>
                     </tr>
                 </table>

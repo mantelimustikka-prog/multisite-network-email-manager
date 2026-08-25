@@ -6,7 +6,7 @@ defined('ABSPATH') || exit;
 
 class NetworkAdmin
 {
-    private const CKEDITOR_VERSION = '43.0.0';
+    private const QUILL_VERSION = '2.0.3';
 
     public function init()
     {
@@ -637,25 +637,25 @@ class NetworkAdmin
                     array(
                         'ajaxUrl' => admin_url('admin-ajax.php'),
                         'nonce' => function_exists('wp_create_nonce') ? wp_create_nonce('mnem_dashboard_ajax') : '',
+                        'i18n' => array(
+                            'sourceView' => __('HTML Source', 'multisite-network-email-manager'),
+                            'visualView' => __('Visual Editor', 'multisite-network-email-manager'),
+                        ),
                     )
                 );
             }
         }
 
-        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings'), true)) {
-            return;
-        }
-
-        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings'), true)) {
+        if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings', 'mnem-email-templates'), true)) {
             return;
         }
 
         if (function_exists('wp_enqueue_style')) {
-            wp_enqueue_style('mnem-ckeditor', 'https://cdn.ckeditor.com/ckeditor5/' . self::CKEDITOR_VERSION . '/ckeditor5.css', array(), self::CKEDITOR_VERSION);
+            wp_enqueue_style('mnem-quill', 'https://cdn.quilljs.com/' . self::QUILL_VERSION . '/quill.snow.css', array(), self::QUILL_VERSION);
         }
 
         if (function_exists('wp_enqueue_script')) {
-            wp_enqueue_script('mnem-ckeditor', 'https://cdn.ckeditor.com/ckeditor5/' . self::CKEDITOR_VERSION . '/ckeditor5.umd.js', array(), self::CKEDITOR_VERSION, true);
+            wp_enqueue_script('mnem-quill', 'https://cdn.quilljs.com/' . self::QUILL_VERSION . '/quill.js', array(), self::QUILL_VERSION, true);
         }
     }
 

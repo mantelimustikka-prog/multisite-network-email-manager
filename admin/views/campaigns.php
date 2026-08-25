@@ -125,7 +125,8 @@ $is_cancelled = $editing && $campaign_status === 'cancelled';
                         <tr>
                             <th scope="row"><label for="mnem_campaign_body">Body</label></th>
                             <td>
-                                <textarea class="large-text mnem-ckeditor-source" id="mnem_campaign_body" name="body" rows="12" data-mnem-ckeditor="1" data-mnem-ckeditor-height="450px" required <?php echo $is_cancelled ? 'readonly' : ''; ?>><?php echo esc_textarea($campaign_body); ?></textarea>
+                                <div id="mnem_campaign_body" class="mnem-quill-editor" data-mnem-quill="1" data-mnem-quill-height="450px" data-mnem-quill-initial="<?php echo esc_attr($campaign_body); ?>" <?php echo $is_cancelled ? 'data-mnem-quill-readonly="1"' : ''; ?>></div>
+                                <textarea name="body" class="mnem-quill-source" style="display:none;" required><?php echo esc_textarea($campaign_body); ?></textarea>
                                 <p class="description">Available variables: {user_name}, {user_email}, {site_name}, {date}</p>
                             </td>
                         </tr>

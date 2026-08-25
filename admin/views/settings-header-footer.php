@@ -44,14 +44,14 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be prepended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <textarea
-            name="global_header"
+        <div
             id="mnem_global_header"
-            rows="10"
-            class="large-text mnem-ckeditor-source"
-            data-mnem-ckeditor="1"
-            data-mnem-ckeditor-height="300px"
-        ><?php echo esc_textarea($global_header); ?></textarea>
+            class="mnem-quill-editor"
+            data-mnem-quill="1"
+            data-mnem-quill-height="300px"
+            data-mnem-quill-initial="<?php echo esc_attr($global_header); ?>"
+        ></div>
+        <textarea name="global_header" class="mnem-quill-source" style="display:none;"><?php echo esc_textarea($global_header); ?></textarea>
     </div>
 
     <h2><?php esc_html_e('Global Email Footer', 'multisite-network-email-manager'); ?></h2>
@@ -59,14 +59,14 @@ $global_footer  = (string) get_site_option('mnem_global_footer', '');
         <?php esc_html_e('This content will be appended to all outbound emails. Supports HTML, shortcodes, and images.', 'multisite-network-email-manager'); ?>
     </p>
     <div class="mnem-editor-container" style="max-width: 800px; margin-bottom: 20px;">
-        <textarea
-            name="global_footer"
+        <div
             id="mnem_global_footer"
-            rows="10"
-            class="large-text mnem-ckeditor-source"
-            data-mnem-ckeditor="1"
-            data-mnem-ckeditor-height="300px"
-        ><?php echo esc_textarea($global_footer); ?></textarea>
+            class="mnem-quill-editor"
+            data-mnem-quill="1"
+            data-mnem-quill-height="300px"
+            data-mnem-quill-initial="<?php echo esc_attr($global_footer); ?>"
+        ></div>
+        <textarea name="global_footer" class="mnem-quill-source" style="display:none;"><?php echo esc_textarea($global_footer); ?></textarea>
     </div>
 
     <?php submit_button(esc_html__('Save Header &amp; Footer Settings', 'multisite-network-email-manager')); ?>
