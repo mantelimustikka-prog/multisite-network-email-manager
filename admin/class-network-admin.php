@@ -651,7 +651,8 @@ class NetworkAdmin
         }
 
         if (function_exists('wp_enqueue_style')) {
-            wp_enqueue_style('mnem-quill', 'https://cdn.quilljs.com/' . self::QUILL_VERSION . '/quill.snow.css', array(), self::QUILL_VERSION);
+            wp_enqueue_style('mnem-quill-core', 'https://cdn.quilljs.com/' . self::QUILL_VERSION . '/quill.core.css', array(), self::QUILL_VERSION);
+            wp_enqueue_style('mnem-quill-snow', 'https://cdn.quilljs.com/' . self::QUILL_VERSION . '/quill.snow.css', array('mnem-quill-core'), self::QUILL_VERSION);
         }
 
         if (function_exists('wp_enqueue_script')) {

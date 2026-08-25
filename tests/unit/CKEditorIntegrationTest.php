@@ -65,4 +65,18 @@ class CKEditorIntegrationTest extends TestCase
         $this->assertStringNotContainsString('wp_editor(', $contents);
         $this->assertStringNotContainsString('data-mnem-ckeditor', $contents);
     }
+
+    public function test_network_admin_enqueues_quill_not_ckeditor(): void
+    {
+        $path = __DIR__ . '/../../admin/class-network-admin.php';
+        $contents = file_get_contents($path);
+
+        $this->assertNotFalse($contents);
+        $this->assertStringContainsString('cdn.quilljs.com', $contents);
+        $this->assertStringContainsString('quill.core.css', $contents);
+        $this->assertStringContainsString('quill.snow.css', $contents);
+        $this->assertStringContainsString('quill.js', $contents);
+        $this->assertStringNotContainsString('cdn.ckeditor.com', $contents);
+        $this->assertStringNotContainsString('ckeditor5', $contents);
+    }
 }
