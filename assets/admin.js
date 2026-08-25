@@ -124,149 +124,103 @@
         });
     });
 
-    function initCKEditors() {
-        if (typeof window.CKEDITOR === 'undefined') {
+    function initQuillEditors() {
+        if (typeof window.Quill === 'undefined') {
             return;
         }
 
-        var editorLib = window.CKEDITOR;
-        var ClassicEditor = editorLib.ClassicEditor;
-
-        if (typeof ClassicEditor === 'undefined') {
-            return;
-        }
-
-        var pluginNames = [
-            'Essentials',
-            'Paragraph',
-            'Heading',
-            'Bold',
-            'Italic',
-            'Underline',
-            'Strikethrough',
-            'Link',
-            'List',
-            'Indent',
-            'Table',
-            'TableToolbar',
-            'CodeBlock',
-            'BlockQuote',
-            'HtmlEmbed',
-            'SourceEditing'
-        ];
-        var plugins = pluginNames.map(function (pluginName) {
-            return editorLib[pluginName];
-        }).filter(function (plugin) {
-            return typeof plugin !== 'undefined';
-        });
-        if (!plugins.length || typeof editorLib.Essentials === 'undefined' || typeof editorLib.Paragraph === 'undefined') {
-            return;
-        }
-
-        var enabledToolbarItems = {
-            sourceEditing: typeof editorLib.SourceEditing !== 'undefined',
-            heading: typeof editorLib.Heading !== 'undefined',
-            bold: typeof editorLib.Bold !== 'undefined',
-            italic: typeof editorLib.Italic !== 'undefined',
-            underline: typeof editorLib.Underline !== 'undefined',
-            strikethrough: typeof editorLib.Strikethrough !== 'undefined',
-            link: typeof editorLib.Link !== 'undefined',
-            htmlEmbed: typeof editorLib.HtmlEmbed !== 'undefined',
-            // List plugin provides both list controls.
-            bulletedList: typeof editorLib.List !== 'undefined',
-            numberedList: typeof editorLib.List !== 'undefined',
-            // Indent plugin provides both indent controls.
-            indent: typeof editorLib.Indent !== 'undefined',
-            outdent: typeof editorLib.Indent !== 'undefined',
-            insertTable: typeof editorLib.Table !== 'undefined',
-            codeBlock: typeof editorLib.CodeBlock !== 'undefined',
-            blockQuote: typeof editorLib.BlockQuote !== 'undefined',
-            undo: typeof editorLib.Essentials !== 'undefined',
-            redo: typeof editorLib.Essentials !== 'undefined'
-        };
-        var requestedToolbar = [
-            'sourceEditing', '|',
-            'heading', '|',
-            'bold', 'italic', 'underline', 'strikethrough', '|',
-            'link', 'htmlEmbed', '|',
-            'bulletedList', 'numberedList', 'indent', 'outdent', '|',
-            'insertTable', '|',
-            'codeBlock', '|',
-            'blockQuote', '|',
-            'undo', 'redo'
-        ];
-        var toolbarItems = requestedToolbar.filter(function (item) {
-            if (item === '|') {
-                return true;
-            }
-
-            return !!enabledToolbarItems[item];
-        });
-        var compactToolbarItems = [];
-        toolbarItems.forEach(function (item) {
-            if (item === '|' && (!compactToolbarItems.length || compactToolbarItems[compactToolbarItems.length - 1] === '|')) {
+        $('[data-mnem-quill="1"]').each(function () {
+            var $container = $(this);
+            if ($container.data('mnemQuillInitialized')) {
                 return;
             }
 
-            compactToolbarItems.push(item);
-        });
-        if (compactToolbarItems.length && compactToolbarItems[compactToolbarItems.length - 1] === '|') {
-            compactToolbarItems.pop();
-        }
-        toolbarItems = compactToolbarItems;
+            var configuredHeight = String($container.data('mnemQuillHeight') || '450px');
+            var isReadOnly = $container.data('mnemQuillReadonly') === 1 || $container.data('mnemQuillReadonly') === '1';
+            var $source = $container.next('textarea.mnem-quill-source');
+            var initialHtml = String($container.data('mnemQuillInitial') || $source.val() || '');
 
-        $('[data-mnem-ckeditor="1"]').each(function () {
-            var $textarea = $(this);
-            if ($textarea.data('mnemCKEditorInitialized')) {
-                return;
-            }
-            var configuredHeight = String($textarea.data('mnemCkeditorHeight') || '450px');
-            var isReadOnly = $textarea.is('[readonly], [disabled]');
-            ClassicEditor.create($textarea.get(0), {
-                plugins: plugins,
-                toolbar: {
-                    items: toolbarItems
-                },
-                image: {
-                    toolbar: ['imageStyle:inline', 'imageStyle:block', 'imageStyle:side', '|', 'imageTextAlternative']
-                },
-                table: {
-                    contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells']
-                },
-                htmlEmbed: {
-                    showPreviews: false
-                }
-            }).then(function (editor) {
-                $textarea.data('mnemCKEditorInstance', editor);
+            var i18n = (typeof mnemAdmin !== 'undefined' && mnemAdmin.i18n) ? mnemAdmin.i18n : {};
+            var labelSource = i18n.sourceView || 'HTML Source';
+            var labelVisual = i18n.visualView || 'Visual Editor';
 
-                if (isReadOnly) {
-                    editor.enableReadOnlyMode('mnem-readonly');
-                }
+            // Build wrapper: source toggle button + editor container.
+            var $wrapper = $('<div class="mnem-quill-wrapper"></div>');
+            var $toggleBtn = $('<button type="button" class="button mnem-quill-source-toggle">' +
+                '<span class="mnem-quill-source-toggle-visual">' + labelSource + '</span>' +
+                '<span class="mnem-quill-source-toggle-source" style="display:none;">' + labelVisual + '</span>' +
+                '</button>');
+            var $sourceArea = $('<textarea class="mnem-quill-html-source large-text" style="display:none; width:100%; box-sizing:border-box;"></textarea>');
+            $sourceArea.css('min-height', configuredHeight);
 
-                // Sync editor content back to textarea on form submit.
-                $textarea.closest('form').on('submit.mnemCKEditorSync', function () {
-                    $textarea.val(editor.getData());
-                });
+            $container.before($wrapper);
+            $wrapper.append($toggleBtn).append($sourceArea).append($container);
 
-                // Keep textarea value in sync as user types.
-                editor.model.document.on('change:data', function () {
-                    $textarea.val(editor.getData());
-                });
-
-                // Apply height to the editable area.
-                $(editor.ui.getEditableElement()).css('min-height', configuredHeight);
-
-                $textarea.data('mnemCKEditorInitialized', true);
-            }).catch(function (error) {
-                // eslint-disable-next-line no-console
-                if (window.console && window.console.error) {
-                    window.console.error('CKEditor 5 init error:', error);
+            // Initialize Quill.
+            var quill = new window.Quill($container.get(0), {
+                theme: 'snow',
+                readOnly: isReadOnly,
+                modules: {
+                    toolbar: isReadOnly ? false : [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'indent': '-1' }, { 'indent': '+1' }],
+                        ['link', 'image'],
+                        ['blockquote', 'code-block'],
+                        ['clean']
+                    ]
                 }
             });
+
+            $container.css('min-height', configuredHeight);
+
+            // Set initial HTML content.
+            if (initialHtml) {
+                quill.clipboard.dangerouslyPasteHTML(initialHtml);
+            }
+            $source.val(quill.root.innerHTML);
+
+            // Sync on change.
+            quill.on('text-change', function () {
+                $source.val(quill.root.innerHTML);
+            });
+
+            // Source view toggle.
+            $toggleBtn.on('click', function () {
+                var isSource = $sourceArea.is(':visible');
+                if (isSource) {
+                    // Switch back to visual: paste HTML from source area into Quill.
+                    quill.clipboard.dangerouslyPasteHTML($sourceArea.val());
+                    $source.val(quill.root.innerHTML);
+                    $sourceArea.hide();
+                    $container.show();
+                    $toggleBtn.find('.mnem-quill-source-toggle-visual').show();
+                    $toggleBtn.find('.mnem-quill-source-toggle-source').hide();
+                } else {
+                    // Switch to source: populate source area with current HTML.
+                    $sourceArea.val(quill.root.innerHTML);
+                    $container.hide();
+                    $sourceArea.show();
+                    $toggleBtn.find('.mnem-quill-source-toggle-visual').hide();
+                    $toggleBtn.find('.mnem-quill-source-toggle-source').show();
+                }
+            });
+
+            // Before submit, ensure hidden textarea has latest content.
+            $wrapper.closest('form').on('submit.mnemQuillSync', function () {
+                if ($sourceArea.is(':visible')) {
+                    $source.val($sourceArea.val());
+                } else {
+                    $source.val(quill.root.innerHTML);
+                }
+            });
+
+            $container.data('mnemQuillInitialized', true);
         });
     }
 
-    $(initCKEditors);
+    $(initQuillEditors);
 
     if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
         return;
