@@ -188,7 +188,7 @@ class SmsProvidersTest extends TestCase
         $this->assertSame('+1555', $parsed['phone']);
     }
 
-    public function test_textmagic_test_connection_uses_account_endpoint_and_first_name(): void
+    public function test_textmagic_test_connection_uses_user_endpoint_and_first_name(): void
     {
         $provider = new SmsTextmagicTestDouble(
             array('username' => 'demo', 'api_key' => 'secret'),
@@ -198,7 +198,7 @@ class SmsProvidersTest extends TestCase
         $result = $provider->test_connection();
 
         $this->assertTrue($result['success']);
-        $this->assertSame('https://rest.textmagic.com/api/v2/account', $provider->last_url);
+        $this->assertSame('https://rest.textmagic.com/api/v2/user', $provider->last_url);
         $this->assertStringContainsString('Account: Alice', $result['message']);
     }
 
