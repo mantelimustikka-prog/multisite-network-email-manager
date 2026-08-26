@@ -17,6 +17,50 @@ use MNEM\Providers\SmsVonage;
 use MNEM\SmsProviderStatusMap;
 use PHPUnit\Framework\TestCase;
 
+class SmsTextmagicTestDouble extends SmsTextmagic
+{
+    public string $last_url = '';
+
+    /** @var array<string,mixed> */
+    private array $mock_response;
+
+    /** @param array<string,string> $config */
+    public function __construct(array $config, array $mock_response)
+    {
+        parent::__construct($config);
+        $this->mock_response = $mock_response;
+    }
+
+    protected function http_get(string $url, array $headers = array())
+    {
+        $this->last_url = $url;
+        return $this->mock_response;
+    }
+}
+
+class SmsEztextingTestDouble extends SmsEztexting
+{
+    public string $last_url = '';
+    public string $last_body = '';
+
+    /** @var array<string,mixed> */
+    private array $mock_response;
+
+    /** @param array<string,string> $config */
+    public function __construct(array $config, array $mock_response)
+    {
+        parent::__construct($config);
+        $this->mock_response = $mock_response;
+    }
+
+    protected function http_post(string $url, array $headers = array(), string $body = '')
+    {
+        $this->last_url  = $url;
+        $this->last_body = $body;
+        return $this->mock_response;
+    }
+}
+
 /**
  * Tests for all 12 SMS provider implementations.
  */
@@ -144,6 +188,20 @@ class SmsProvidersTest extends TestCase
         $this->assertSame('+1555', $parsed['phone']);
     }
 
+    public function test_textmagic_test_connection_uses_account_endpoint_and_first_name(): void
+    {
+        $provider = new SmsTextmagicTestDouble(
+            array('username' => 'demo', 'api_key' => 'secret'),
+            array('code' => 200, 'body' => '{"firstName":"Alice"}')
+        );
+
+        $result = $provider->test_connection();
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('https://rest.textmagic.com/api/v2/account', $provider->last_url);
+        $this->assertStringContainsString('Account: Alice', $result['message']);
+    }
+
     // ------------------------------------------------------------------
     // SimpleTexting
     // ------------------------------------------------------------------
@@ -191,6 +249,22 @@ class SmsProvidersTest extends TestCase
     public function test_eztexting_provider_key(): void
     {
         $this->assertSame('eztexting', SmsEztexting::get_provider_key());
+    }
+
+    public function test_eztexting_send_uses_message_parameter(): void
+    {
+        $provider = new SmsEztextingTestDouble(
+            array('username' => 'demo', 'password' => 'secret'),
+            array('code' => 201, 'body' => '{"Response":{"ID":"ez-1"}}')
+        );
+
+        $result = $provider->send('+15550001111', 'Hello');
+        parse_str($provider->last_body, $params);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('https://app.eztexting.com/sending/messages', $provider->last_url);
+        $this->assertSame('Hello', $params['message']);
+        $this->assertArrayNotHasKey('subject', $params);
     }
 
     // ------------------------------------------------------------------

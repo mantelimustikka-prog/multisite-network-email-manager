@@ -77,7 +77,7 @@ class SmsEztexting extends SmsBaseProvider
             'user'    => $username,
             'pass'    => $password,
             'phonenumber' => $phone,
-            'subject' => $message,
+            'message' => $message,
             'format'  => 'json',
         ));
 
