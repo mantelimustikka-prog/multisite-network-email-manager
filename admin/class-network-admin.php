@@ -15,6 +15,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_save_header_footer_settings'));
         add_action('admin_init', array($this, 'handle_save_status_interval_settings'));
         add_action('admin_init', array($this, 'handle_save_general_settings'));
+        add_action('admin_init', array($this, 'handle_sms_settings_save'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
@@ -240,6 +241,82 @@ class NetworkAdmin
         ));
 
         $this->redirect_with_notice('mnem-settings', 'general_settings_saved', array('tab' => 'general'));
+    }
+
+    public function handle_sms_settings_save()
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'save_sms_settings') {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_settings')) {
+            $this->redirect_with_notice('mnem-settings', 'sms_settings_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $no_sms_hours = isset($_POST['no_sms_hours']) ? sanitize_text_field(wp_unslash($_POST['no_sms_hours'])) : '';
+        if ($no_sms_hours !== '' && !\MNEM\SmsSettings::validate_no_sms_hours($no_sms_hours)) {
+            $this->redirect_with_notice('mnem-settings', 'sms_no_hours_invalid', array('tab' => 'sms'));
+            return;
+        }
+
+        $max_per_day = isset($_POST['max_sms_per_day']) ? (int) $_POST['max_sms_per_day'] : 1000;
+        if ($max_per_day < 1) {
+            $this->redirect_with_notice('mnem-settings', 'sms_settings_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $delay = isset($_POST['sms_delay']) ? (int) $_POST['sms_delay'] : 100;
+        if ($delay < 0) {
+            $this->redirect_with_notice('mnem-settings', 'sms_settings_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $provider = isset($_POST['sms_provider']) ? sanitize_text_field(wp_unslash($_POST['sms_provider'])) : '';
+        $valid_providers = \MNEM\SmsProviderManager::get_available_providers();
+        if ($provider !== '' && !array_key_exists($provider, $valid_providers)) {
+            $this->redirect_with_notice('mnem-settings', 'sms_settings_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $fallback_provider = isset($_POST['sms_fallback_provider']) ? sanitize_text_field(wp_unslash($_POST['sms_fallback_provider'])) : '';
+        if ($fallback_provider !== '' && !array_key_exists($fallback_provider, $valid_providers)) {
+            $fallback_provider = '';
+        }
+
+        // Sanitize provider config fields.
+        $raw_config = isset($_POST['sms_config']) && is_array($_POST['sms_config']) ? $_POST['sms_config'] : array();
+        $sanitized_config = array();
+        foreach ($raw_config as $prov => $fields) {
+            if (!is_array($fields)) {
+                continue;
+            }
+            $prov_key = sanitize_key((string) $prov);
+            $sanitized_config[$prov_key] = array();
+            foreach ($fields as $field_key => $field_val) {
+                $sanitized_config[$prov_key][sanitize_key((string) $field_key)] = sanitize_text_field(wp_unslash((string) $field_val));
+            }
+        }
+
+        $data = array(
+            'provider'          => $provider,
+            'enabled'           => !empty($_POST['sms_enabled']),
+            'max_per_day'       => $max_per_day,
+            'no_sms_hours'      => $no_sms_hours,
+            'delay'             => $delay,
+            'fallback_provider' => $fallback_provider,
+            'tracking_enabled'  => !empty($_POST['sms_tracking_enabled']),
+            'config'            => $sanitized_config,
+        );
+
+        $saved = \MNEM\SmsSettings::save($data);
+
+        $this->redirect_with_notice('mnem-settings', $saved ? 'sms_settings_saved' : 'sms_settings_failed', array('tab' => 'sms'));
     }
 
     public function handle_suppression_action()

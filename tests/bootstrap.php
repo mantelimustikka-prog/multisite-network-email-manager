@@ -132,6 +132,13 @@ if (!function_exists('sanitize_text_field')) {
     }
 }
 
+if (!function_exists('sanitize_key')) {
+    function sanitize_key($key)
+    {
+        return strtolower(preg_replace('/[^a-z0-9_-]/i', '', (string) $key));
+    }
+}
+
 if (!function_exists('wp_unslash')) {
     function wp_unslash($value)
     {
@@ -833,6 +840,21 @@ require_once __DIR__ . '/../includes/class-rest-api.php';
 require_once __DIR__ . '/../includes/class-subscriber-lists.php';
 require_once __DIR__ . '/../includes/class-sms-subscriber-lists.php';
 require_once __DIR__ . '/../includes/class-email-templates.php';
+require_once __DIR__ . '/../includes/interfaces/class-sms-provider-interface.php';
+require_once __DIR__ . '/../includes/providers/class-sms-base-provider.php';
+require_once __DIR__ . '/../includes/providers/class-sms-textmagic.php';
+require_once __DIR__ . '/../includes/providers/class-sms-simpletexting.php';
+require_once __DIR__ . '/../includes/providers/class-sms-messagedesk.php';
+require_once __DIR__ . '/../includes/providers/class-sms-eztexting.php';
+require_once __DIR__ . '/../includes/providers/class-sms-salesmsg.php';
+require_once __DIR__ . '/../includes/providers/class-sms-textline.php';
+require_once __DIR__ . '/../includes/providers/class-sms-slicktext.php';
+require_once __DIR__ . '/../includes/providers/class-sms-textedly.php';
+require_once __DIR__ . '/../includes/providers/class-sms-textus.php';
+require_once __DIR__ . '/../includes/providers/class-sms-twilio.php';
+require_once __DIR__ . '/../includes/providers/class-sms-clicksend.php';
+require_once __DIR__ . '/../includes/class-sms-provider-manager.php';
+require_once __DIR__ . '/../includes/class-sms-settings.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-table-diagnostics.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';

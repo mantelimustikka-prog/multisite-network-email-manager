@@ -279,7 +279,7 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'general';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'general');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'general', 'sms');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'general';
         }
@@ -292,11 +292,13 @@ class AdminMenu
         $campaign_rate_limit_per_hour = \MNEM\SmtpSettings::get_campaign_rate_limit_per_hour();
         $campaign_rate_limit_per_day = \MNEM\SmtpSettings::get_campaign_rate_limit_per_day();
         $campaign_delay_between_sends = \MNEM\SmtpSettings::get_campaign_delay_between_sends();
+        $sms_settings = \MNEM\SmsSettings::get_all();
+        $sms_providers = \MNEM\SmsProviderManager::get_available_providers();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
@@ -774,6 +776,10 @@ class AdminMenu
             'status_interval_failed' => 'Failed to save status update interval.',
             'general_settings_saved' => 'General settings saved successfully.',
             'general_settings_failed' => 'Failed to save general settings.',
+            'sms_settings_saved' => 'SMS settings saved successfully.',
+            'sms_settings_failed' => 'Failed to save SMS settings.',
+            'sms_no_hours_invalid' => "Invalid 'No SMS Hours' format. Use HH:MM:SS-HH:MM:SS",
+            'sms_connection_tested' => 'SMS connection test completed.',
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -785,7 +791,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid'), true)) {
             return 'notice notice-error';
         }
 
