@@ -3,7 +3,9 @@
  * SMS Settings tab.
  *
  * Variables available: $sms_settings (array from SmsSettings::get_all()),
- *                      $sms_providers (array from SmsProviderManager::get_available_providers())
+ *                      $sms_providers (array from SmsProviderManager::get_available_providers()),
+ *                      $sms_integrity_stats (array from SmsSubscriberLists::get_data_integrity_overview()),
+ *                      $sms_integrity_result (array from NetworkAdmin::get_and_clear_sms_integrity_result())
  */
 
 defined('ABSPATH') || exit;
@@ -245,6 +247,45 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
                 <p class="description"><?php esc_html_e('Optional fallback provider if the primary provider fails.', 'multisite-network-email-manager'); ?></p>
             </td>
         </tr>
+    </table>
+
+    <h3><?php esc_html_e('SMS Data Integrity', 'multisite-network-email-manager'); ?></h3>
+    <table class="form-table" role="presentation">
+        <tr>
+            <th scope="row"><?php esc_html_e('Current Stats', 'multisite-network-email-manager'); ?></th>
+            <td>
+                <ul style="margin:0;">
+                    <li><?php echo esc_html(sprintf(__('Total SMS lists: %d', 'multisite-network-email-manager'), isset($sms_integrity_stats['total_lists']) ? (int) $sms_integrity_stats['total_lists'] : 0)); ?></li>
+                    <li><?php echo esc_html(sprintf(__('Total SMS subscribers: %d', 'multisite-network-email-manager'), isset($sms_integrity_stats['total_subscribers']) ? (int) $sms_integrity_stats['total_subscribers'] : 0)); ?></li>
+                    <li><?php echo esc_html(sprintf(__('Total invalid phone numbers: %d', 'multisite-network-email-manager'), isset($sms_integrity_stats['total_invalid_phone_numbers']) ? (int) $sms_integrity_stats['total_invalid_phone_numbers'] : 0)); ?></li>
+                    <li><?php echo esc_html(sprintf(__('Orphaned records: %d', 'multisite-network-email-manager'), isset($sms_integrity_stats['orphaned_records']) ? (int) $sms_integrity_stats['orphaned_records'] : 0)); ?></li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e('Integrity Tools', 'multisite-network-email-manager'); ?></th>
+            <td>
+                <?php wp_nonce_field('mnem_sms_data_integrity', 'mnem_sms_integrity_nonce'); ?>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button type="submit" class="button" name="mnem_sms_integrity_action" value="check_sms_data_integrity"><?php esc_html_e('Check Integrity', 'multisite-network-email-manager'); ?></button>
+                    <button type="submit" class="button" name="mnem_sms_integrity_action" value="cleanup_sms_orphans"><?php esc_html_e('Cleanup Orphans', 'multisite-network-email-manager'); ?></button>
+                    <button type="submit" class="button" name="mnem_sms_integrity_action" value="export_sms_cleanup_report"><?php esc_html_e('Export Cleanup Report', 'multisite-network-email-manager'); ?></button>
+                </div>
+                <p class="description"><?php esc_html_e('Check for orphaned SMS subscriber, invalid-phone, queue, and SMS log records. Queue cleanup is skipped until SMS queue rows store list_id.', 'multisite-network-email-manager'); ?></p>
+            </td>
+        </tr>
+        <?php if (!empty($sms_integrity_result)) : ?>
+            <tr>
+                <th scope="row"><?php esc_html_e('Last Result', 'multisite-network-email-manager'); ?></th>
+                <td>
+                    <?php if (isset($sms_integrity_result['type']) && $sms_integrity_result['type'] === 'export') : ?>
+                        <textarea class="large-text code" rows="10" readonly><?php echo esc_textarea(isset($sms_integrity_result['report']) ? (string) $sms_integrity_result['report'] : ''); ?></textarea>
+                    <?php elseif (isset($sms_integrity_result['result']) && is_array($sms_integrity_result['result'])) : ?>
+                        <pre style="max-height:260px;overflow:auto;"><?php echo esc_html(wp_json_encode($sms_integrity_result['result'], JSON_PRETTY_PRINT)); ?></pre>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endif; ?>
     </table>
 
     <?php submit_button(esc_html__('Save SMS Settings', 'multisite-network-email-manager')); ?>

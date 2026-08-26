@@ -20,6 +20,7 @@ class NetworkAdminTest extends TestCase
         $GLOBALS['mnem_hooks'] = array();
         $GLOBALS['mnem_site_options'] = array();
         $GLOBALS['mnem_site_options'][\MNEM\SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
+        $GLOBALS['mnem_transients'] = array();
         unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_deleted_users']);
         $_POST = array();
         $_GET = array();
@@ -63,6 +64,7 @@ class NetworkAdminTest extends TestCase
         }, $GLOBALS['mnem_hooks']['admin_init']);
         $this->assertContains('handle_queue_item_delete_action', $admin_init_callbacks);
         $this->assertContains('handle_invalid_phone_action', $admin_init_callbacks);
+        $this->assertContains('handle_sms_data_integrity_action', $admin_init_callbacks);
     }
 
     public function test_ajax_send_test_email_returns_error_when_mail_fails()
@@ -655,9 +657,66 @@ class NetworkAdminTest extends TestCase
     public function test_handle_sms_subscriber_list_action_deletes_list()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_subscriber_lists WHERE id = 3') !== false) {
+                    return array('id' => 3, 'name' => 'Delete Me');
+                }
+
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_list_subscribers WHERE list_id = 3') !== false) {
+                    return 4;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_invalid_phone_numbers'") !== false) {
+                    return 'wp_mnem_invalid_phone_numbers';
+                }
+                if (strpos($query, 'FROM wp_mnem_invalid_phone_numbers WHERE list_id = 3') !== false) {
+                    return 2;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_logs'") !== false) {
+                    return 'wp_mnem_logs';
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_queue'") !== false) {
+                    return 'wp_mnem_queue';
+                }
+                if (strpos($query, 'COLUMN_NAME = \'list_id\'') !== false && strpos($query, 'wp_mnem_queue') !== false) {
+                    return 0;
+                }
+
+                return 0;
+            }
+
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT id FROM wp_mnem_logs') !== false) {
+                    return array(55);
+                }
+
+                return array();
+            }
+
             public function query($query)
             {
                 $this->queries[] = $query;
+                if (strpos($query, 'DELETE FROM wp_mnem_invalid_phone_numbers WHERE list_id = 3') !== false) {
+                    return 2;
+                }
+                if (strpos($query, 'DELETE FROM wp_mnem_logs WHERE id IN (55)') !== false) {
+                    return 1;
+                }
+                if (strpos($query, 'DELETE FROM wp_mnem_sms_list_subscribers WHERE list_id = 3') !== false) {
+                    return 4;
+                }
+                if (strpos($query, 'DELETE FROM wp_mnem_sms_subscriber_lists WHERE id = 3') !== false) {
+                    return 1;
+                }
                 return 1;
             }
         };
@@ -672,7 +731,119 @@ class NetworkAdminTest extends TestCase
         $admin->handle_sms_subscriber_list_action();
 
         $this->assertStringContainsString('mnem_notice=sms_subscriber_list_deleted', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('deleted_total=8', $GLOBALS['mnem_last_redirect']);
         $this->assertStringContainsString('page=mnem-sms-subscriber-lists', $GLOBALS['mnem_last_redirect']);
+    }
+
+    public function test_handle_sms_subscriber_list_action_requires_confirmation_for_large_delete()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_subscriber_lists WHERE id = 9') !== false) {
+                    return array('id' => 9, 'name' => 'Big List');
+                }
+
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_list_subscribers WHERE list_id = 9') !== false) {
+                    return 120;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_invalid_phone_numbers'") !== false) {
+                    return 'wp_mnem_invalid_phone_numbers';
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_logs'") !== false) {
+                    return 'wp_mnem_logs';
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_queue'") !== false) {
+                    return 'wp_mnem_queue';
+                }
+                if (strpos($query, 'COLUMN_NAME = \'list_id\'') !== false && strpos($query, 'wp_mnem_queue') !== false) {
+                    return 0;
+                }
+
+                return 0;
+            }
+
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'sms_subscriber_delete_list',
+            '_wpnonce' => 'test-nonce',
+            'list_id' => 9,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_subscriber_list_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_subscriber_delete_confirmation_required', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringNotContainsString('DELETE FROM wp_mnem_sms_subscriber_lists', implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
+    public function test_handle_sms_data_integrity_action_stores_check_results()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_list_subscribers s LEFT JOIN wp_mnem_sms_subscriber_lists l') !== false) {
+                    return 0;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_invalid_phone_numbers'") !== false) {
+                    return 'wp_mnem_invalid_phone_numbers';
+                }
+                if (strpos($query, 'FROM wp_mnem_invalid_phone_numbers p LEFT JOIN wp_mnem_sms_subscriber_lists l') !== false) {
+                    return 0;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_queue'") !== false) {
+                    return 'wp_mnem_queue';
+                }
+                if (strpos($query, 'COLUMN_NAME = \'list_id\'') !== false && strpos($query, 'wp_mnem_queue') !== false) {
+                    return 0;
+                }
+                if (strpos($query, "SHOW TABLES LIKE 'wp_mnem_logs'") !== false) {
+                    return 'wp_mnem_logs';
+                }
+                if (strpos($query, 'SELECT COUNT(1) FROM wp_mnem_sms_subscriber_lists') !== false) {
+                    return 1;
+                }
+                if (strpos($query, 'SELECT COUNT(1) FROM wp_mnem_sms_list_subscribers') !== false) {
+                    return 4;
+                }
+                if (strpos($query, 'SELECT COUNT(1) FROM wp_mnem_invalid_phone_numbers') !== false) {
+                    return 2;
+                }
+
+                return 0;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+        };
+
+        $_POST = array(
+            'mnem_sms_integrity_action' => 'check_sms_data_integrity',
+            'mnem_sms_integrity_nonce' => 'test-nonce',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_data_integrity_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_integrity_checked', $GLOBALS['mnem_last_redirect']);
+        $this->assertNotEmpty($GLOBALS['mnem_transients']['mnem_sms_integrity_result_1']['value']);
     }
 
     public function test_handle_sms_subscriber_list_action_adds_user_by_id_with_phone_number()

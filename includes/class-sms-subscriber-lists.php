@@ -76,19 +76,125 @@ class SmsSubscriberLists
         return $result !== false;
     }
 
-    public static function delete(int $id)
+    /**
+     * @return array<string,mixed>
+     */
+    public static function delete(int $id): array
     {
         global $wpdb;
+
         $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
         $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
-        $wpdb->query($wpdb->prepare("DELETE FROM {$subs_table} WHERE list_id = %d", $id));
-        $result = $wpdb->query($wpdb->prepare("DELETE FROM {$lists_table} WHERE id = %d", $id));
 
-        if ($result !== false) {
-            Logger::info('SMS subscriber list deleted.', array('list_id' => $id, 'user_id' => get_current_user_id()));
+        $result = array(
+            'success' => false,
+            'message' => 'SMS subscriber list could not be deleted.',
+            'deleted_counts' => array(
+                'list' => 0,
+                'subscribers' => 0,
+                'invalid_phones' => 0,
+                'queue_items' => 0,
+                'logs' => 0,
+                'mapping_rows' => 0,
+            ),
+            'errors' => array(),
+            'notes' => array(),
+        );
+
+        $list = self::get($id);
+        if (!is_array($list)) {
+            $result['message'] = 'SMS subscriber list not found.';
+            $result['errors'][] = 'list_not_found';
+
+            return $result;
         }
 
-        return $result !== false;
+        $impact = self::get_delete_impact($id);
+        $result['notes'] = isset($impact['notes']) && is_array($impact['notes']) ? $impact['notes'] : array();
+
+        if ($wpdb->query('START TRANSACTION') === false) {
+            $result['message'] = 'Unable to start SMS subscriber list deletion transaction.';
+            $result['errors'][] = 'transaction_start_failed';
+            Logger::error('SMS subscriber list delete failed before cleanup started.', array(
+                'deleted_list_id' => $id,
+                'list_name' => isset($list['name']) ? (string) $list['name'] : '',
+                'errors' => $result['errors'],
+            ));
+
+            return $result;
+        }
+
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $invalid_table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
+        $mapping_table = $wpdb->base_prefix . 'mnem_sms_campaign_list_map';
+        $log_ids = self::get_sms_log_ids_for_list($id);
+
+        $deletions = array(
+            'mapping_rows' => self::table_exists($mapping_table)
+                ? $wpdb->prepare("DELETE FROM {$mapping_table} WHERE list_id = %d", $id)
+                : '',
+            'invalid_phones' => self::table_exists($invalid_table)
+                ? $wpdb->prepare("DELETE FROM {$invalid_table} WHERE list_id = %d", $id)
+                : '',
+            'queue_items' => self::table_exists($queue_table) && self::table_has_column($queue_table, 'list_id')
+                ? $wpdb->prepare("DELETE FROM {$queue_table} WHERE list_id = %d", $id)
+                : '',
+            'logs' => !empty($log_ids) ? self::prepare_delete_ids_query($logs_table, $log_ids) : '',
+            'subscribers' => $wpdb->prepare("DELETE FROM {$subs_table} WHERE list_id = %d", $id),
+            'list' => $wpdb->prepare("DELETE FROM {$lists_table} WHERE id = %d", $id),
+        );
+
+        foreach ($deletions as $key => $query) {
+            if ($query === '') {
+                continue;
+            }
+
+            $deleted = $wpdb->query($query);
+            if ($deleted === false) {
+                $wpdb->query('ROLLBACK');
+                $result['errors'][] = $key . '_delete_failed';
+                $result['message'] = 'SMS subscriber list delete failed during related record cleanup.';
+                Logger::error('SMS subscriber list delete rolled back.', array(
+                    'deleted_list_id' => $id,
+                    'list_name' => isset($list['name']) ? (string) $list['name'] : '',
+                    'failed_step' => $key,
+                    'errors' => $result['errors'],
+                    'notes' => $result['notes'],
+                ));
+
+                return $result;
+            }
+
+            $result['deleted_counts'][$key] = (int) $deleted;
+        }
+
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            $result['errors'][] = 'transaction_commit_failed';
+            $result['message'] = 'SMS subscriber list delete failed while committing changes.';
+            Logger::error('SMS subscriber list delete commit failed.', array(
+                'deleted_list_id' => $id,
+                'list_name' => isset($list['name']) ? (string) $list['name'] : '',
+                'deleted_counts' => $result['deleted_counts'],
+                'errors' => $result['errors'],
+            ));
+
+            return $result;
+        }
+
+        $result['success'] = true;
+        $result['message'] = 'SMS subscriber list deleted successfully.';
+
+        Logger::info('SMS subscriber list deleted with cascade cleanup.', array(
+            'deleted_list_id' => $id,
+            'list_name' => isset($list['name']) ? (string) $list['name'] : '',
+            'deleted_counts' => $result['deleted_counts'],
+            'notes' => $result['notes'],
+            'admin_id' => get_current_user_id(),
+        ));
+
+        return $result;
     }
 
     /**
@@ -391,6 +497,270 @@ class SmsSubscriberLists
         return implode("\n", $rows);
     }
 
+    /**
+     * @return array<string,mixed>
+     */
+    public static function get_delete_impact(int $id): array
+    {
+        global $wpdb;
+
+        $counts = array(
+            'list' => self::get($id) ? 1 : 0,
+            'subscribers' => 0,
+            'invalid_phones' => 0,
+            'queue_items' => 0,
+            'logs' => 0,
+            'mapping_rows' => 0,
+        );
+        $notes = array();
+
+        $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $counts['subscribers'] = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(1) FROM {$subs_table} WHERE list_id = %d", $id)
+        );
+
+        $invalid_table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
+        if (self::table_exists($invalid_table)) {
+            $counts['invalid_phones'] = (int) $wpdb->get_var(
+                $wpdb->prepare("SELECT COUNT(1) FROM {$invalid_table} WHERE list_id = %d", $id)
+            );
+        }
+
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        if (self::table_exists($queue_table) && self::table_has_column($queue_table, 'list_id')) {
+            $counts['queue_items'] = (int) $wpdb->get_var(
+                $wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE list_id = %d", $id)
+            );
+        } else {
+            $notes[] = 'Queue table does not currently store SMS list_id references.';
+        }
+
+        $mapping_table = $wpdb->base_prefix . 'mnem_sms_campaign_list_map';
+        if (self::table_exists($mapping_table)) {
+            $counts['mapping_rows'] = (int) $wpdb->get_var(
+                $wpdb->prepare("SELECT COUNT(1) FROM {$mapping_table} WHERE list_id = %d", $id)
+            );
+        }
+
+        $counts['logs'] = count(self::get_sms_log_ids_for_list($id));
+
+        return array(
+            'counts' => $counts,
+            'notes' => $notes,
+            'total_related' => array_sum($counts),
+        );
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public static function cleanup_orphaned_records(): array
+    {
+        global $wpdb;
+
+        $result = array(
+            'found' => 0,
+            'cleaned' => 0,
+            'errors' => array(),
+            'details' => array(
+                'subscribers' => 0,
+                'invalid_phones' => 0,
+                'queue_items' => 0,
+                'logs' => 0,
+            ),
+            'notes' => array(),
+        );
+
+        $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
+        $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $invalid_table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
+        $orphaned_log_ids = self::get_orphaned_sms_log_ids();
+
+        $queries = array(
+            'subscribers' => "DELETE s FROM {$subs_table} s LEFT JOIN {$lists_table} l ON l.id = s.list_id WHERE l.id IS NULL",
+            'invalid_phones' => self::table_exists($invalid_table)
+                ? "DELETE p FROM {$invalid_table} p LEFT JOIN {$lists_table} l ON l.id = p.list_id WHERE p.list_id > 0 AND l.id IS NULL"
+                : '',
+            'queue_items' => self::table_exists($queue_table) && self::table_has_column($queue_table, 'list_id')
+                ? "DELETE q FROM {$queue_table} q LEFT JOIN {$lists_table} l ON l.id = q.list_id WHERE q.list_id > 0 AND l.id IS NULL"
+                : '',
+            'logs' => self::table_exists($logs_table) && !empty($orphaned_log_ids)
+                ? self::prepare_delete_ids_query($logs_table, $orphaned_log_ids)
+                : '',
+        );
+
+        $result['found'] = self::count_orphaned_subscribers()
+            + self::count_orphaned_invalid_phone_numbers()
+            + self::count_orphaned_queue_items()
+            + count($orphaned_log_ids);
+
+        if (!self::table_exists($queue_table) || !self::table_has_column($queue_table, 'list_id')) {
+            $result['notes'][] = 'Queue orphan cleanup skipped because mnem_queue has no list_id column.';
+        }
+
+        if ($wpdb->query('START TRANSACTION') === false) {
+            $result['errors'][] = 'transaction_start_failed';
+
+            return $result;
+        }
+
+        foreach ($queries as $key => $query) {
+            if ($query === '') {
+                continue;
+            }
+
+            $deleted = $wpdb->query($query);
+            if ($deleted === false) {
+                $wpdb->query('ROLLBACK');
+                $result['errors'][] = $key . '_cleanup_failed';
+                Logger::error('SMS orphan cleanup rolled back.', array(
+                    'failed_step' => $key,
+                    'errors' => $result['errors'],
+                ));
+
+                return $result;
+            }
+
+            $result['details'][$key] = (int) $deleted;
+            $result['cleaned'] += (int) $deleted;
+        }
+
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            $result['errors'][] = 'transaction_commit_failed';
+
+            return $result;
+        }
+
+        Logger::info('SMS orphan cleanup completed.', array(
+            'found' => $result['found'],
+            'cleaned' => $result['cleaned'],
+            'details' => $result['details'],
+            'notes' => $result['notes'],
+        ));
+
+        return $result;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public static function check_data_integrity(): array
+    {
+        $issues = array();
+        $notes = array();
+
+        $orphaned_subscribers = self::count_orphaned_subscribers();
+        if ($orphaned_subscribers > 0) {
+            $issues[] = array(
+                'type' => 'orphaned_subscribers',
+                'title' => 'Orphaned SMS subscribers',
+                'count' => $orphaned_subscribers,
+                'description' => sprintf('Found %d SMS subscriber records with missing list references.', $orphaned_subscribers),
+            );
+        }
+
+        $orphaned_invalid_phones = self::count_orphaned_invalid_phone_numbers();
+        if ($orphaned_invalid_phones > 0) {
+            $issues[] = array(
+                'type' => 'orphaned_invalid_phone_numbers',
+                'title' => 'Orphaned invalid phone numbers',
+                'count' => $orphaned_invalid_phones,
+                'description' => sprintf('Found %d invalid phone number records with missing SMS lists.', $orphaned_invalid_phones),
+            );
+        }
+
+        $orphaned_queue = self::count_orphaned_queue_items();
+        if ($orphaned_queue > 0) {
+            $issues[] = array(
+                'type' => 'orphaned_queue_items',
+                'title' => 'Orphaned SMS queue items',
+                'count' => $orphaned_queue,
+                'description' => sprintf('Found %d queue items referencing missing SMS lists.', $orphaned_queue),
+            );
+        } elseif (self::queue_table_has_no_list_id_note() !== '') {
+            $notes[] = self::queue_table_has_no_list_id_note();
+        }
+
+        $orphaned_logs = count(self::get_orphaned_sms_log_ids());
+        if ($orphaned_logs > 0) {
+            $issues[] = array(
+                'type' => 'orphaned_sms_logs',
+                'title' => 'Orphaned SMS logs',
+                'count' => $orphaned_logs,
+                'description' => sprintf('Found %d SMS log entries referencing missing SMS lists.', $orphaned_logs),
+            );
+        }
+
+        return array(
+            'issues' => $issues,
+            'notes' => $notes,
+            'issues_found' => count($issues),
+            'orphaned_records' => array_sum(array_map(static function ($issue) {
+                return isset($issue['count']) ? (int) $issue['count'] : 0;
+            }, $issues)),
+        );
+    }
+
+    /**
+     * @return array<string,int>
+     */
+    public static function get_data_integrity_overview(): array
+    {
+        global $wpdb;
+
+        $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
+        $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $invalid_table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
+        $integrity = self::check_data_integrity();
+
+        return array(
+            'total_lists' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$lists_table}"),
+            'total_subscribers' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$subs_table}"),
+            'total_invalid_phone_numbers' => self::table_exists($invalid_table)
+                ? (int) $wpdb->get_var("SELECT COUNT(1) FROM {$invalid_table}")
+                : 0,
+            'orphaned_records' => isset($integrity['orphaned_records']) ? (int) $integrity['orphaned_records'] : 0,
+        );
+    }
+
+    public static function export_cleanup_report(): string
+    {
+        $integrity = self::check_data_integrity();
+        $lines = array(
+            'SMS Data Integrity Report',
+            'Generated: ' . gmdate('Y-m-d H:i:s') . ' UTC',
+            '',
+        );
+
+        if (!empty($integrity['issues'])) {
+            foreach ((array) $integrity['issues'] as $issue) {
+                $lines[] = sprintf(
+                    '- %s: %d',
+                    isset($issue['title']) ? (string) $issue['title'] : 'Issue',
+                    isset($issue['count']) ? (int) $issue['count'] : 0
+                );
+                if (!empty($issue['description'])) {
+                    $lines[] = '  ' . (string) $issue['description'];
+                }
+            }
+        } else {
+            $lines[] = 'No SMS data integrity issues found.';
+        }
+
+        if (!empty($integrity['notes'])) {
+            $lines[] = '';
+            $lines[] = 'Notes:';
+            foreach ((array) $integrity['notes'] as $note) {
+                $lines[] = '- ' . (string) $note;
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
     private static function get_users_by_status(int $list_id, string $status, int $limit, int $offset)
     {
         global $wpdb;
@@ -462,6 +832,174 @@ class SmsSubscriberLists
     private static function current_time_mysql()
     {
         return function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
+    }
+
+    private static function count_orphaned_subscribers(): int
+    {
+        global $wpdb;
+
+        $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
+        $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$subs_table} s LEFT JOIN {$lists_table} l ON l.id = s.list_id WHERE l.id IS NULL"
+        );
+    }
+
+    private static function count_orphaned_invalid_phone_numbers(): int
+    {
+        global $wpdb;
+
+        $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
+        $invalid_table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
+        if (!self::table_exists($invalid_table)) {
+            return 0;
+        }
+
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$invalid_table} p LEFT JOIN {$lists_table} l ON l.id = p.list_id WHERE p.list_id > 0 AND l.id IS NULL"
+        );
+    }
+
+    private static function count_orphaned_queue_items(): int
+    {
+        global $wpdb;
+
+        $lists_table = $wpdb->base_prefix . 'mnem_sms_subscriber_lists';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        if (!self::table_exists($queue_table) || !self::table_has_column($queue_table, 'list_id')) {
+            return 0;
+        }
+
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$queue_table} q LEFT JOIN {$lists_table} l ON l.id = q.list_id WHERE q.list_id > 0 AND l.id IS NULL"
+        );
+    }
+
+    /**
+     * @return array<int,int>
+     */
+    private static function get_sms_log_ids_for_list(int $list_id): array
+    {
+        global $wpdb;
+
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
+        if (!self::table_exists($logs_table)) {
+            return array();
+        }
+
+        $query = $wpdb->prepare(
+            "SELECT id FROM {$logs_table} WHERE (message LIKE %s OR message LIKE %s) AND (context LIKE %s OR context LIKE %s)",
+            '%SMS%',
+            '%phone%',
+            '%"list_id":' . $list_id . '%',
+            '%"list_id":"' . $list_id . '"%'
+        );
+
+        if (method_exists($wpdb, 'get_col')) {
+            return array_map('intval', (array) $wpdb->get_col($query));
+        }
+
+        $rows = (array) $wpdb->get_results($query, ARRAY_A);
+
+        return array_values(array_map(static function ($row) {
+            return isset($row['id']) ? (int) $row['id'] : 0;
+        }, $rows));
+    }
+
+    /**
+     * @return array<int,int>
+     */
+    private static function get_orphaned_sms_log_ids(): array
+    {
+        global $wpdb;
+
+        $logs_table = $wpdb->base_prefix . 'mnem_logs';
+        if (!self::table_exists($logs_table)) {
+            return array();
+        }
+
+        $query = $wpdb->prepare(
+            "SELECT id, context FROM {$logs_table} WHERE (message LIKE %s OR message LIKE %s) AND context LIKE %s ORDER BY id DESC LIMIT %d",
+            '%SMS%',
+            '%phone%',
+            '%"list_id":%',
+            1000
+        );
+        $rows = (array) $wpdb->get_results($query, ARRAY_A);
+        $ids = array();
+
+        foreach ($rows as $row) {
+            $context = isset($row['context']) ? json_decode((string) $row['context'], true) : array();
+            $list_id = is_array($context) && isset($context['list_id']) ? (int) $context['list_id'] : 0;
+            if ($list_id > 0 && !self::get($list_id)) {
+                $ids[] = isset($row['id']) ? (int) $row['id'] : 0;
+            }
+        }
+
+        return array_values(array_filter($ids));
+    }
+
+    private static function queue_table_has_no_list_id_note(): string
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+
+        if (!self::table_exists($queue_table) || self::table_has_column($queue_table, 'list_id')) {
+            return '';
+        }
+
+        return 'Queue integrity checks skipped because mnem_queue does not yet have an SMS list_id column.';
+    }
+
+    private static function table_exists(string $table): bool
+    {
+        global $wpdb;
+
+        if (!method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
+            return false;
+        }
+
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table;
+    }
+
+    private static function table_has_column(string $table, string $column): bool
+    {
+        global $wpdb;
+
+        if (!self::table_exists($table) || !method_exists($wpdb, 'get_var') || !method_exists($wpdb, 'prepare')) {
+            return false;
+        }
+
+        return (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+            $table,
+            $column
+        )) > 0;
+    }
+
+    /**
+     * @param array<int,int> $ids
+     */
+    private static function prepare_delete_ids_query(string $table, array $ids): string
+    {
+        global $wpdb;
+
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            return '';
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+
+        return call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                array("DELETE FROM {$table} WHERE id IN ({$placeholders})"),
+                $ids
+            )
+        );
     }
 
     /**

@@ -331,11 +331,13 @@ class AdminMenu
         $campaign_delay_between_sends = \MNEM\SmtpSettings::get_campaign_delay_between_sends();
         $sms_settings = \MNEM\SmsSettings::get_all();
         $sms_providers = \MNEM\SmsProviderManager::get_available_providers();
+        $sms_integrity_stats = \MNEM\SmsSubscriberLists::get_data_integrity_overview();
+        $sms_integrity_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_integrity_result();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
@@ -456,6 +458,8 @@ class AdminMenu
             $subscribed_current_page = $subscribed_result['current_page'];
             $unsubscribed_current_page = $unsubscribed_result['current_page'];
         }
+        $delete_impact = $active_list_id > 0 ? \MNEM\SmsSubscriberLists::get_delete_impact($active_list_id) : array('counts' => array(), 'notes' => array(), 'total_related' => 0);
+        $delete_requires_confirmation = !empty($delete_impact['total_related']) && (int) $delete_impact['total_related'] > 100;
         $alert_message = isset($_GET['mnem_alert']) ? sanitize_text_field(wp_unslash($_GET['mnem_alert'])) : '';
 
         $this->render_view('sms-subscriber-lists.php', compact(
@@ -475,7 +479,9 @@ class AdminMenu
             'subscribed_total',
             'unsubscribed_total',
             'subscribed_total_pages',
-            'unsubscribed_total_pages'
+            'unsubscribed_total_pages',
+            'delete_impact',
+            'delete_requires_confirmation'
         ));
     }
 
@@ -835,16 +841,21 @@ class AdminMenu
             'subscriber_csv_imported' => 'Subscriber CSV import processed.',
             'subscriber_operation_failed' => 'Subscriber list operation failed.',
             'sms_subscriber_list_saved' => 'SMS subscriber list saved.',
-            'sms_subscriber_list_deleted' => 'SMS subscriber list deleted.',
+            'sms_subscriber_list_deleted' => sprintf('SMS subscriber list deleted. Removed %d related record%s.', max(0, (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0)), (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0) === 1 ? '' : 's'),
             'sms_subscriber_added' => 'SMS subscriber added successfully.',
             'sms_subscriber_removed' => 'SMS subscriber removed successfully.',
             'sms_subscriber_unsubscribed' => 'SMS subscriber unsubscribed successfully.',
             'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
             'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
+            'sms_subscriber_delete_confirmation_required' => sprintf('This SMS list delete will remove %d related record%s. Please confirm the cascade delete and submit again.', max(0, (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0)), (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0) === 1 ? '' : 's'),
             'invalid_phone_updated' => 'Invalid phone number records updated successfully.',
             'invalid_phone_removed' => 'Invalid phone number entry removed successfully.',
             'invalid_phone_deleted_user' => 'Network user deleted successfully.',
             'sms_subscriber_operation_failed' => 'SMS subscriber list operation failed.',
+            'sms_integrity_checked' => 'SMS data integrity check completed.',
+            'sms_integrity_cleaned' => 'SMS orphan cleanup completed.',
+            'sms_integrity_report_generated' => 'SMS cleanup report generated.',
+            'sms_integrity_failed' => 'SMS data integrity action failed.',
             'email_template_saved' => 'Email template saved.',
             'email_template_deleted' => 'Email template deleted.',
             'email_template_reset' => 'Template reset to default.',
@@ -875,7 +886,11 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed'), true)) {
+        if ($notice === 'sms_subscriber_delete_confirmation_required') {
+            return 'notice notice-warning';
+        }
+
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed'), true)) {
             return 'notice notice-error';
         }
 
