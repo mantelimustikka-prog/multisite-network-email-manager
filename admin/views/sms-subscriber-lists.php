@@ -122,6 +122,11 @@ defined('ABSPATH') || exit;
 
             <div class="mnem-panel mnem-panel-wide">
                 <h2>Subscribed Users</h2>
+                <div style="margin-bottom: 15px;">
+                    <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists-bulk-add&list_id=' . (int) $active_list['id'])); ?>" class="button button-primary">
+                        <?php esc_html_e('+ Add from Network Users', 'multisite-network-email-manager'); ?>
+                    </a>
+                </div>
                 <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
                     <input type="hidden" name="mnem_action" value="sms_subscriber_add_user" />
