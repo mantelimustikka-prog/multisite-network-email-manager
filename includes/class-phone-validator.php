@@ -6,7 +6,12 @@ defined('ABSPATH') || exit;
 
 class PhoneValidator
 {
-    /** @var array<string,array<string,mixed>> */
+    /**
+     * lengths = expected national-number digit counts after optional trunk-zero removal
+     * and before the country dial code is prefixed for E.164 formatting.
+     *
+     * @var array<string,array<string,mixed>>
+     */
     private const COUNTRY_RULES = array(
         'US' => array('code' => '1', 'lengths' => array(10), 'strip_trunk_zero' => false),
         'CA' => array('code' => '1', 'lengths' => array(10), 'strip_trunk_zero' => false),
@@ -92,7 +97,8 @@ class PhoneValidator
             }
         }
 
-        if ($national_number === '' || preg_match('/^[01]/', $national_number)) {
+        $should_check_leading_digit = is_array($rule) || strpos($phone_number, '+') !== 0;
+        if ($national_number === '' || ($should_check_leading_digit && preg_match('/^[01]/', $national_number))) {
             return array(
                 'valid' => false,
                 'formatted' => '',

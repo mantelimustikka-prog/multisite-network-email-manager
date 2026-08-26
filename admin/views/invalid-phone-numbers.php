@@ -103,10 +103,10 @@ defined('ABSPATH') || exit;
                         <td><?php echo esc_html((string) $item['created_at']); ?></td>
                         <td><?php echo !empty($item['admin_login']) ? esc_html((string) $item['admin_login']) : '—'; ?></td>
                         <td>
-                            <button type="submit" class="button" name="mnem_action" value="<?php echo !empty($item['blocked']) ? 'unblock_phone' : 'block_phone'; ?>" onclick="document.getElementById('mnem_invalid_single_id').value='<?php echo esc_js((string) $item['id']); ?>';"><?php echo esc_html(!empty($item['blocked']) ? 'Unblock' : 'Block'); ?></button>
-                            <button type="submit" class="button delete" name="mnem_action" value="remove_invalid_entry" onclick="document.getElementById('mnem_invalid_single_id').value='<?php echo esc_js((string) $item['id']); ?>';"><?php esc_html_e('Remove', 'multisite-network-email-manager'); ?></button>
+                            <button type="submit" class="button" name="mnem_action" value="<?php echo !empty($item['blocked']) ? 'unblock_phone' : 'block_phone'; ?>" onclick="return mnemPrepareSingleInvalidAction('<?php echo esc_js((string) $item['id']); ?>');"><?php echo esc_html(!empty($item['blocked']) ? 'Unblock' : 'Block'); ?></button>
+                            <button type="submit" class="button delete" name="mnem_action" value="remove_invalid_entry" onclick="return mnemPrepareSingleInvalidAction('<?php echo esc_js((string) $item['id']); ?>');"><?php esc_html_e('Remove', 'multisite-network-email-manager'); ?></button>
                             <?php if (!empty($item['user_id'])) : ?>
-                                <button type="submit" class="button delete" name="mnem_action" value="delete_user_with_phone" onclick="document.getElementById('mnem_invalid_single_id').value='<?php echo esc_js((string) $item['id']); ?>'; return confirm('Delete the associated network user account permanently?');"><?php esc_html_e('Delete User', 'multisite-network-email-manager'); ?></button>
+                                <button type="submit" class="button delete" name="mnem_action" value="delete_user_with_phone" onclick="return mnemPrepareSingleInvalidAction('<?php echo esc_js((string) $item['id']); ?>', 'Delete the associated network user account permanently?');"><?php esc_html_e('Delete User', 'multisite-network-email-manager'); ?></button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -145,3 +145,22 @@ defined('ABSPATH') || exit;
         <?php endif; ?>
     </div>
 </div>
+<script>
+function mnemPrepareSingleInvalidAction(id, confirmationMessage) {
+    var singleIdField = document.getElementById('mnem_invalid_single_id');
+    if (singleIdField) {
+        singleIdField.value = id;
+    }
+
+    var checkboxes = document.querySelectorAll('.mnem-invalid-phone-checkbox');
+    for (var i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = false;
+    }
+
+    if (confirmationMessage) {
+        return window.confirm(confirmationMessage);
+    }
+
+    return true;
+}
+</script>

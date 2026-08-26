@@ -30,4 +30,12 @@ class PhoneValidatorTest extends TestCase
         $this->assertFalse($result['valid']);
         $this->assertSame('', $result['formatted']);
     }
+
+    public function test_validate_phone_number_accepts_unknown_country_e164_number()
+    {
+        $result = PhoneValidator::validate_phone_number('+12345678901', 'ZZ');
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame('+12345678901', $result['formatted']);
+    }
 }
