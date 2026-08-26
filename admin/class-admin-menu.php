@@ -72,11 +72,6 @@ class AdminMenu
         ));
     }
 
-    public static function get_allowed_network_user_batch_sizes()
-    {
-        return array(500, 1000, 1500, 2000, 5000, 10000);
-    }
-
     public function render_sms_subscriber_lists_bulk_add()
     {
         if (!isset($_GET['list_id'])) {
@@ -104,6 +99,11 @@ class AdminMenu
             'batch_sizes',
             'default_batch_size'
         ));
+    }
+
+    public static function get_allowed_network_user_batch_sizes()
+    {
+        return array(500, 1000, 1500, 2000, 5000, 10000);
     }
 
     public static function get_network_users_batch($batch_size, $offset)

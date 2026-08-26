@@ -1203,7 +1203,7 @@ class NetworkAdmin
 
     public function handle_bulk_add_sms_subscribers()
     {
-        check_ajax_referer('mnem_bulk_add_users', 'nonce');
+        check_ajax_referer('mnem_bulk_add_sms_users', 'nonce');
 
         if (!current_user_can('manage_network_options')) {
             wp_send_json_error(array('message' => 'Insufficient permissions'));
@@ -1215,7 +1215,11 @@ class NetworkAdmin
         $user_ids = array_map('intval', array_filter($user_ids_raw));
         $skip_existing = isset($_POST['skip_existing']) && sanitize_text_field(wp_unslash($_POST['skip_existing'])) === '1';
         $skip_unsubscribed = isset($_POST['skip_unsubscribed']) && sanitize_text_field(wp_unslash($_POST['skip_unsubscribed'])) === '1';
-        $phone_handling = isset($_POST['phone_handling']) ? sanitize_key(wp_unslash($_POST['phone_handling'])) : 'skip';
+        $phone_handling = isset($_POST['phone_handling']) ? sanitize_text_field(wp_unslash($_POST['phone_handling'])) : 'skip';
+
+        if (!in_array($phone_handling, array('skip', 'empty', 'exclude'), true)) {
+            $phone_handling = 'skip';
+        }
 
         if ($list_id <= 0 || empty($user_ids)) {
             wp_send_json_error(array('message' => 'Invalid list or no users selected'));
