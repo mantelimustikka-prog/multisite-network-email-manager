@@ -148,17 +148,25 @@ class AdminMenu
         }
 
         global $wpdb;
+        $phone_by_user = array();
         if (!empty($user_ids) && isset($wpdb->usermeta, $wpdb->base_prefix)) {
             $placeholders = implode(',', array_fill(0, count($user_ids), '%d'));
             $capabilities_pattern = $wpdb->esc_like($wpdb->base_prefix) . '%capabilities';
             $membership_rows = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id IN ({$placeholders}) AND (meta_key = %s OR meta_key LIKE %s)",
+                    "SELECT user_id, meta_key, meta_value FROM {$wpdb->usermeta} WHERE user_id IN ({$placeholders}) AND (meta_key = %s OR meta_key LIKE %s OR meta_key IN ('phone_number', 'phone', 'mobile'))",
                     array_merge($user_ids, array($wpdb->base_prefix . 'capabilities', $capabilities_pattern))
                 )
             );
 
             foreach ($membership_rows as $membership_row) {
+                if (in_array($membership_row->meta_key, array('phone_number', 'phone', 'mobile'), true)) {
+                    $uid = (int) $membership_row->user_id;
+                    if (!isset($phone_by_user[$uid]) || $phone_by_user[$uid] === '') {
+                        $phone_by_user[$uid] = sanitize_text_field((string) $membership_row->meta_value);
+                    }
+                    continue;
+                }
                 if (!preg_match('/^' . preg_quote($wpdb->base_prefix, '/') . '(?:(\d+)_)?capabilities$/', (string) $membership_row->meta_key, $matches)) {
                     continue;
                 }
@@ -209,6 +217,7 @@ class AdminMenu
                 'user_id' => $user_id,
                 'login' => $user->user_login,
                 'email' => $user->user_email,
+                'phone_number' => isset($phone_by_user[$user_id]) ? $phone_by_user[$user_id] : '',
                 'site_id' => !empty($site_ids) ? (int) $site_ids[0] : 0,
                 'site_ids' => $site_ids,
                 'site_name' => !empty($site_names) ? implode(', ', $site_names) : __('No site membership', 'multisite-network-email-manager'),

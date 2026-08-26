@@ -92,7 +92,7 @@ defined('ABSPATH') || exit;
                                 <input type="checkbox" id="mnem_sms_select_all_users" />
                             </th>
                             <th><?php esc_html_e('Username', 'multisite-network-email-manager'); ?></th>
-                            <th><?php esc_html_e('Email', 'multisite-network-email-manager'); ?></th>
+                            <th><?php esc_html_e('Phone Number', 'multisite-network-email-manager'); ?></th>
                             <th><?php esc_html_e('Site', 'multisite-network-email-manager'); ?></th>
                             <th><?php esc_html_e('Role', 'multisite-network-email-manager'); ?></th>
                         </tr>
@@ -226,7 +226,7 @@ defined('ABSPATH') || exit;
                         <thead>
                             <tr>
                                 <th><?php esc_html_e('Username', 'multisite-network-email-manager'); ?></th>
-                                <th><?php esc_html_e('Email', 'multisite-network-email-manager'); ?></th>
+                                <th><?php esc_html_e('Phone Number', 'multisite-network-email-manager'); ?></th>
                                 <th><?php esc_html_e('Site', 'multisite-network-email-manager'); ?></th>
                             </tr>
                         </thead>
@@ -407,6 +407,7 @@ function appendSmsUsers(users) {
         row.dataset.roles = Array.isArray(user.roles) ? user.roles.join(',') : String(user.role || '');
         row.dataset.email = user.email;
         row.dataset.login = user.login;
+        row.dataset.phone = user.phone_number || '';
 
         var checkboxCell = document.createElement('td');
         var checkbox = document.createElement('input');
@@ -422,8 +423,8 @@ function appendSmsUsers(users) {
         var loginCell = document.createElement('td');
         loginCell.textContent = user.login;
 
-        var emailCell = document.createElement('td');
-        emailCell.textContent = user.email;
+        var phoneCell = document.createElement('td');
+        phoneCell.textContent = user.phone_number || '';
 
         var siteCell = document.createElement('td');
         siteCell.textContent = user.site_name;
@@ -433,7 +434,7 @@ function appendSmsUsers(users) {
 
         row.appendChild(checkboxCell);
         row.appendChild(loginCell);
-        row.appendChild(emailCell);
+        row.appendChild(phoneCell);
         row.appendChild(siteCell);
         row.appendChild(roleCell);
         tbody.appendChild(row);
@@ -675,12 +676,12 @@ async function mnemApplySmsFilters() {
         var row = document.createElement('tr');
         var tdLogin = document.createElement('td');
         tdLogin.textContent = user.login;
-        var tdEmail = document.createElement('td');
-        tdEmail.textContent = user.email;
+        var tdPhone = document.createElement('td');
+        tdPhone.textContent = user.phone_number || '';
         var tdSite = document.createElement('td');
         tdSite.textContent = user.site_name;
         row.appendChild(tdLogin);
-        row.appendChild(tdEmail);
+        row.appendChild(tdPhone);
         row.appendChild(tdSite);
         previewTbody.appendChild(row);
     });
