@@ -650,10 +650,15 @@ class NetworkAdmin
                 'impact' => $impact,
                 'admin_id' => get_current_user_id(),
             ));
-            $result = \MNEM\SmsSubscriberLists::delete($list_id);
+            $result = \MNEM\SmsSubscriberLists::delete($list_id, $impact);
             if (!empty($result['success'])) {
+                $deleted_counts = isset($result['deleted_counts']) && is_array($result['deleted_counts']) ? $result['deleted_counts'] : array();
                 $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_list_deleted', array(
-                    'deleted_total' => array_sum(array_map('intval', isset($result['deleted_counts']) ? (array) $result['deleted_counts'] : array())),
+                    'deleted_total' => (int) (isset($deleted_counts['subscribers']) ? $deleted_counts['subscribers'] : 0)
+                        + (int) (isset($deleted_counts['invalid_phones']) ? $deleted_counts['invalid_phones'] : 0)
+                        + (int) (isset($deleted_counts['queue_items']) ? $deleted_counts['queue_items'] : 0)
+                        + (int) (isset($deleted_counts['logs']) ? $deleted_counts['logs'] : 0)
+                        + (int) (isset($deleted_counts['mapping_rows']) ? $deleted_counts['mapping_rows'] : 0),
                     'mnem_alert' => $this->build_sms_delete_summary($result),
                 ));
                 return;
@@ -1692,21 +1697,22 @@ class NetworkAdmin
         $parts = array();
 
         foreach (array(
-            'list' => 'list',
             'subscribers' => 'subscribers',
             'invalid_phones' => 'invalid phone records',
             'queue_items' => 'queue items',
             'logs' => 'logs',
             'mapping_rows' => 'mapping rows',
         ) as $key => $label) {
-            if (!isset($counts[$key])) {
+            if (!isset($counts[$key]) || (int) $counts[$key] <= 0) {
                 continue;
             }
 
             $parts[] = sprintf('%d %s', (int) $counts[$key], $label);
         }
 
-        return 'Cascade delete removed ' . implode(', ', $parts) . '.';
+        return empty($parts)
+            ? 'Deleted SMS list with no related records to remove.'
+            : 'Deleted SMS list and removed ' . implode(', ', $parts) . '.';
     }
 
     public function handle_send_campaign_test_email()

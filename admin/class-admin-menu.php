@@ -458,7 +458,7 @@ class AdminMenu
             $subscribed_current_page = $subscribed_result['current_page'];
             $unsubscribed_current_page = $unsubscribed_result['current_page'];
         }
-        $delete_impact = $active_list_id > 0 ? \MNEM\SmsSubscriberLists::get_delete_impact($active_list_id) : array('counts' => array(), 'notes' => array(), 'total_related' => 0);
+        $delete_impact = $active_list_id > 0 ? \MNEM\SmsSubscriberLists::get_delete_impact($active_list_id, is_array($active_list) ? $active_list : null) : array('counts' => array(), 'notes' => array(), 'total_related' => 0);
         $delete_requires_confirmation = !empty($delete_impact['total_related']) && (int) $delete_impact['total_related'] > 100;
         $alert_message = isset($_GET['mnem_alert']) ? sanitize_text_field(wp_unslash($_GET['mnem_alert'])) : '';
 
@@ -796,6 +796,7 @@ class AdminMenu
     private function get_notice_message($notice)    {
         $count = isset($_GET['count']) ? (int) $_GET['count'] : 0;
         $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
+        $deleted_total = isset($_GET['deleted_total']) ? (int) sanitize_text_field(wp_unslash($_GET['deleted_total'])) : 0;
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
@@ -841,13 +842,13 @@ class AdminMenu
             'subscriber_csv_imported' => 'Subscriber CSV import processed.',
             'subscriber_operation_failed' => 'Subscriber list operation failed.',
             'sms_subscriber_list_saved' => 'SMS subscriber list saved.',
-            'sms_subscriber_list_deleted' => sprintf('SMS subscriber list deleted. Removed %d related record%s.', max(0, (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0)), (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0) === 1 ? '' : 's'),
+            'sms_subscriber_list_deleted' => sprintf('SMS subscriber list deleted. Removed %d related record%s.', max(0, $deleted_total), $deleted_total === 1 ? '' : 's'),
             'sms_subscriber_added' => 'SMS subscriber added successfully.',
             'sms_subscriber_removed' => 'SMS subscriber removed successfully.',
             'sms_subscriber_unsubscribed' => 'SMS subscriber unsubscribed successfully.',
             'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
             'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
-            'sms_subscriber_delete_confirmation_required' => sprintf('This SMS list delete will remove %d related record%s. Please confirm the cascade delete and submit again.', max(0, (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0)), (int) (isset($_GET['deleted_total']) ? $_GET['deleted_total'] : 0) === 1 ? '' : 's'),
+            'sms_subscriber_delete_confirmation_required' => sprintf('This SMS list delete will remove %d related record%s. Please confirm the cascade delete and submit again.', max(0, $deleted_total), $deleted_total === 1 ? '' : 's'),
             'invalid_phone_updated' => 'Invalid phone number records updated successfully.',
             'invalid_phone_removed' => 'Invalid phone number entry removed successfully.',
             'invalid_phone_deleted_user' => 'Network user deleted successfully.',

@@ -731,7 +731,7 @@ class NetworkAdminTest extends TestCase
         $admin->handle_sms_subscriber_list_action();
 
         $this->assertStringContainsString('mnem_notice=sms_subscriber_list_deleted', $GLOBALS['mnem_last_redirect']);
-        $this->assertStringContainsString('deleted_total=8', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('deleted_total=7', $GLOBALS['mnem_last_redirect']);
         $this->assertStringContainsString('page=mnem-sms-subscriber-lists', $GLOBALS['mnem_last_redirect']);
     }
 
