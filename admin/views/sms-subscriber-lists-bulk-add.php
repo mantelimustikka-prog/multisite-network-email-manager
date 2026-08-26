@@ -110,15 +110,15 @@ defined('ABSPATH') || exit;
             </div>
         </div>
 
-        <!-- Step 2: Phone Number Handling -->
+        <!-- Step 2: Phone Number Exclusion Patterns -->
         <div class="mnem-panel mnem-panel-wide">
-            <h2><?php esc_html_e('Step 2: Phone Number Resolution (Optional)', 'multisite-network-email-manager'); ?></h2>
+            <h2><?php esc_html_e('Step 2: Phone Number Exclusion Patterns (Optional)', 'multisite-network-email-manager'); ?></h2>
 
             <div style="background: #f9f9f9; padding: 15px; border-radius: 4px;">
                 <p style="color: #666; margin-bottom: 15px;">
                     <?php esc_html_e('For users without phone numbers, choose how to handle them:', 'multisite-network-email-manager'); ?>
                 </p>
-                
+
                 <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 4px;">
                     <label style="display: block; margin-bottom: 15px;">
                         <input type="radio" name="mnem_sms_phone_handling" value="skip" checked>
@@ -143,38 +143,63 @@ defined('ABSPATH') || exit;
                     </label>
                 </div>
 
+                <p style="color: #666; margin-bottom: 15px;">
+                    <?php esc_html_e('Exclude phone numbers matching specific patterns. All patterns use regular expressions (regex).', 'multisite-network-email-manager'); ?>
+                </p>
+
+                <!-- Exclude by Country Code -->
                 <div style="margin-bottom: 20px;">
                     <label style="font-weight: bold;">
-                        <?php esc_html_e('Exclude Emails by Domain:', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Exclude by Country Code (Regex):', 'multisite-network-email-manager'); ?>
                     </label>
                     <p style="margin: 5px 0; color: #666; font-size: 12px;">
-                        <?php esc_html_e('Enter one domain per line (e.g., @test.com, @staging.com)', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Regular expression pattern to exclude by country. Examples:', 'multisite-network-email-manager'); ?><br>
+                        <code>^\+1</code> - Exclude all US numbers (+1xxx)<br>
+                        <code>^\+46</code> - Exclude all Swedish numbers (+46xxx)<br>
+                        <code>^\+(1|44|33)</code> - Exclude US, UK, France
                     </p>
-                    <textarea id="mnem_sms_exclude_domains" style="width: 100%; height: 100px;" placeholder="@test.com&#10;@staging.com&#10;@example.test"></textarea>
+                    <input type="text" id="mnem_sms_exclude_country_regex" class="regular-text" placeholder="^\+1" style="width: 100%; margin-top: 5px;">
                 </div>
 
+                <!-- Exclude by Prefix -->
                 <div style="margin-bottom: 20px;">
                     <label style="font-weight: bold;">
-                        <?php esc_html_e('Exclude Emails by Pattern (Regex):', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Exclude by Number Prefix:', 'multisite-network-email-manager'); ?>
                     </label>
                     <p style="margin: 5px 0; color: #666; font-size: 12px;">
-                        <?php esc_html_e('Regular expression pattern (e.g., /.*\\+test@.*/)', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Enter prefixes one per line (case-insensitive). Examples:', 'multisite-network-email-manager'); ?><br>
+                        <code>+46701</code> - Exclude Telia numbers (Sweden)<br>
+                        <code>+46702</code> - Exclude Vodafone numbers (Sweden)
                     </p>
-                    <input type="text" id="mnem_sms_exclude_regex" class="regular-text" placeholder="/.*\+test@.*/">
+                    <textarea id="mnem_sms_exclude_prefixes" style="width: 100%; height: 80px;" placeholder="+46701&#10;+46702"></textarea>
                 </div>
 
+                <!-- Exclude by Phone Pattern (Regex) -->
                 <div style="margin-bottom: 20px;">
                     <label style="font-weight: bold;">
-                        <?php esc_html_e('Exclude Specific Email Addresses:', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Exclude by Phone Pattern (Regex):', 'multisite-network-email-manager'); ?>
                     </label>
                     <p style="margin: 5px 0; color: #666; font-size: 12px;">
-                        <?php esc_html_e('Enter one email per line or upload CSV file', 'multisite-network-email-manager'); ?>
+                        <?php esc_html_e('Advanced regular expression pattern for phone numbers. Example:', 'multisite-network-email-manager'); ?><br>
+                        <code>.*0*$</code> - Exclude numbers ending with zero<br>
+                        <code>^(\+46)?7[0-9]{8}$</code> - Match specific Swedish mobile format
                     </p>
-                    <textarea id="mnem_sms_exclude_emails" style="width: 100%; height: 100px;" placeholder="test@example.com&#10;admin@test.com"></textarea>
+                    <input type="text" id="mnem_sms_exclude_phone_regex" class="regular-text" placeholder="" style="width: 100%; margin-top: 5px;">
+                </div>
+
+                <!-- Exclude Specific Phone Numbers -->
+                <div style="margin-bottom: 20px;">
+                    <label style="font-weight: bold;">
+                        <?php esc_html_e('Exclude Specific Phone Numbers:', 'multisite-network-email-manager'); ?>
+                    </label>
+                    <p style="margin: 5px 0; color: #666; font-size: 12px;">
+                        <?php esc_html_e('Enter one phone number per line (in E.164 format or as stored in database)', 'multisite-network-email-manager'); ?>
+                    </p>
+                    <textarea id="mnem_sms_exclude_phones" style="width: 100%; height: 100px;" placeholder="+46701234567&#10;+46702345678"></textarea>
 
                     <div style="margin-top: 10px;">
                         <label><?php esc_html_e('Or upload file:', 'multisite-network-email-manager'); ?></label><br>
-                        <input type="file" id="mnem_sms_exclude_file" accept=".csv,.txt" style="margin-top: 5px;">
+                        <input type="file" id="mnem_sms_exclude_phone_file" accept=".csv,.txt" style="margin-top: 5px;">
                     </div>
                 </div>
 
@@ -592,19 +617,20 @@ function filterSmsUsers() {
 
 async function mnemApplySmsFilters() {
     var selectedIds = Array.from(selectedSmUsers);
-    var excludeDomains = document.getElementById('mnem_sms_exclude_domains').value.split('\n').filter(function(d) { return d.trim(); });
-    var excludeRegex = document.getElementById('mnem_sms_exclude_regex').value.trim();
-    var excludeEmails = document.getElementById('mnem_sms_exclude_emails').value.split('\n').map(function(e) { return e.trim().toLowerCase(); }).filter(function(e) { return e; });
+    var excludeCountryRegex = document.getElementById('mnem_sms_exclude_country_regex').value.trim();
+    var excludePrefixes = document.getElementById('mnem_sms_exclude_prefixes').value.split('\n').map(function(p) { return p.trim().toLowerCase(); }).filter(function(p) { return p; });
+    var excludePhoneRegex = document.getElementById('mnem_sms_exclude_phone_regex').value.trim();
+    var excludePhones = document.getElementById('mnem_sms_exclude_phones').value.split('\n').map(function(p) { return p.trim().toLowerCase(); }).filter(function(p) { return p; });
 
     // Handle file upload
-    var fileInput = document.getElementById('mnem_sms_exclude_file');
+    var fileInput = document.getElementById('mnem_sms_exclude_phone_file');
     if (fileInput.files.length > 0) {
         var text = await fileInput.files[0].text();
-        var fileEmails = text.split('\n').map(function(e) { return e.trim().toLowerCase(); }).filter(function(e) { return e; });
-        excludeEmails = excludeEmails.concat(fileEmails);
+        var filePhones = text.split('\n').map(function(p) { return p.trim().toLowerCase(); }).filter(function(p) { return p; });
+        excludePhones = excludePhones.concat(filePhones);
     }
 
-    var excludedEmailsSet = new Set(excludeEmails);
+    var excludedPhonesSet = new Set(excludePhones);
     var excluded = 0;
     var finalUsers = [];
     var finalUserIds = [];
@@ -617,21 +643,18 @@ async function mnemApplySmsFilters() {
         }
 
         var shouldExclude = false;
+        var phone = user.phone_number ? user.phone_number.trim().toLowerCase() : '';
 
-        // Check domain exclusion
-        for (var i = 0; i < excludeDomains.length; i++) {
-            var cleanDomain = excludeDomains[i].trim().toLowerCase().replace(/^@/, '');
-            if (user.email.toLowerCase().endsWith('@' + cleanDomain)) {
-                shouldExclude = true;
-                break;
-            }
+        // Skip users without phone numbers
+        if (!phone) {
+            return;
         }
 
-        // Check regex exclusion
-        if (!shouldExclude && excludeRegex) {
+        // Check country code exclusion (regex on phone)
+        if (!shouldExclude && excludeCountryRegex) {
             try {
-                var regex = new RegExp(excludeRegex);
-                if (regex.test(user.email)) {
+                var countryRegex = new RegExp(excludeCountryRegex);
+                if (countryRegex.test(phone)) {
                     shouldExclude = true;
                 }
             } catch (e) {
@@ -643,8 +666,34 @@ async function mnemApplySmsFilters() {
             }
         }
 
-        // Check specific email exclusion
-        if (!shouldExclude && excludedEmailsSet.has(user.email.toLowerCase())) {
+        // Check prefix exclusion
+        if (!shouldExclude) {
+            for (var i = 0; i < excludePrefixes.length; i++) {
+                if (phone.startsWith(excludePrefixes[i])) {
+                    shouldExclude = true;
+                    break;
+                }
+            }
+        }
+
+        // Check phone regex exclusion
+        if (!shouldExclude && excludePhoneRegex) {
+            try {
+                var phoneRegex = new RegExp(excludePhoneRegex);
+                if (phoneRegex.test(phone)) {
+                    shouldExclude = true;
+                }
+            } catch (e) {
+                if (!regexError) {
+                    regexError = true;
+                    alert(mnemSmsBulkAddStrings.invalidRegex + e.message);
+                }
+                return;
+            }
+        }
+
+        // Check specific phone number exclusion
+        if (!shouldExclude && excludedPhonesSet.has(phone)) {
             shouldExclude = true;
         }
 
