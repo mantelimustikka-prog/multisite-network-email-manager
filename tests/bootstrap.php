@@ -895,6 +895,8 @@ require_once __DIR__ . '/../includes/providers/class-sms-textedly.php';
 require_once __DIR__ . '/../includes/providers/class-sms-textus.php';
 require_once __DIR__ . '/../includes/providers/class-sms-twilio.php';
 require_once __DIR__ . '/../includes/providers/class-sms-clicksend.php';
+require_once __DIR__ . '/../includes/providers/class-sms-vonage.php';
+require_once __DIR__ . '/../includes/class-sms-provider-status-map.php';
 require_once __DIR__ . '/../includes/class-sms-provider-manager.php';
 require_once __DIR__ . '/../includes/class-sms-settings.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';

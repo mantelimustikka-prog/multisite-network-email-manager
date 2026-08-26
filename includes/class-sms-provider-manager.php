@@ -18,6 +18,7 @@ class SmsProviderManager
         'textus'        => 'TextUS',
         'twilio'        => 'Twilio',
         'clicksend'     => 'ClickSend',
+        'vonage'        => 'Vonage',
     );
 
     /**
@@ -37,6 +38,7 @@ class SmsProviderManager
         'textus'        => \MNEM\Providers\SmsTextus::class,
         'twilio'        => \MNEM\Providers\SmsTwilio::class,
         'clicksend'     => \MNEM\Providers\SmsClicksend::class,
+        'vonage'        => \MNEM\Providers\SmsVonage::class,
     );
 
     /**
@@ -79,5 +81,17 @@ class SmsProviderManager
             return array();
         }
         return $provider->get_config_schema();
+    }
+
+    /**
+     * Return the FQN of the provider class for a given key, or null if not found.
+     * Useful when calling static methods like verify_webhook_signature().
+     *
+     * @return class-string<\MNEM\Providers\SmsBaseProvider>|null
+     */
+    public static function get_provider_class(string $name): ?string
+    {
+        $name = sanitize_key($name);
+        return isset(self::PROVIDER_CLASSES[$name]) ? self::PROVIDER_CLASSES[$name] : null;
     }
 }
