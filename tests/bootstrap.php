@@ -878,6 +878,8 @@ require_once __DIR__ . '/../includes/class-user-events.php';
 require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';
 require_once __DIR__ . '/../includes/class-rest-api.php';
 require_once __DIR__ . '/../includes/class-subscriber-lists.php';
+require_once __DIR__ . '/../includes/class-phone-validator.php';
+require_once __DIR__ . '/../includes/class-invalid-phone-numbers.php';
 require_once __DIR__ . '/../includes/class-sms-subscriber-lists.php';
 require_once __DIR__ . '/../includes/class-email-templates.php';
 require_once __DIR__ . '/../includes/interfaces/class-sms-provider-interface.php';

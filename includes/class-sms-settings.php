@@ -285,7 +285,7 @@ class SmsSettings
             $errors[] = 'SMS delay cannot be negative';
         }
 
-        if (isset($data['validation_country_code']) && !preg_match('/^[A-Z]{2}$/', self::sanitize_country_code((string) $data['validation_country_code']))) {
+        if (isset($data['validation_country_code']) && !preg_match('/^[A-Z]{2}$/', strtoupper(trim((string) $data['validation_country_code'])))) {
             $errors[] = 'Validation country code must be a two-letter country code';
         }
 

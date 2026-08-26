@@ -30,6 +30,7 @@ class AdminMenuTest extends TestCase
         $this->assertNotContains('mnem-smtp-settings', $submenu_slugs);
         $this->assertNotContains('mnem-smtp-diagnostics', $submenu_slugs);
         $this->assertNotContains('mnem-error-logs', $submenu_slugs);
+        $this->assertContains('mnem-invalid-phone-numbers', $submenu_slugs);
     }
 
     public function test_render_queue_applies_email_and_subject_search_filters()
@@ -280,5 +281,68 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('Clear Search', $output);
         $this->assertStringContainsString('Showing 1-1 of 1 records', $output);
         $this->assertStringContainsString('Unsubscribe', $output);
+    }
+
+    public function test_render_sms_subscriber_lists_includes_bulk_add_and_invalid_numbers_links()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'FROM wp_mnem_sms_subscriber_lists') !== false) {
+                    return array(
+                        array(
+                            'id' => 5,
+                            'name' => 'SMS Weekly Updates',
+                            'description' => '',
+                            'created_at' => '2026-08-17 10:00:00',
+                        ),
+                    );
+                }
+
+                if (strpos($query, "subscription_status = 'subscribed'") !== false) {
+                    return array(
+                        array(
+                            'user_id' => 7,
+                            'user_login' => 'alice',
+                            'phone_number' => '+12345678901',
+                            'subscribed_at' => '2026-08-17 10:00:00',
+                        ),
+                    );
+                }
+
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'name' => 'SMS Weekly Updates',
+                    'description' => '',
+                    'created_at' => '2026-08-17 10:00:00',
+                );
+            }
+        };
+
+        $_GET = array(
+            'page' => 'mnem-sms-subscriber-lists',
+            'list_id' => 5,
+        );
+
+        $menu = new AdminMenu();
+        ob_start();
+        $menu->render_sms_subscriber_lists();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString('mnem-sms-subscriber-lists-bulk-add', $output);
+        $this->assertStringContainsString('mnem-invalid-phone-numbers', $output);
     }
 }

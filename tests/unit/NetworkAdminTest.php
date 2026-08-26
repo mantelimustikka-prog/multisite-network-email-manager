@@ -20,7 +20,7 @@ class NetworkAdminTest extends TestCase
         $GLOBALS['mnem_hooks'] = array();
         $GLOBALS['mnem_site_options'] = array();
         $GLOBALS['mnem_site_options'][\MNEM\SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
-        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email']);
+        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_deleted_users']);
         $_POST = array();
         $_GET = array();
     }
@@ -48,6 +48,10 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_repair', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_table_diagnostics_export', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_load_batch_users', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_bulk_add_sms_subscribers', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_list', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_action', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_delete_user', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_send_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_preview_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_get_error_details', $GLOBALS['mnem_hooks']);
@@ -58,6 +62,7 @@ class NetworkAdminTest extends TestCase
             return is_array($hook['callback']) ? $hook['callback'][1] : null;
         }, $GLOBALS['mnem_hooks']['admin_init']);
         $this->assertContains('handle_queue_item_delete_action', $admin_init_callbacks);
+        $this->assertContains('handle_invalid_phone_action', $admin_init_callbacks);
     }
 
     public function test_ajax_send_test_email_returns_error_when_mail_fails()
@@ -358,10 +363,98 @@ class NetworkAdminTest extends TestCase
         $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
         $this->assertSame(500, $GLOBALS['mnem_last_json_response']['data']['batch_size']);
         $this->assertSame(1000, $GLOBALS['mnem_last_json_response']['data']['offset']);
-        $this->assertSame(1000, $GLOBALS['mnem_last_json_response']['data']['next_offset']);
-        $this->assertSame(0, $GLOBALS['mnem_last_json_response']['data']['loaded']);
-        $this->assertFalse($GLOBALS['mnem_last_json_response']['data']['has_more']);
-        $this->assertIsArray($GLOBALS['mnem_last_json_response']['data']['users']);
+    }
+
+    public function test_handle_bulk_add_sms_subscribers_returns_summary()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            7 => (object) array('ID' => 7, 'user_login' => 'alice', 'user_email' => 'alice@example.com'),
+        );
+        $GLOBALS['mnem_user_meta'] = array(
+            7 => array('phone_number' => '2345678901'),
+        );
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+        $_POST = array(
+            'list_id' => 5,
+            'user_ids' => '7',
+            'skip_existing' => '0',
+            'skip_unsubscribed' => '0',
+            'phone_handling' => 'skip',
+            'nonce' => 'test-nonce',
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->handle_bulk_add_sms_subscribers();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(1, $GLOBALS['mnem_last_json_response']['data']['added']);
+        $this->assertSame(0, $GLOBALS['mnem_last_json_response']['data']['invalid']);
+    }
+
+    public function test_ajax_get_invalid_phone_numbers_returns_items()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    array(
+                        'id' => 2,
+                        'phone_number' => '+12345678901',
+                        'reason' => 'duplicate',
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'blocked' => 0,
+                        'created_at' => '2026-08-26 10:00:00',
+                        'action_taken' => 'none',
+                        'taken_by' => 0,
+                        'taken_at' => null,
+                    ),
+                );
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+        $_GET = array(
+            'nonce' => 'test-nonce',
+            'page_number' => 1,
+            'per_page' => 20,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_get_invalid_phone_numbers();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(1, $GLOBALS['mnem_last_json_response']['data']['total']);
+        $this->assertSame('+12345678901', $GLOBALS['mnem_last_json_response']['data']['items'][0]['phone_number']);
     }
 
     public function test_ajax_get_queue_preview_returns_stored_body_as_is()

@@ -21,27 +21,26 @@ class InvalidPhoneNumbers
         if ($existing_id > 0) {
             $result = $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET reason = %s, user_id = %s WHERE id = %d",
+                    "UPDATE {$table} SET reason = %s, user_id = %d WHERE id = %d",
                     $reason,
-                    $user_id === null ? null : (string) $user_id,
+                    $user_id === null ? 0 : $user_id,
                     $existing_id
                 )
             );
         } else {
-            $result = $wpdb->query(
-                $wpdb->prepare(
-                    "INSERT INTO {$table} (phone_number, reason, list_id, user_id, blocked, created_at, action_taken, taken_by, taken_at) VALUES (%s, %s, %s, %s, %d, %s, %s, %s, %s)",
-                    $phone_number,
-                    $reason !== '' ? $reason : 'format_invalid',
-                    $list_id === null ? null : (string) $list_id,
-                    $user_id === null ? null : (string) $user_id,
-                    0,
-                    $now,
-                    'none',
-                    null,
-                    null
-                )
-            );
+            $result = method_exists($wpdb, 'insert')
+                ? $wpdb->insert($table, array(
+                    'phone_number' => $phone_number,
+                    'reason' => $reason !== '' ? $reason : 'format_invalid',
+                    'list_id' => $list_id,
+                    'user_id' => $user_id,
+                    'blocked' => 0,
+                    'created_at' => $now,
+                    'action_taken' => 'none',
+                    'taken_by' => null,
+                    'taken_at' => null,
+                ))
+                : false;
             $existing_id = isset($wpdb->insert_id) ? (int) $wpdb->insert_id : 0;
         }
 

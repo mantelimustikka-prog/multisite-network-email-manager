@@ -81,6 +81,18 @@ class SmsSettingsTest extends TestCase
         $this->assertStringContainsString('delay', $errors[0]);
     }
 
+    public function test_validate_settings_catches_invalid_country_code()
+    {
+        $errors = SmsSettings::validate_settings(array(
+            'max_per_day' => 100,
+            'delay' => 0,
+            'validation_country_code' => 'USA',
+        ));
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('country code', strtolower($errors[0]));
+    }
+
     public function test_validate_settings_no_sms_hours_empty_is_valid()
     {
         $errors = SmsSettings::validate_settings(array(
@@ -175,6 +187,30 @@ class SmsSettingsTest extends TestCase
         $this->assertArrayHasKey('delay', $all);
         $this->assertArrayHasKey('fallback_provider', $all);
         $this->assertArrayHasKey('tracking_enabled', $all);
+        $this->assertArrayHasKey('phone_validation_enabled', $all);
+        $this->assertArrayHasKey('validation_country_code', $all);
+        $this->assertArrayHasKey('allow_duplicate_numbers', $all);
+        $this->assertArrayHasKey('auto_block_failed_attempts', $all);
+        $this->assertArrayHasKey('notify_invalid_numbers', $all);
+    }
+
+    public function test_save_and_get_phone_validation_settings()
+    {
+        SmsSettings::save(array(
+            'max_per_day' => 100,
+            'delay' => 0,
+            'phone_validation_enabled' => true,
+            'validation_country_code' => 'FI',
+            'allow_duplicate_numbers' => true,
+            'auto_block_failed_attempts' => 3,
+            'notify_invalid_numbers' => true,
+        ));
+
+        $this->assertTrue(SmsSettings::is_phone_validation_enabled());
+        $this->assertSame('FI', SmsSettings::get_validation_country_code());
+        $this->assertTrue(SmsSettings::allow_duplicate_numbers());
+        $this->assertSame(3, SmsSettings::get_auto_block_failed_attempts());
+        $this->assertTrue(SmsSettings::notify_invalid_numbers());
     }
 
     // -------------------------------------------------------------------------
