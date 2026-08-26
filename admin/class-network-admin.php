@@ -34,6 +34,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_toggle_campaign_pause', array($this, 'ajax_toggle_campaign_pause'));
         add_action('wp_ajax_mnem_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_mnem_test_provider_connection', array($this, 'ajax_test_provider_connection'));
+        add_action('wp_ajax_mnem_test_sms_connection', array($this, 'ajax_test_sms_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
         add_action('wp_ajax_mnem_send_queue_item_now', array($this, 'ajax_send_queue_item_now'));
@@ -1007,6 +1008,33 @@ class NetworkAdmin
         }
 
         $result = $instance->test_connection();
+        if (!empty($result['success'])) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result, 400);
+        }
+    }
+
+    public function ajax_test_sms_connection()
+    {
+        $this->ensure_ajax_permissions();
+
+        $provider = \MNEM\SmsSettings::get_provider();
+
+        if (empty($provider)) {
+            wp_send_json_error(array('message' => 'No SMS provider configured.'), 400);
+            return;
+        }
+
+        $instance = \MNEM\SmsProviderManager::get_provider($provider);
+
+        if ($instance === null) {
+            wp_send_json_error(array('message' => 'SMS provider not available.'), 400);
+            return;
+        }
+
+        $result = $instance->test_connection();
+
         if (!empty($result['success'])) {
             wp_send_json_success($result);
         } else {
