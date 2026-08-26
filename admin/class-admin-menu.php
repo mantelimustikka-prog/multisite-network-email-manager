@@ -33,6 +33,7 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
         add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', '', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', '', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
     }
 
     public function render_subscriber_lists_bulk_add()
@@ -56,6 +57,35 @@ class AdminMenu
         $default_batch_size = in_array(1000, $batch_sizes, true) ? 1000 : (int) $batch_sizes[0];
 
         $this->render_view('subscriber-lists-bulk-add.php', compact(
+            'active_list',
+            'all_sites',
+            'all_roles',
+            'batch_sizes',
+            'default_batch_size'
+        ));
+    }
+
+    public function render_sms_subscriber_lists_bulk_add()
+    {
+        if (!isset($_GET['list_id'])) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-sms-subscriber-lists'));
+            exit;
+        }
+
+        $active_list_id = (int) $_GET['list_id'];
+        $active_list = \MNEM\SmsSubscriberLists::get($active_list_id);
+
+        if (!$active_list) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-sms-subscriber-lists'));
+            exit;
+        }
+
+        $all_sites = self::get_all_sites_with_user_count();
+        $all_roles = self::get_all_network_roles();
+        $batch_sizes = self::get_allowed_network_user_batch_sizes();
+        $default_batch_size = in_array(1000, $batch_sizes, true) ? 1000 : (int) $batch_sizes[0];
+
+        $this->render_view('sms-subscriber-lists-bulk-add.php', compact(
             'active_list',
             'all_sites',
             'all_roles',

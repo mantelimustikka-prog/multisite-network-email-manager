@@ -42,6 +42,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
         add_action('wp_ajax_mnem_load_batch_users', array($this, 'handle_load_batch_users'));
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
+        add_action('wp_ajax_mnem_bulk_add_sms_subscribers', array($this, 'handle_bulk_add_sms_subscribers'));
         add_action('wp_ajax_mnem_send_campaign_test_email', array($this, 'handle_send_campaign_test_email'));
         add_action('wp_ajax_mnem_preview_campaign_test_email', array($this, 'handle_preview_campaign_test_email'));
 
@@ -1143,6 +1144,88 @@ class NetworkAdmin
             }
 
             $result = \MNEM\SubscriberLists::add_subscriber($list_id, $user_id);
+            if ($result instanceof \WP_Error || $result === false) {
+                $failed++;
+            } else {
+                $added++;
+            }
+        }
+
+        $message = sprintf(
+            /* translators: 1: added count, 2: skipped count, 3: failed count */
+            __('Added %1$d subscribers, skipped %2$d, failed %3$d.', 'multisite-network-email-manager'),
+            $added,
+            $skipped,
+            $failed
+        );
+
+        wp_send_json_success(array('message' => $message, 'added' => $added, 'skipped' => $skipped, 'failed' => $failed));
+    }
+
+    public function handle_bulk_add_sms_subscribers()
+    {
+        check_ajax_referer('mnem_bulk_add_sms_users', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
+        }
+
+        $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
+        $user_ids_raw = isset($_POST['user_ids']) ? explode(',', sanitize_text_field(wp_unslash($_POST['user_ids']))) : array();
+        $user_ids = array_map('intval', array_filter($user_ids_raw));
+        $phone_handling = isset($_POST['phone_handling']) ? sanitize_text_field(wp_unslash($_POST['phone_handling'])) : 'skip';
+        $skip_existing = isset($_POST['skip_existing']) && sanitize_text_field(wp_unslash($_POST['skip_existing'])) === '1';
+        $skip_unsubscribed = isset($_POST['skip_unsubscribed']) && sanitize_text_field(wp_unslash($_POST['skip_unsubscribed'])) === '1';
+
+        if (!in_array($phone_handling, array('skip', 'empty', 'exclude'), true)) {
+            $phone_handling = 'skip';
+        }
+
+        if ($list_id <= 0 || empty($user_ids)) {
+            wp_send_json_error(array('message' => 'Invalid list or no users selected'));
+            return;
+        }
+
+        $added = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($user_ids as $user_id) {
+            if (!get_userdata($user_id)) {
+                $failed++;
+                continue;
+            }
+
+            if ($skip_existing && \MNEM\SmsSubscriberLists::is_subscribed($list_id, $user_id)) {
+                $skipped++;
+                continue;
+            }
+
+            if ($skip_unsubscribed && \MNEM\SmsSubscriberLists::is_unsubscribed($list_id, $user_id)) {
+                $skipped++;
+                continue;
+            }
+
+            $phone_number = '';
+            $phone_meta_keys = array('phone_number', 'phone', 'mobile');
+            foreach ($phone_meta_keys as $meta_key) {
+                $meta_val = get_user_meta($user_id, $meta_key, true);
+                if (!empty($meta_val)) {
+                    $phone_number = sanitize_text_field((string) $meta_val);
+                    break;
+                }
+            }
+
+            if (empty($phone_number)) {
+                if ($phone_handling === 'skip' || $phone_handling === 'exclude') {
+                    $skipped++;
+                    continue;
+                }
+                // 'empty': proceed with no phone number
+            }
+
+            $result = \MNEM\SmsSubscriberLists::add_subscriber($list_id, $user_id, $phone_number);
             if ($result instanceof \WP_Error || $result === false) {
                 $failed++;
             } else {
