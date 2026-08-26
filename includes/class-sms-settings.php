@@ -20,6 +20,18 @@ class SmsSettings
     public const OPTION_AUTO_BLOCK_FAILED_ATTEMPTS = 'mnem_sms_auto_block_failed_attempts';
     public const OPTION_NOTIFY_INVALID_NUMBERS = 'mnem_sms_notify_invalid_numbers';
 
+    // Multi-country validation options.
+    public const OPTION_VALIDATION_MODE      = 'mnem_validation_mode';
+    public const OPTION_ALLOWED_COUNTRIES    = 'mnem_allowed_countries';
+    public const OPTION_AMBIGUOUS_POLICY     = 'mnem_ambiguous_policy';
+    public const OPTION_DEFAULT_VALIDATION_COUNTRY = 'mnem_default_validation_country';
+
+    public const VALIDATION_MODE_SINGLE   = 'single-country';
+    public const VALIDATION_MODE_MULTI    = 'multi-country';
+    public const AMBIGUOUS_POLICY_REJECT  = 'reject';
+    public const AMBIGUOUS_POLICY_REVIEW  = 'review';
+    public const AMBIGUOUS_POLICY_REQUIRE = 'require-country';
+
     public const DEFAULT_MAX_PER_DAY = 1000;
     public const DEFAULT_DELAY       = 100;
 
@@ -44,6 +56,10 @@ class SmsSettings
             'allow_duplicate_numbers' => self::allow_duplicate_numbers(),
             'auto_block_failed_attempts' => self::get_auto_block_failed_attempts(),
             'notify_invalid_numbers' => self::notify_invalid_numbers(),
+            'validation_mode'            => self::get_validation_mode(),
+            'allowed_countries'          => self::get_allowed_countries(),
+            'ambiguous_policy'           => self::get_ambiguous_policy(),
+            'default_validation_country' => self::get_default_validation_country(),
         );
     }
 
@@ -88,6 +104,37 @@ class SmsSettings
         update_site_option(self::OPTION_ALLOW_DUPLICATES, !empty($data['allow_duplicate_numbers']) ? 1 : 0);
         update_site_option(self::OPTION_AUTO_BLOCK_FAILED_ATTEMPTS, max(0, isset($data['auto_block_failed_attempts']) ? (int) $data['auto_block_failed_attempts'] : 0));
         update_site_option(self::OPTION_NOTIFY_INVALID_NUMBERS, !empty($data['notify_invalid_numbers']) ? 1 : 0);
+
+        // Multi-country settings.
+        if (isset($data['validation_mode'])) {
+            $mode = sanitize_key((string) $data['validation_mode']);
+            if (!in_array($mode, array(self::VALIDATION_MODE_SINGLE, self::VALIDATION_MODE_MULTI), true)) {
+                $mode = self::VALIDATION_MODE_SINGLE;
+            }
+            update_site_option(self::OPTION_VALIDATION_MODE, $mode);
+        }
+        if (isset($data['allowed_countries'])) {
+            $countries = is_array($data['allowed_countries']) ? $data['allowed_countries'] : array();
+            $sanitized = array();
+            foreach ($countries as $c) {
+                $c = strtoupper(trim((string) $c));
+                if (preg_match('/^[A-Z]{2}$/', $c)) {
+                    $sanitized[] = $c;
+                }
+            }
+            update_site_option(self::OPTION_ALLOWED_COUNTRIES, wp_json_encode(array_unique($sanitized)));
+        }
+        if (isset($data['ambiguous_policy'])) {
+            $policy = sanitize_key((string) $data['ambiguous_policy']);
+            $valid_policies = array(self::AMBIGUOUS_POLICY_REJECT, self::AMBIGUOUS_POLICY_REVIEW, self::AMBIGUOUS_POLICY_REQUIRE);
+            if (!in_array($policy, $valid_policies, true)) {
+                $policy = self::AMBIGUOUS_POLICY_REJECT;
+            }
+            update_site_option(self::OPTION_AMBIGUOUS_POLICY, $policy);
+        }
+        if (isset($data['default_validation_country'])) {
+            update_site_option(self::OPTION_DEFAULT_VALIDATION_COUNTRY, self::sanitize_country_code((string) $data['default_validation_country']));
+        }
 
         // Merge new provider config over existing (obfuscate credentials with base64).
         if (isset($data['config']) && is_array($data['config'])) {
@@ -210,6 +257,47 @@ class SmsSettings
     public static function notify_invalid_numbers(): bool
     {
         return (int) get_site_option(self::OPTION_NOTIFY_INVALID_NUMBERS, 0) === 1;
+    }
+
+    public static function get_validation_mode(): string
+    {
+        $mode = (string) get_site_option(self::OPTION_VALIDATION_MODE, self::VALIDATION_MODE_SINGLE);
+        return in_array($mode, array(self::VALIDATION_MODE_SINGLE, self::VALIDATION_MODE_MULTI), true) ? $mode : self::VALIDATION_MODE_SINGLE;
+    }
+
+    public static function is_multi_country_mode(): bool
+    {
+        return self::get_validation_mode() === self::VALIDATION_MODE_MULTI;
+    }
+
+    /**
+     * @return string[]  ISO2 country codes, empty = all countries allowed
+     */
+    public static function get_allowed_countries(): array
+    {
+        $raw = get_site_option(self::OPTION_ALLOWED_COUNTRIES, '');
+        if (!is_string($raw) || $raw === '') {
+            return array();
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? array_values(array_filter($decoded, 'is_string')) : array();
+    }
+
+    public static function get_ambiguous_policy(): string
+    {
+        $policy = (string) get_site_option(self::OPTION_AMBIGUOUS_POLICY, self::AMBIGUOUS_POLICY_REJECT);
+        $valid = array(self::AMBIGUOUS_POLICY_REJECT, self::AMBIGUOUS_POLICY_REVIEW, self::AMBIGUOUS_POLICY_REQUIRE);
+        return in_array($policy, $valid, true) ? $policy : self::AMBIGUOUS_POLICY_REJECT;
+    }
+
+    public static function get_default_validation_country(): string
+    {
+        $stored = (string) get_site_option(self::OPTION_DEFAULT_VALIDATION_COUNTRY, '');
+        if ($stored !== '') {
+            return self::sanitize_country_code($stored);
+        }
+        // Fall back to legacy single-country setting.
+        return self::get_validation_country_code();
     }
 
     // -------------------------------------------------------------------------

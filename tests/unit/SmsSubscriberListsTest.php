@@ -544,4 +544,87 @@ class SmsSubscriberListsTest extends TestCase
 
         $this->assertTrue($result);
     }
+
+    // -------------------------------------------------------------------------
+    // Multi-country: country hint passed to add_subscriber
+    // -------------------------------------------------------------------------
+
+    public function test_add_subscriber_accepts_explicit_country_hint()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $last_query = '';
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->last_query = $query;
+                $this->queries[] = $query;
+                $this->insert_id = 20;
+                return 1;
+            }
+        };
+
+        // Pass a Swedish E.164 number directly; it should be accepted.
+        $result = SmsSubscriberLists::add_subscriber(1, 7, '+46701234567', 'SE');
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['added']);
+        $this->assertStringContainsString('+46701234567', $GLOBALS['wpdb']->last_query);
+    }
+
+    public function test_add_subscriber_with_country_hint_normalises_to_e164()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $last_query = '';
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->last_query = $query;
+                $this->queries[] = $query;
+                $this->insert_id = 21;
+                return 1;
+            }
+        };
+
+        // Finnish local number with FI hint should be stored as E.164.
+        $result = SmsSubscriberLists::add_subscriber(1, 7, '0401234567', 'FI');
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['added']);
+        // The stored number should start with +358 (Finnish dial code).
+        $this->assertStringContainsString('+358', $GLOBALS['wpdb']->last_query);
+    }
 }

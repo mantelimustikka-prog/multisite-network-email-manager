@@ -188,6 +188,57 @@ class Installer
             }
         }
 
+        // Migration: add multi-country phone validation columns.
+        $subs_table = $tracking_prefix . 'mnem_sms_list_subscribers';
+        $subs_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $subs_table));
+        if ($subs_exists === $subs_table) {
+            foreach (array(
+                'phone_country_iso2'      => "ADD COLUMN phone_country_iso2 varchar(2) NULL",
+                'phone_raw_input'         => "ADD COLUMN phone_raw_input varchar(50) NULL",
+                'phone_detection_source'  => "ADD COLUMN phone_detection_source varchar(20) NULL",
+            ) as $col => $alter_clause) {
+                $col_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                    $subs_table,
+                    $col
+                ));
+                if ($col_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$subs_table}` {$alter_clause}");
+                }
+            }
+        }
+
+        $invalid_table = $tracking_prefix . 'mnem_invalid_phone_numbers';
+        $invalid_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $invalid_table));
+        if ($invalid_exists === $invalid_table) {
+            foreach (array(
+                'raw_input'              => "ADD COLUMN raw_input varchar(50) NULL",
+                'detected_country_iso2'  => "ADD COLUMN detected_country_iso2 varchar(2) NULL",
+                'reason_detail'          => "ADD COLUMN reason_detail varchar(255) NULL",
+            ) as $col => $alter_clause) {
+                $col_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                    $invalid_table,
+                    $col
+                ));
+                if ($col_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$invalid_table}` {$alter_clause}");
+                }
+            }
+
+            $idx_exists = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+                $invalid_table,
+                'detected_country_iso2'
+            ));
+            if ($idx_exists === 0) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$invalid_table}` ADD KEY detected_country_iso2 (detected_country_iso2)");
+            }
+        }
+
         // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
         if (function_exists('get_sites')) {
             $sites = get_sites(array('number' => 0, 'fields' => 'ids'));
@@ -467,6 +518,9 @@ class Installer
                     'subscribed_at' => 'datetime',
                     'unsubscribed_at' => 'datetime',
                     'unsubscribed_reason' => 'text',
+                    'phone_country_iso2' => 'varchar(2)',
+                    'phone_raw_input' => 'varchar(50)',
+                    'phone_detection_source' => 'varchar(20)',
                 ),
                 'indexes' => array(
                     'PRIMARY' => array('id'),
@@ -484,6 +538,9 @@ class Installer
                     subscribed_at datetime NOT NULL,
                     unsubscribed_at datetime NULL,
                     unsubscribed_reason text NULL,
+                    phone_country_iso2 varchar(2) NULL,
+                    phone_raw_input varchar(50) NULL,
+                    phone_detection_source varchar(20) NULL,
                     PRIMARY KEY  (id),
                     KEY list_id (list_id),
                     KEY user_id (user_id),
@@ -505,6 +562,9 @@ class Installer
                     'action_taken' => 'varchar(50)',
                     'taken_by' => 'bigint(20) unsigned',
                     'taken_at' => 'datetime',
+                    'raw_input' => 'varchar(50)',
+                    'detected_country_iso2' => 'varchar(2)',
+                    'reason_detail' => 'varchar(255)',
                 ),
                 'indexes' => array(
                     'PRIMARY' => array('id'),
@@ -514,6 +574,7 @@ class Installer
                     'blocked' => array('blocked'),
                     'created_at' => array('created_at'),
                     'phone_list_unique' => array('phone_number', 'list_id'),
+                    'detected_country_iso2' => array('detected_country_iso2'),
                 ),
                 'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_invalid_phone_numbers (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -526,12 +587,16 @@ class Installer
                     action_taken varchar(50) DEFAULT 'none',
                     taken_by bigint(20) unsigned NULL,
                     taken_at datetime NULL,
+                    raw_input varchar(50) NULL,
+                    detected_country_iso2 varchar(2) NULL,
+                    reason_detail varchar(255) NULL,
                     PRIMARY KEY  (id),
                     KEY phone_number (phone_number),
                     KEY list_id (list_id),
                     KEY user_id (user_id),
                     KEY blocked (blocked),
                     KEY created_at (created_at),
+                    KEY detected_country_iso2 (detected_country_iso2),
                     UNIQUE KEY phone_list_unique (phone_number, list_id)
                 ){$charset_suffix};",
             ),

@@ -202,22 +202,68 @@ class SmsSubscriberLists
     /**
      * @return array<string,mixed>
      */
-    public static function add_subscriber(int $list_id, int $user_id, string $phone_number = '')
+    public static function add_subscriber(int $list_id, int $user_id, string $phone_number = '', ?string $country_code = null)
     {
         global $wpdb;
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
-        $country_code = SmsSettings::get_validation_country_code();
+        $legacy_country = SmsSettings::get_validation_country_code();
 
         if ($phone_number === '') {
             $phone_number = self::resolve_phone_number($user_id);
         }
 
-        $validation = SmsSettings::is_phone_validation_enabled()
-            ? PhoneValidator::validate_phone_number($phone_number, $country_code)
-            : array('valid' => true, 'formatted' => trim($phone_number), 'error' => '');
+        if (SmsSettings::is_phone_validation_enabled()) {
+            if (SmsSettings::is_multi_country_mode() || $country_code !== null) {
+                $default_country = SmsSettings::get_default_validation_country();
+                $effective_hint = ($country_code !== null) ? $country_code : null;
+                $validation = PhoneValidator::validate_with_country_hint($phone_number, $effective_hint, $default_country);
+
+                // Handle ambiguous numbers.
+                if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
+                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, $user_id);
+                    self::maybe_auto_block_invalid_number($phone_number);
+                    return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.');
+                }
+
+                // Handle unsupported countries (allowed_countries restriction).
+                $allowed = SmsSettings::get_allowed_countries();
+                if ($validation['valid'] && !empty($allowed)) {
+                    $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
+                    if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
+                        InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, $user_id);
+                        return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country));
+                    }
+                }
+            } else {
+                $base = PhoneValidator::validate_phone_number($phone_number, $legacy_country);
+                $validation = array_merge(array(
+                    'country_iso2'         => $legacy_country,
+                    'country_calling_code' => null,
+                    'national_number'      => null,
+                    'input_format'         => strpos($phone_number, '+') === 0 ? 'e164' : 'national',
+                    'ambiguous'            => false,
+                    'possible_countries'   => array(),
+                    'reason_code'          => $base['valid'] ? null : 'format_invalid',
+                ), $base);
+            }
+        } else {
+            $validation = array(
+                'valid'                => true,
+                'formatted'            => trim($phone_number),
+                'error'                => '',
+                'country_iso2'         => null,
+                'country_calling_code' => null,
+                'national_number'      => null,
+                'input_format'         => 'unknown',
+                'ambiguous'            => false,
+                'possible_countries'   => array(),
+                'reason_code'          => null,
+            );
+        }
 
         if (empty($validation['valid'])) {
-            InvalidPhoneNumbers::log_invalid_number($phone_number, 'format_invalid', $list_id, $user_id);
+            $reason = (isset($validation['reason_code']) && $validation['reason_code'] !== null) ? (string) $validation['reason_code'] : 'format_invalid';
+            InvalidPhoneNumbers::log_invalid_number($phone_number, $reason, $list_id, $user_id);
             self::maybe_auto_block_invalid_number($phone_number);
 
             return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.');
