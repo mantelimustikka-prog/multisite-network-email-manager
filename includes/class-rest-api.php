@@ -231,6 +231,19 @@ class RestApi
                 )
             );
         }
+
+        // SMS provider delivery-status webhook endpoints.
+        foreach (SmsProviderManager::get_available_providers() as $sms_provider => $label) {
+            register_rest_route(
+                self::NAMESPACE,
+                '/sms-webhooks/' . $sms_provider,
+                array(
+                    'methods'             => 'POST',
+                    'callback'            => array($this, 'handle_sms_webhook'),
+                    'permission_callback' => '__return_true',
+                )
+            );
+        }
     }
 
     public function permission_check()
@@ -662,5 +675,66 @@ class RestApi
         }
 
         return $events;
+    }
+
+    /**
+     * Handle incoming SMS provider delivery-status webhooks.
+     *
+     * Route: POST /wp-json/mnem/v1/sms-webhooks/{provider}
+     *
+     * @param mixed $request
+     * @return array<string,mixed>
+     */
+    public function handle_sms_webhook($request)
+    {
+        $route    = method_exists($request, 'get_route') ? (string) $request->get_route() : '';
+        $provider = '';
+        if (preg_match('#/sms-webhooks/([a-z0-9_]+)$#', $route, $m)) {
+            $provider = $m[1];
+        }
+
+        if ($provider === '' || !SmsProviderStatusMap::supports_tracking($provider)) {
+            return array('success' => false, 'message' => 'Unknown SMS provider.');
+        }
+
+        $body    = method_exists($request, 'get_body') ? (string) $request->get_body() : '';
+        $data    = json_decode($body, true);
+        if (!is_array($data)) {
+            $data = method_exists($request, 'get_params') ? (array) $request->get_params() : array();
+        }
+
+        // Signature verification.
+        $provider_class = SmsProviderManager::get_provider_class($provider);
+        if ($provider_class !== null) {
+            $sig_header = method_exists($request, 'get_header') ? (string) $request->get_header('x-signature') : '';
+            if (!$provider_class::verify_webhook_signature($body, $sig_header)) {
+                Logger::warning('SMS webhook signature verification failed.', array('provider' => $provider));
+                return array('success' => false, 'message' => 'Invalid signature.');
+            }
+
+            $parsed = $provider_class::parse_delivery_status($data);
+        } else {
+            $parsed = array('status' => '', 'message_id' => '', 'phone' => '');
+        }
+
+        $provider_status = isset($parsed['status'])     ? (string) $parsed['status']     : '';
+        $message_id      = isset($parsed['message_id']) ? (string) $parsed['message_id'] : '';
+        $phone           = isset($parsed['phone'])      ? (string) $parsed['phone']      : '';
+
+        $queue_status = SmsProviderStatusMap::map($provider, $provider_status);
+
+        Logger::info('SMS webhook received.', array(
+            'provider'        => $provider,
+            'provider_status' => $provider_status,
+            'queue_status'    => $queue_status,
+            'message_id'      => $message_id,
+            'phone'           => $phone,
+        ));
+
+        if ($queue_status !== '' && $message_id !== '') {
+            Queue::update_sms_status_from_provider($message_id, $provider, $queue_status, $data);
+        }
+
+        return array('success' => true, 'provider' => $provider, 'status' => $queue_status);
     }
 }

@@ -1100,10 +1100,10 @@ class NetworkAdminTest extends TestCase
         $admin = new NetworkAdmin();
         $admin->ajax_test_sms_connection();
 
-        // The base provider returns success=false with 'Not implemented.' message
+        // Provider now has a real implementation; with no credentials it returns a specific error.
         $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
         $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
-        $this->assertSame('Not implemented.', $GLOBALS['mnem_last_json_response']['data']['message']);
+        $this->assertStringContainsString('required', $GLOBALS['mnem_last_json_response']['data']['message']);
     }
 
     public function test_ajax_test_sms_connection_insufficient_permissions()

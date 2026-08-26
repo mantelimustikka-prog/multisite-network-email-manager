@@ -1671,4 +1671,95 @@ class Queue
 
         return call_user_func_array(array($wpdb, 'prepare'), array_merge(array($query), $args));
     }
+
+    /**
+     * Update the queue status for an SMS message based on a provider delivery webhook.
+     *
+     * Looks up the queue row by provider_message_id, maps the provider-specific status
+     * to a canonical queue status via SmsProviderStatusMap, then updates the row.
+     *
+     * @param string               $message_id      Provider-issued message ID.
+     * @param string               $provider        Provider key (e.g. 'twilio').
+     * @param string               $queue_status    Already-mapped canonical queue status.
+     * @param array<string,mixed>  $metadata        Raw webhook payload for logging.
+     */
+    public static function update_sms_status_from_provider(
+        string $message_id,
+        string $provider,
+        string $queue_status,
+        array $metadata = array()
+    ): bool {
+        global $wpdb;
+
+        if ($message_id === '' || $queue_status === '') {
+            return false;
+        }
+
+        if (!in_array($queue_status, self::WEBHOOK_STATUSES, true)) {
+            return false;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $row   = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, status, provider_metadata FROM {$table} WHERE provider_message_id = %s ORDER BY id DESC LIMIT %d",
+                $message_id,
+                1
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($row) || empty($row['id'])) {
+            Logger::warning('SMS webhook: queue row not found.', array(
+                'provider'   => $provider,
+                'message_id' => $message_id,
+                'status'     => $queue_status,
+            ));
+            return false;
+        }
+
+        // Idempotency: never move backward in status lifecycle.
+        $status_order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected'));
+        $current_order = isset($status_order[$row['status']]) ? $status_order[$row['status']] : -1;
+        $new_order     = isset($status_order[$queue_status])  ? $status_order[$queue_status]  : -1;
+        if ($new_order < $current_order && $new_order !== -1) {
+            return true; // Already at a later state; ignore.
+        }
+
+        $merged_meta = self::merge_provider_metadata(
+            isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '',
+            array(
+                'sms_webhook' => array(
+                    'provider'        => $provider,
+                    'provider_status' => $queue_status,
+                    'received_at'     => self::current_time_mysql(),
+                    'payload'         => $metadata,
+                ),
+            )
+        );
+
+        $timestamp = self::current_time_mysql();
+        $updated   = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s, sent_at = COALESCE(sent_at, %s), provider_metadata = %s WHERE id = %d",
+                $queue_status,
+                $timestamp,
+                $merged_meta,
+                (int) $row['id']
+            )
+        );
+
+        if ($updated !== false) {
+            Logger::info('SMS queue status updated from provider webhook.', array(
+                'id'          => (int) $row['id'],
+                'provider'    => $provider,
+                'message_id'  => $message_id,
+                'old_status'  => $row['status'],
+                'new_status'  => $queue_status,
+            ));
+            return true;
+        }
+
+        return false;
+    }
 }
