@@ -14,6 +14,11 @@ class SmsSettings
     public const OPTION_DELAY             = 'mnem_sms_delay';
     public const OPTION_FALLBACK_PROVIDER = 'mnem_sms_fallback_provider';
     public const OPTION_TRACKING_ENABLED  = 'mnem_sms_tracking_enabled';
+    public const OPTION_PHONE_VALIDATION_ENABLED = 'mnem_sms_phone_validation_enabled';
+    public const OPTION_VALIDATION_COUNTRY_CODE = 'mnem_sms_validation_country_code';
+    public const OPTION_ALLOW_DUPLICATES = 'mnem_sms_allow_duplicate_numbers';
+    public const OPTION_AUTO_BLOCK_FAILED_ATTEMPTS = 'mnem_sms_auto_block_failed_attempts';
+    public const OPTION_NOTIFY_INVALID_NUMBERS = 'mnem_sms_notify_invalid_numbers';
 
     public const DEFAULT_MAX_PER_DAY = 1000;
     public const DEFAULT_DELAY       = 100;
@@ -34,6 +39,11 @@ class SmsSettings
             'delay'             => self::get_sms_delay(),
             'fallback_provider' => (string) get_site_option(self::OPTION_FALLBACK_PROVIDER, ''),
             'tracking_enabled'  => (int) get_site_option(self::OPTION_TRACKING_ENABLED, 0) === 1,
+            'phone_validation_enabled' => self::is_phone_validation_enabled(),
+            'validation_country_code' => self::get_validation_country_code(),
+            'allow_duplicate_numbers' => self::allow_duplicate_numbers(),
+            'auto_block_failed_attempts' => self::get_auto_block_failed_attempts(),
+            'notify_invalid_numbers' => self::notify_invalid_numbers(),
         );
     }
 
@@ -73,6 +83,11 @@ class SmsSettings
         update_site_option(self::OPTION_FALLBACK_PROVIDER, $fallback);
 
         update_site_option(self::OPTION_TRACKING_ENABLED, !empty($data['tracking_enabled']) ? 1 : 0);
+        update_site_option(self::OPTION_PHONE_VALIDATION_ENABLED, !empty($data['phone_validation_enabled']) ? 1 : 0);
+        update_site_option(self::OPTION_VALIDATION_COUNTRY_CODE, self::sanitize_country_code(isset($data['validation_country_code']) ? (string) $data['validation_country_code'] : 'US'));
+        update_site_option(self::OPTION_ALLOW_DUPLICATES, !empty($data['allow_duplicate_numbers']) ? 1 : 0);
+        update_site_option(self::OPTION_AUTO_BLOCK_FAILED_ATTEMPTS, max(0, isset($data['auto_block_failed_attempts']) ? (int) $data['auto_block_failed_attempts'] : 0));
+        update_site_option(self::OPTION_NOTIFY_INVALID_NUMBERS, !empty($data['notify_invalid_numbers']) ? 1 : 0);
 
         // Merge new provider config over existing (obfuscate credentials with base64).
         if (isset($data['config']) && is_array($data['config'])) {
@@ -172,6 +187,31 @@ class SmsSettings
         return max(0, (int) get_site_option(self::OPTION_DELAY, self::DEFAULT_DELAY));
     }
 
+    public static function is_phone_validation_enabled(): bool
+    {
+        return (int) get_site_option(self::OPTION_PHONE_VALIDATION_ENABLED, 1) === 1;
+    }
+
+    public static function get_validation_country_code(): string
+    {
+        return self::sanitize_country_code((string) get_site_option(self::OPTION_VALIDATION_COUNTRY_CODE, 'US'));
+    }
+
+    public static function allow_duplicate_numbers(): bool
+    {
+        return (int) get_site_option(self::OPTION_ALLOW_DUPLICATES, 0) === 1;
+    }
+
+    public static function get_auto_block_failed_attempts(): int
+    {
+        return max(0, (int) get_site_option(self::OPTION_AUTO_BLOCK_FAILED_ATTEMPTS, 0));
+    }
+
+    public static function notify_invalid_numbers(): bool
+    {
+        return (int) get_site_option(self::OPTION_NOTIFY_INVALID_NUMBERS, 0) === 1;
+    }
+
     // -------------------------------------------------------------------------
     // Time-window helper
     // -------------------------------------------------------------------------
@@ -245,6 +285,14 @@ class SmsSettings
             $errors[] = 'SMS delay cannot be negative';
         }
 
+        if (isset($data['validation_country_code']) && !preg_match('/^[A-Z]{2}$/', self::sanitize_country_code((string) $data['validation_country_code']))) {
+            $errors[] = 'Validation country code must be a two-letter country code';
+        }
+
+        if (isset($data['auto_block_failed_attempts']) && (int) $data['auto_block_failed_attempts'] < 0) {
+            $errors[] = 'Auto block failed attempts cannot be negative';
+        }
+
         return $errors;
     }
 
@@ -269,5 +317,13 @@ class SmsSettings
         }
         list($h, $m, $s) = explode(':', $time);
         return (int) $h < 24 && (int) $m < 60 && (int) $s < 60;
+    }
+
+    private static function sanitize_country_code(string $country_code): string
+    {
+        $country_code = strtoupper(trim($country_code));
+        $country_code = preg_replace('/[^A-Z]/', '', $country_code);
+
+        return is_string($country_code) && $country_code !== '' ? $country_code : 'US';
     }
 }

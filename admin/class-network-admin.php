@@ -20,6 +20,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
         add_action('admin_init', array($this, 'handle_sms_subscriber_list_action'));
+        add_action('admin_init', array($this, 'handle_invalid_phone_action'));
         add_action('admin_init', array($this, 'handle_email_template_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
         add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
@@ -42,6 +43,10 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_table_diagnostics_cleanup', array($this, 'handle_table_diagnostics_cleanup'));
         add_action('wp_ajax_mnem_load_batch_users', array($this, 'handle_load_batch_users'));
         add_action('wp_ajax_mnem_bulk_add_subscribers', array($this, 'handle_bulk_add_subscribers'));
+        add_action('wp_ajax_mnem_bulk_add_sms_subscribers', array($this, 'handle_bulk_add_sms_subscribers'));
+        add_action('wp_ajax_mnem_invalid_phone_list', array($this, 'ajax_get_invalid_phone_numbers'));
+        add_action('wp_ajax_mnem_invalid_phone_action', array($this, 'ajax_take_action_on_phone_number'));
+        add_action('wp_ajax_mnem_invalid_phone_delete_user', array($this, 'ajax_take_action_on_phone_number'));
         add_action('wp_ajax_mnem_send_campaign_test_email', array($this, 'handle_send_campaign_test_email'));
         add_action('wp_ajax_mnem_preview_campaign_test_email', array($this, 'handle_preview_campaign_test_email'));
 
@@ -311,6 +316,11 @@ class NetworkAdmin
             'delay'             => $delay,
             'fallback_provider' => $fallback_provider,
             'tracking_enabled'  => !empty($_POST['sms_tracking_enabled']),
+            'phone_validation_enabled' => !empty($_POST['phone_validation_enabled']),
+            'validation_country_code' => isset($_POST['validation_country_code']) ? sanitize_text_field(wp_unslash($_POST['validation_country_code'])) : 'US',
+            'allow_duplicate_numbers' => !empty($_POST['allow_duplicate_numbers']),
+            'auto_block_failed_attempts' => isset($_POST['auto_block_failed_attempts']) ? (int) $_POST['auto_block_failed_attempts'] : 0,
+            'notify_invalid_numbers' => !empty($_POST['notify_invalid_numbers']),
             'config'            => $sanitized_config,
         );
 
@@ -605,11 +615,11 @@ class NetworkAdmin
             }
 
             $result = \MNEM\SmsSubscriberLists::add_subscriber($list_id, $user_id, $phone_number);
-            if ($result instanceof \WP_Error) {
-                $redirect_args['mnem_alert'] = $result->get_error_message();
+            if (empty($result['success'])) {
+                $redirect_args['mnem_alert'] = isset($result['phone_error']) && $result['phone_error'] !== '' ? $result['phone_error'] : $result['message'];
                 $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
             }
-            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', !empty($result['added']) ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
         }
 
         if ($action === 'sms_subscriber_remove_user') {
@@ -635,6 +645,15 @@ class NetworkAdmin
             }
             $result = \MNEM\SmsSubscriberLists::import_from_csv($list_id, $csv_content);
             \MNEM\Logger::info('SMS subscriber CSV imported.', array('list_id' => $list_id, 'result' => $result));
+            if (!empty($result['invalid']) || !empty($result['duplicates'])) {
+                $redirect_args['mnem_alert'] = sprintf(
+                    'Added %1$d, skipped %2$d, invalid %3$d, duplicates %4$d.',
+                    isset($result['added']) ? (int) $result['added'] : 0,
+                    isset($result['skipped']) ? (int) $result['skipped'] : 0,
+                    isset($result['invalid']) ? (int) $result['invalid'] : 0,
+                    isset($result['duplicates']) ? (int) $result['duplicates'] : 0
+                );
+            }
             $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_csv_imported', $redirect_args);
         }
     }
@@ -1180,6 +1199,291 @@ class NetworkAdmin
         }
 
         wp_send_json_success(AdminMenu::get_network_users_batch($batch_size, $offset));
+    }
+
+    public function handle_bulk_add_sms_subscribers()
+    {
+        check_ajax_referer('mnem_bulk_add_users', 'nonce');
+
+        if (!current_user_can('manage_network_options')) {
+            wp_send_json_error(array('message' => 'Insufficient permissions'));
+            return;
+        }
+
+        $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
+        $user_ids_raw = isset($_POST['user_ids']) ? explode(',', sanitize_text_field(wp_unslash($_POST['user_ids']))) : array();
+        $user_ids = array_map('intval', array_filter($user_ids_raw));
+        $skip_existing = isset($_POST['skip_existing']) && sanitize_text_field(wp_unslash($_POST['skip_existing'])) === '1';
+        $skip_unsubscribed = isset($_POST['skip_unsubscribed']) && sanitize_text_field(wp_unslash($_POST['skip_unsubscribed'])) === '1';
+        $phone_handling = isset($_POST['phone_handling']) ? sanitize_key(wp_unslash($_POST['phone_handling'])) : 'skip';
+
+        if ($list_id <= 0 || empty($user_ids)) {
+            wp_send_json_error(array('message' => 'Invalid list or no users selected'));
+            return;
+        }
+
+        $added = 0;
+        $skipped = 0;
+        $failed = 0;
+        $invalid = 0;
+        $duplicates = 0;
+        $invalid_numbers = array();
+
+        foreach ($user_ids as $user_id) {
+            if (!get_userdata($user_id)) {
+                ++$failed;
+                continue;
+            }
+
+            if ($skip_existing && \MNEM\SmsSubscriberLists::is_subscribed($list_id, $user_id)) {
+                ++$skipped;
+                continue;
+            }
+
+            if ($skip_unsubscribed && \MNEM\SmsSubscriberLists::is_unsubscribed($list_id, $user_id)) {
+                ++$skipped;
+                continue;
+            }
+
+            $phone_number = \MNEM\SmsSubscriberLists::get_resolved_phone_number($user_id);
+            if ($phone_number === '' && $phone_handling === 'exclude') {
+                ++$skipped;
+                continue;
+            }
+
+            $result = \MNEM\SmsSubscriberLists::add_subscriber($list_id, $user_id, $phone_number);
+            if (!empty($result['added'])) {
+                ++$added;
+                continue;
+            }
+
+            if (!empty($result['is_duplicate'])) {
+                ++$duplicates;
+                ++$skipped;
+                continue;
+            }
+
+            if (empty($result['phone_valid'])) {
+                ++$invalid;
+                ++$failed;
+                $invalid_numbers[] = array(
+                    'user_id' => $user_id,
+                    'phone_number' => $phone_number,
+                    'error' => isset($result['phone_error']) ? (string) $result['phone_error'] : '',
+                );
+                continue;
+            }
+
+            ++$failed;
+        }
+
+        $message = sprintf(
+            __('Added %1$d subscribers, skipped %2$d, failed %3$d, invalid %4$d, duplicates %5$d.', 'multisite-network-email-manager'),
+            $added,
+            $skipped,
+            $failed,
+            $invalid,
+            $duplicates
+        );
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'added' => $added,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'invalid' => $invalid,
+            'duplicates' => $duplicates,
+            'invalid_numbers' => $invalid_numbers,
+            'review_url' => network_admin_url('admin.php?page=mnem-invalid-phone-numbers'),
+        ));
+    }
+
+    public function handle_invalid_phone_action()
+    {
+        $action = isset($_POST['mnem_action']) ? sanitize_key(wp_unslash($_POST['mnem_action'])) : '';
+        if (!in_array($action, array('block_phone', 'unblock_phone', 'remove_invalid_entry', 'delete_user_with_phone'), true)) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_invalid_phone_numbers')) {
+            $this->redirect_with_notice('mnem-invalid-phone-numbers', 'invalid_phone_failed');
+            return;
+        }
+
+        $ids = isset($_POST['invalid_ids']) ? array_map('intval', (array) wp_unslash($_POST['invalid_ids'])) : array();
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+        $ids = array_values(array_unique(array_filter($ids)));
+        $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+        $admin_id = function_exists('get_current_user_id') ? (int) get_current_user_id() : 0;
+        $processed = 0;
+
+        foreach ($ids as $entry_id) {
+            $entry = \MNEM\InvalidPhoneNumbers::get_invalid_entry($entry_id);
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $result = $this->process_invalid_phone_action($action, $entry, $admin_id);
+            if (!empty($result['success'])) {
+                ++$processed;
+            }
+        }
+
+        if ($processed === 0 && $phone_number !== '' && in_array($action, array('block_phone', 'unblock_phone'), true)) {
+            $result = $action === 'block_phone'
+                ? \MNEM\InvalidPhoneNumbers::block_number($phone_number)
+                : \MNEM\InvalidPhoneNumbers::unblock_number($phone_number);
+            $processed = $result ? 1 : 0;
+        }
+
+        if ($processed === 0) {
+            $this->redirect_with_notice('mnem-invalid-phone-numbers', 'invalid_phone_failed');
+            return;
+        }
+
+        $notice = $action === 'remove_invalid_entry' ? 'invalid_phone_removed' : ($action === 'delete_user_with_phone' ? 'invalid_phone_deleted_user' : 'invalid_phone_updated');
+        $this->redirect_with_notice('mnem-invalid-phone-numbers', $notice);
+    }
+
+    public function ajax_get_invalid_phone_numbers()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_send_json_error(array('message' => 'Forbidden'), 403);
+            return;
+        }
+        check_ajax_referer('mnem_invalid_phone_numbers', 'nonce');
+
+        $list_id = isset($_GET['list_id']) && $_GET['list_id'] !== '' ? (int) $_GET['list_id'] : null;
+        $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : 'all';
+        $reason = isset($_GET['reason']) ? sanitize_text_field(wp_unslash($_GET['reason'])) : '';
+        $search = isset($_GET['search']) ? sanitize_text_field(wp_unslash($_GET['search'])) : '';
+        $date_from = isset($_GET['date_from']) ? sanitize_text_field(wp_unslash($_GET['date_from'])) : '';
+        $date_to = isset($_GET['date_to']) ? sanitize_text_field(wp_unslash($_GET['date_to'])) : '';
+        $per_page = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 20;
+        $page = isset($_GET['page_number']) ? max(1, (int) $_GET['page_number']) : 1;
+        $offset = ($page - 1) * $per_page;
+        $filters = array(
+            'reason' => $reason,
+            'search' => $search,
+            'date_from' => $date_from,
+            'date_to' => $date_to,
+        );
+
+        $items = \MNEM\InvalidPhoneNumbers::get_invalid_numbers($list_id, $status, $per_page, $offset, $filters);
+        $total = \MNEM\InvalidPhoneNumbers::get_invalid_count($list_id, $status, $filters);
+
+        wp_send_json_success(array(
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $per_page,
+            'items' => $items,
+        ));
+    }
+
+    public function ajax_take_action_on_phone_number()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_send_json_error(array('message' => 'Forbidden'), 403);
+            return;
+        }
+        check_ajax_referer('mnem_invalid_phone_numbers', 'nonce');
+
+        $action_type = isset($_POST['action_type']) ? sanitize_key(wp_unslash($_POST['action_type'])) : '';
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        $confirm_delete = isset($_POST['confirm_delete']) && sanitize_text_field(wp_unslash($_POST['confirm_delete'])) === '1';
+        $entry = $id > 0 ? \MNEM\InvalidPhoneNumbers::get_invalid_entry($id) : null;
+
+        if (!is_array($entry)) {
+            wp_send_json_error(array('message' => 'Invalid phone number entry not found.'), 404);
+            return;
+        }
+
+        if ($action_type === 'delete_user_with_phone' && !$confirm_delete) {
+            wp_send_json_error(array('message' => 'Confirmation required before deleting a network user.'), 400);
+            return;
+        }
+
+        $result = $this->process_invalid_phone_action($action_type, $entry, function_exists('get_current_user_id') ? (int) get_current_user_id() : 0);
+        if (empty($result['success'])) {
+            wp_send_json_error(array('message' => isset($result['message']) ? $result['message'] : 'Action failed.'), 400);
+            return;
+        }
+
+        wp_send_json_success($result);
+    }
+
+    /**
+     * @param array<string,mixed> $entry
+     * @return array<string,mixed>
+     */
+    private function process_invalid_phone_action(string $action, array $entry, int $admin_id): array
+    {
+        $phone_number = isset($entry['phone_number']) ? (string) $entry['phone_number'] : '';
+        $entry_id = isset($entry['id']) ? (int) $entry['id'] : 0;
+
+        if ($action === 'block_phone') {
+            $success = \MNEM\InvalidPhoneNumbers::block_number($phone_number);
+            if ($success) {
+                \MNEM\InvalidPhoneNumbers::take_action($entry_id, 'blocked', $admin_id);
+            }
+
+            return array('success' => $success, 'message' => $success ? 'Phone number blocked.' : 'Failed to block phone number.');
+        }
+
+        if ($action === 'unblock_phone') {
+            $success = \MNEM\InvalidPhoneNumbers::unblock_number($phone_number);
+            if ($success) {
+                \MNEM\InvalidPhoneNumbers::take_action($entry_id, 'removed', $admin_id);
+            }
+
+            return array('success' => $success, 'message' => $success ? 'Phone number unblocked.' : 'Failed to unblock phone number.');
+        }
+
+        if ($action === 'remove_invalid_entry') {
+            $success = \MNEM\InvalidPhoneNumbers::remove_invalid_entry($entry_id);
+            if ($success) {
+                \MNEM\Logger::info('Admin removed invalid phone number log entry.', array('id' => $entry_id, 'phone_number' => $phone_number, 'admin_id' => $admin_id));
+            }
+
+            return array('success' => $success, 'message' => $success ? 'Invalid phone number entry removed.' : 'Failed to remove invalid phone number entry.');
+        }
+
+        if ($action === 'delete_user_with_phone') {
+            $user_id = isset($entry['user_id']) ? (int) $entry['user_id'] : 0;
+            if ($user_id <= 0) {
+                return array('success' => false, 'message' => 'No user is associated with this phone number.');
+            }
+
+            $success = $this->delete_network_user($user_id);
+            if ($success) {
+                \MNEM\InvalidPhoneNumbers::take_action($entry_id, 'deleted_user', $admin_id);
+                \MNEM\Logger::warning('Admin deleted network user associated with invalid phone number.', array('id' => $entry_id, 'phone_number' => $phone_number, 'deleted_user_id' => $user_id, 'admin_id' => $admin_id));
+            }
+
+            return array('success' => $success, 'message' => $success ? 'User deleted successfully.' : 'Failed to delete user.');
+        }
+
+        return array('success' => false, 'message' => 'Unsupported action.');
+    }
+
+    private function delete_network_user(int $user_id): bool
+    {
+        if (function_exists('wpmu_delete_user')) {
+            return (bool) wpmu_delete_user($user_id);
+        }
+
+        if (function_exists('wp_delete_user')) {
+            return (bool) wp_delete_user($user_id);
+        }
+
+        return false;
     }
 
     private function current_user_can_manage_network()

@@ -13,6 +13,12 @@ class AdminMenu
 
     public function register_menus()
     {
+        $invalid_phone_count = class_exists('\MNEM\InvalidPhoneNumbers') ? (int) \MNEM\InvalidPhoneNumbers::get_invalid_count() : 0;
+        $invalid_phone_menu_title = 'Invalid Phone Numbers';
+        if ($invalid_phone_count > 0) {
+            $invalid_phone_menu_title .= ' <span class="awaiting-mod">' . (int) $invalid_phone_count . '</span>';
+        }
+
         add_menu_page(
             'MNEM Dashboard',
             'Network Email Manager',
@@ -28,11 +34,13 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
         add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'SMS Subscriber Lists', 'SMS Subscriber Lists', 'manage_network_options', 'mnem-sms-subscriber-lists', array($this, 'render_sms_subscriber_lists'));
+        add_submenu_page('mnem-dashboard', 'Invalid Phone Numbers', $invalid_phone_menu_title, 'manage_network_options', 'mnem-invalid-phone-numbers', array($this, 'render_invalid_phone_numbers'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
         add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', '', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', '', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
     }
 
     public function render_subscriber_lists_bulk_add()
@@ -67,6 +75,35 @@ class AdminMenu
     public static function get_allowed_network_user_batch_sizes()
     {
         return array(500, 1000, 1500, 2000, 5000, 10000);
+    }
+
+    public function render_sms_subscriber_lists_bulk_add()
+    {
+        if (!isset($_GET['list_id'])) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-sms-subscriber-lists'));
+            exit;
+        }
+
+        $active_list_id = (int) $_GET['list_id'];
+        $active_list = \MNEM\SmsSubscriberLists::get($active_list_id);
+
+        if (!$active_list) {
+            wp_redirect(network_admin_url('admin.php?page=mnem-sms-subscriber-lists'));
+            exit;
+        }
+
+        $all_sites = self::get_all_sites_with_user_count();
+        $all_roles = self::get_all_network_roles();
+        $batch_sizes = self::get_allowed_network_user_batch_sizes();
+        $default_batch_size = in_array(1000, $batch_sizes, true) ? 1000 : (int) $batch_sizes[0];
+
+        $this->render_view('sms-subscriber-lists-bulk-add.php', compact(
+            'active_list',
+            'all_sites',
+            'all_roles',
+            'batch_sizes',
+            'default_batch_size'
+        ));
     }
 
     public static function get_network_users_batch($batch_size, $offset)
@@ -568,6 +605,50 @@ class AdminMenu
         $this->render_view('suppression.php', compact('suppression_entries', 'site_id', 'notice'));
     }
 
+    public function render_invalid_phone_numbers()
+    {
+        $lists = \MNEM\SmsSubscriberLists::get_all();
+        $list_id = isset($_GET['list_id']) && $_GET['list_id'] !== '' ? (int) $_GET['list_id'] : null;
+        $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : 'all';
+        $reason = isset($_GET['reason']) ? sanitize_text_field(wp_unslash($_GET['reason'])) : '';
+        $search = isset($_GET['search']) ? sanitize_text_field(wp_unslash($_GET['search'])) : '';
+        $date_from = isset($_GET['date_from']) ? sanitize_text_field(wp_unslash($_GET['date_from'])) : '';
+        $date_to = isset($_GET['date_to']) ? sanitize_text_field(wp_unslash($_GET['date_to'])) : '';
+        $per_page = isset($_GET['per_page']) ? max(1, (int) $_GET['per_page']) : 20;
+        $page_number = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
+        $offset = ($page_number - 1) * $per_page;
+        $filters = array(
+            'reason' => $reason,
+            'search' => $search,
+            'date_from' => $date_from,
+            'date_to' => $date_to,
+        );
+        $items = \MNEM\InvalidPhoneNumbers::get_invalid_numbers($list_id, $status, $per_page, $offset, $filters);
+        $total = \MNEM\InvalidPhoneNumbers::get_invalid_count($list_id, $status, $filters);
+        $total_pages = max(1, (int) ceil($total / $per_page));
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+
+        $this->render_view('invalid-phone-numbers.php', compact(
+            'lists',
+            'list_id',
+            'status',
+            'reason',
+            'search',
+            'date_from',
+            'date_to',
+            'per_page',
+            'page_number',
+            'items',
+            'total',
+            'total_pages',
+            'notice',
+            'notice_message',
+            'notice_class'
+        ));
+    }
+
     public function render_user_event_rules()
     {
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
@@ -760,6 +841,9 @@ class AdminMenu
             'sms_subscriber_unsubscribed' => 'SMS subscriber unsubscribed successfully.',
             'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
             'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
+            'invalid_phone_updated' => 'Invalid phone number records updated successfully.',
+            'invalid_phone_removed' => 'Invalid phone number entry removed successfully.',
+            'invalid_phone_deleted_user' => 'Network user deleted successfully.',
             'sms_subscriber_operation_failed' => 'SMS subscriber list operation failed.',
             'email_template_saved' => 'Email template saved.',
             'email_template_deleted' => 'Email template deleted.',
@@ -791,7 +875,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed'), true)) {
             return 'notice notice-error';
         }
 

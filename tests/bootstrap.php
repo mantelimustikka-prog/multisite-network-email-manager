@@ -73,6 +73,22 @@ if (!function_exists('update_site_option')) {
     }
 }
 
+if (!function_exists('wp_delete_user')) {
+    function wp_delete_user($user_id)
+    {
+        $GLOBALS['mnem_deleted_users'][] = (int) $user_id;
+        return true;
+    }
+}
+
+if (!function_exists('wpmu_delete_user')) {
+    function wpmu_delete_user($user_id)
+    {
+        $GLOBALS['mnem_deleted_users'][] = (int) $user_id;
+        return true;
+    }
+}
+
 if (!function_exists('get_transient')) {
     function get_transient($key)
     {
@@ -238,6 +254,23 @@ if (!function_exists('get_userdata')) {
         }
 
         return isset($GLOBALS['mnem_user_data'][$user_id]) ? $GLOBALS['mnem_user_data'][$user_id] : null;
+    }
+}
+
+if (!function_exists('get_user_meta')) {
+    function get_user_meta($user_id, $key = '', $single = false)
+    {
+        if (!isset($GLOBALS['mnem_user_meta'][$user_id])) {
+            return $single ? '' : array();
+        }
+
+        if ($key === '') {
+            return $GLOBALS['mnem_user_meta'][$user_id];
+        }
+
+        $value = isset($GLOBALS['mnem_user_meta'][$user_id][$key]) ? $GLOBALS['mnem_user_meta'][$user_id][$key] : '';
+
+        return $single ? $value : array($value);
     }
 }
 
@@ -794,6 +827,13 @@ if (!function_exists('esc_html__')) {
     function esc_html__($text, $domain = '')
     {
         return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+if (!function_exists('esc_js')) {
+    function esc_js($text)
+    {
+        return addslashes((string) $text);
     }
 }
 

@@ -15,6 +15,11 @@ $sms_no_hours          = isset($sms_settings['no_sms_hours'])      ? $sms_settin
 $sms_delay             = isset($sms_settings['delay'])             ? (int)  $sms_settings['delay']       : 100;
 $sms_fallback_provider = isset($sms_settings['fallback_provider']) ? $sms_settings['fallback_provider']  : '';
 $sms_tracking_enabled  = isset($sms_settings['tracking_enabled'])  ? (bool) $sms_settings['tracking_enabled'] : false;
+$sms_phone_validation_enabled = isset($sms_settings['phone_validation_enabled']) ? (bool) $sms_settings['phone_validation_enabled'] : true;
+$sms_validation_country_code = isset($sms_settings['validation_country_code']) ? (string) $sms_settings['validation_country_code'] : 'US';
+$sms_allow_duplicate_numbers = isset($sms_settings['allow_duplicate_numbers']) ? (bool) $sms_settings['allow_duplicate_numbers'] : false;
+$sms_auto_block_failed_attempts = isset($sms_settings['auto_block_failed_attempts']) ? (int) $sms_settings['auto_block_failed_attempts'] : 0;
+$sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (bool) $sms_settings['notify_invalid_numbers'] : false;
 ?>
 <form method="post" action="">
     <?php wp_nonce_field('mnem_sms_settings'); ?>
@@ -170,6 +175,51 @@ $sms_tracking_enabled  = isset($sms_settings['tracking_enabled'])  ? (bool) $sms
                 <label>
                     <input type="checkbox" name="sms_tracking_enabled" value="1"<?php checked($sms_tracking_enabled); ?> />
                     <?php esc_html_e('Enable SMS Tracking (if provider supports)', 'multisite-network-email-manager'); ?>
+                </label>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e('Phone Number Validation', 'multisite-network-email-manager'); ?></th>
+            <td>
+                <label>
+                    <input type="checkbox" name="phone_validation_enabled" value="1"<?php checked($sms_phone_validation_enabled); ?> />
+                    <?php esc_html_e('Validate phone numbers before adding SMS subscribers', 'multisite-network-email-manager'); ?>
+                </label>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row">
+                <label for="mnem_sms_validation_country_code"><?php esc_html_e('Validation Country Code', 'multisite-network-email-manager'); ?></label>
+            </th>
+            <td>
+                <input type="text" id="mnem_sms_validation_country_code" name="validation_country_code" value="<?php echo esc_attr($sms_validation_country_code); ?>" class="small-text" maxlength="2" />
+                <p class="description"><?php esc_html_e('Two-letter country code used for formatting local numbers. Default: US.', 'multisite-network-email-manager'); ?></p>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e('Allow Duplicate Numbers', 'multisite-network-email-manager'); ?></th>
+            <td>
+                <label>
+                    <input type="checkbox" name="allow_duplicate_numbers" value="1"<?php checked($sms_allow_duplicate_numbers); ?> />
+                    <?php esc_html_e('Allow the same phone number to be subscribed more than once in the same list', 'multisite-network-email-manager'); ?>
+                </label>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row">
+                <label for="mnem_sms_auto_block_failed_attempts"><?php esc_html_e('Auto-block Invalid Attempts', 'multisite-network-email-manager'); ?></label>
+            </th>
+            <td>
+                <input type="number" id="mnem_sms_auto_block_failed_attempts" name="auto_block_failed_attempts" value="<?php echo esc_attr((string) $sms_auto_block_failed_attempts); ?>" min="0" class="small-text" />
+                <p class="description"><?php esc_html_e('Automatically block a phone number after this many invalid attempts. Use 0 to disable.', 'multisite-network-email-manager'); ?></p>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><?php esc_html_e('Notify Admin of Invalid Numbers', 'multisite-network-email-manager'); ?></th>
+            <td>
+                <label>
+                    <input type="checkbox" name="notify_invalid_numbers" value="1"<?php checked($sms_notify_invalid_numbers); ?> />
+                    <?php esc_html_e('Keep invalid phone number records visible for admin review', 'multisite-network-email-manager'); ?>
                 </label>
             </td>
         </tr>
