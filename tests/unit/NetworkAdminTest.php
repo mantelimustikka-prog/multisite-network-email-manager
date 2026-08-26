@@ -21,7 +21,7 @@ class NetworkAdminTest extends TestCase
         $GLOBALS['mnem_site_options'] = array();
         $GLOBALS['mnem_site_options'][\MNEM\SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
         $GLOBALS['mnem_transients'] = array();
-        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_deleted_users']);
+        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_current_user_id'], $GLOBALS['mnem_deleted_users']);
         $_POST = array();
         $_GET = array();
     }
