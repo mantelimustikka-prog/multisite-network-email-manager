@@ -26,6 +26,11 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_queue_action'));
         add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
         add_action('admin_init', array($this, 'handle_user_event_rule_action'));
+        add_action('admin_init', array($this, 'handle_sms_campaign_action'));
+        add_action('wp_ajax_mnem_get_sms_campaign_stats', array($this, 'ajax_get_sms_campaign_stats'));
+        add_action('wp_ajax_mnem_preview_sms_recipients', array($this, 'ajax_preview_sms_recipients'));
+        add_action('wp_ajax_mnem_send_sms_test', array($this, 'ajax_send_sms_test'));
+        add_action('wp_ajax_mnem_get_sms_list_info', array($this, 'ajax_get_sms_list_info'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
         add_action('wp_ajax_mnem_dashboard_stats', array($this, 'ajax_dashboard_stats'));
         add_action('wp_ajax_mnem_process_queue', array($this, 'ajax_process_queue'));
@@ -900,6 +905,213 @@ class NetworkAdmin
         $this->redirect_with_notice($page, $deleted > 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
     }
 
+    public function handle_sms_campaign_action()
+    {
+        $action = isset($_POST['mnem_action']) ? sanitize_key(wp_unslash($_POST['mnem_action'])) : '';
+        $valid_actions = array(
+            'create_sms_campaign', 'update_sms_campaign', 'delete_sms_campaign',
+            'send_sms_campaign', 'schedule_sms_campaign', 'pause_sms_campaign',
+            'resume_sms_campaign', 'cancel_sms_campaign',
+        );
+
+        if (!in_array($action, $valid_actions, true)) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_sms_campaigns')) {
+            $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_nonce_failed');
+            return;
+        }
+
+        if (!class_exists('\MNEM\SmsCampaigns')) {
+            $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_action_failed');
+            return;
+        }
+
+        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        $campaign_id = isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0;
+
+        if ($action === 'create_sms_campaign') {
+            $data = array(
+                'name'         => isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '',
+                'description'  => isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '',
+                'message_body' => isset($_POST['message_body']) ? sanitize_textarea_field(wp_unslash($_POST['message_body'])) : '',
+                'sms_list_id'  => isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0,
+                'scheduled_at' => isset($_POST['scheduled_at']) ? sanitize_text_field(wp_unslash($_POST['scheduled_at'])) : '',
+                'status'       => 'draft',
+            );
+            $result = \MNEM\SmsCampaigns::create($site_id, $data);
+            if (!empty($result['success'])) {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_created');
+            } else {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_save_failed');
+            }
+            return;
+        }
+
+        if ($action === 'update_sms_campaign') {
+            if ($campaign_id <= 0) {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_save_failed');
+                return;
+            }
+            $data = array(
+                'name'         => isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '',
+                'description'  => isset($_POST['description']) ? sanitize_textarea_field(wp_unslash($_POST['description'])) : '',
+                'message_body' => isset($_POST['message_body']) ? sanitize_textarea_field(wp_unslash($_POST['message_body'])) : '',
+                'sms_list_id'  => isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0,
+                'scheduled_at' => isset($_POST['scheduled_at']) ? sanitize_text_field(wp_unslash($_POST['scheduled_at'])) : '',
+            );
+            $result = \MNEM\SmsCampaigns::update($campaign_id, $data);
+            if (!empty($result['success'])) {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_updated');
+            } else {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_save_failed');
+            }
+            return;
+        }
+
+        if ($action === 'delete_sms_campaign') {
+            if ($campaign_id <= 0) {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_action_failed');
+                return;
+            }
+            $result = \MNEM\SmsCampaigns::delete($campaign_id);
+            if (!empty($result['success'])) {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_deleted');
+            } else {
+                $this->redirect_with_notice('mnem-sms-campaigns', 'sms_campaign_action_failed');
+            }
+            return;
+        }
+
+        if ($action === 'send_sms_campaign') {
+            $result = $campaign_id > 0 ? \MNEM\SmsCampaigns::send_now($campaign_id) : array('success' => false);
+            $notice = !empty($result['success']) ? 'sms_campaign_sent' : 'sms_campaign_action_failed';
+            $this->redirect_with_notice('mnem-sms-campaigns', $notice);
+            return;
+        }
+
+        if ($action === 'schedule_sms_campaign') {
+            $scheduled_at = isset($_POST['scheduled_at']) ? sanitize_text_field(wp_unslash($_POST['scheduled_at'])) : '';
+            $result = ($campaign_id > 0 && $scheduled_at !== '') ? \MNEM\SmsCampaigns::schedule($campaign_id, $scheduled_at) : array('success' => false);
+            $notice = !empty($result['success']) ? 'sms_campaign_scheduled' : 'sms_campaign_action_failed';
+            $this->redirect_with_notice('mnem-sms-campaigns', $notice);
+            return;
+        }
+
+        if ($action === 'pause_sms_campaign') {
+            $result = $campaign_id > 0 ? \MNEM\SmsCampaigns::pause($campaign_id) : array('success' => false);
+            $notice = !empty($result['success']) ? 'sms_campaign_paused' : 'sms_campaign_action_failed';
+            $this->redirect_with_notice('mnem-sms-campaigns', $notice);
+            return;
+        }
+
+        if ($action === 'resume_sms_campaign') {
+            $result = $campaign_id > 0 ? \MNEM\SmsCampaigns::resume($campaign_id) : array('success' => false);
+            $notice = !empty($result['success']) ? 'sms_campaign_resumed' : 'sms_campaign_action_failed';
+            $this->redirect_with_notice('mnem-sms-campaigns', $notice);
+            return;
+        }
+
+        if ($action === 'cancel_sms_campaign') {
+            $result = $campaign_id > 0 ? \MNEM\SmsCampaigns::cancel($campaign_id) : array('success' => false);
+            $notice = !empty($result['success']) ? 'sms_campaign_cancelled' : 'sms_campaign_action_failed';
+            $this->redirect_with_notice('mnem-sms-campaigns', $notice);
+            return;
+        }
+    }
+
+    public function ajax_get_sms_campaign_stats()
+    {
+        $this->ensure_ajax_permissions();
+
+        $campaign_id = isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0;
+        if ($campaign_id <= 0 || !class_exists('\MNEM\SmsCampaigns')) {
+            wp_send_json_error(array('message' => 'Invalid campaign ID.'), 400);
+            return;
+        }
+
+        $campaign = \MNEM\SmsCampaigns::get($campaign_id);
+        if (!$campaign) {
+            wp_send_json_error(array('message' => 'Campaign not found.'), 404);
+            return;
+        }
+
+        wp_send_json_success(array(
+            'campaign' => \MNEM\SmsCampaigns::format_for_display($campaign),
+            'stats'    => \MNEM\SmsCampaigns::get_delivery_stats($campaign_id),
+        ));
+    }
+
+    public function ajax_preview_sms_recipients()
+    {
+        $this->ensure_ajax_permissions();
+
+        $sms_list_id = isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0;
+        $sample_size = isset($_POST['sample_size']) ? min(50, max(1, (int) $_POST['sample_size'])) : 10;
+
+        if ($sms_list_id <= 0 || !class_exists('\MNEM\SmsCampaigns')) {
+            wp_send_json_error(array('message' => 'Invalid SMS list ID.'), 400);
+            return;
+        }
+
+        $preview = \MNEM\SmsCampaigns::get_recipient_preview($sms_list_id, $sample_size);
+        $count   = \MNEM\SmsCampaigns::get_recipient_count($sms_list_id);
+
+        wp_send_json_success(array(
+            'total'   => $count,
+            'sample'  => $preview,
+        ));
+    }
+
+    public function ajax_send_sms_test()
+    {
+        $this->ensure_ajax_permissions();
+
+        $campaign_id = isset($_POST['campaign_id']) ? (int) $_POST['campaign_id'] : 0;
+        $test_phone  = isset($_POST['test_phone']) ? sanitize_text_field(wp_unslash($_POST['test_phone'])) : '';
+
+        if ($campaign_id <= 0 || $test_phone === '' || !class_exists('\MNEM\SmsCampaigns')) {
+            wp_send_json_error(array('message' => 'Invalid parameters.'), 400);
+            return;
+        }
+
+        $result = \MNEM\SmsCampaigns::send_test($campaign_id, $test_phone);
+        if (!empty($result['success'])) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    public function ajax_get_sms_list_info()
+    {
+        $this->ensure_ajax_permissions();
+
+        $sms_list_id = isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0;
+        if ($sms_list_id <= 0) {
+            wp_send_json_error(array('message' => 'Invalid SMS list ID.'), 400);
+            return;
+        }
+
+        $list = class_exists('\MNEM\SmsSubscriberLists') ? \MNEM\SmsSubscriberLists::get($sms_list_id) : null;
+        if (!$list) {
+            wp_send_json_error(array('message' => 'SMS list not found.'), 404);
+            return;
+        }
+
+        $count = class_exists('\MNEM\SmsCampaigns') ? \MNEM\SmsCampaigns::get_recipient_count($sms_list_id) : 0;
+
+        wp_send_json_success(array(
+            'list'             => $list,
+            'recipient_count'  => $count,
+        ));
+    }
+
     public function enqueue_assets($hook_suffix)
     {
         $page = isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
@@ -931,6 +1143,17 @@ class NetworkAdmin
         }
 
         if (!in_array($page, array('mnem-campaigns', 'mnem-dashboard', 'mnem-settings', 'mnem-email-templates'), true)) {
+            if ($page === 'mnem-sms-campaigns' || $page === 'mnem-sms-campaign-edit') {
+                if (function_exists('wp_enqueue_script') && file_exists(MNEM_PLUGIN_DIR . 'assets/sms-campaigns.js')) {
+                    wp_enqueue_script('mnem-sms-campaigns', MNEM_PLUGIN_URL . 'assets/sms-campaigns.js', array('jquery'), MNEM_VERSION, true);
+                    if (function_exists('wp_localize_script')) {
+                        wp_localize_script('mnem-sms-campaigns', 'mnemSmsCampaigns', array(
+                            'ajaxUrl' => admin_url('admin-ajax.php'),
+                            'nonce'   => function_exists('wp_create_nonce') ? wp_create_nonce('mnem_dashboard_ajax') : '',
+                        ));
+                    }
+                }
+            }
             return;
         }
 

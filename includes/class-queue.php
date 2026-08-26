@@ -1762,4 +1762,109 @@ class Queue
 
         return false;
     }
+
+    /**
+     * Queue all recipients from an SMS list for a campaign.
+     *
+     * @param int    $campaign_id  The SMS campaign ID.
+     * @param int    $sms_list_id  The SMS subscriber list ID.
+     * @param string $message_body The SMS message body.
+     * @return array{success:bool,queued_count:int,message:string}
+     */
+    public static function enqueue_sms_campaign(int $campaign_id, int $sms_list_id, string $message_body): array
+    {
+        global $wpdb;
+
+        if ($campaign_id <= 0 || $sms_list_id <= 0 || trim($message_body) === '') {
+            return array('success' => false, 'queued_count' => 0, 'message' => 'Invalid parameters for SMS campaign queue.');
+        }
+
+        $subs_table  = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $now         = self::current_time_mysql();
+
+        $subscribers = (array) $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT user_id, phone_number FROM {$subs_table} WHERE list_id = %d AND subscription_status = %s AND phone_number <> ''",
+                $sms_list_id,
+                'subscribed'
+            ),
+            ARRAY_A
+        );
+
+        if (empty($subscribers)) {
+            return array('success' => true, 'queued_count' => 0, 'message' => 'No subscribed recipients with phone numbers found.');
+        }
+
+        $queued_count = 0;
+        foreach ($subscribers as $sub) {
+            $phone = sanitize_text_field((string) $sub['phone_number']);
+            if ($phone === '') {
+                continue;
+            }
+
+            $result = $wpdb->query(
+                $wpdb->prepare(
+                    "INSERT INTO {$queue_table} (site_id, blog_id, campaign_id, sms_campaign_id, recipient_email, phone_number, subject, body, from_email, from_name, headers, attachments, metadata, source, status, message_type, attempts, scheduled_at, created_at) VALUES (%d, %d, %d, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s)",
+                    0,
+                    0,
+                    0,
+                    $campaign_id,
+                    $phone,
+                    $phone,
+                    '',
+                    sanitize_textarea_field($message_body),
+                    '',
+                    '',
+                    wp_json_encode(array()),
+                    wp_json_encode(array()),
+                    wp_json_encode(array()),
+                    self::SOURCE_CAMPAIGN,
+                    'pending',
+                    'sms',
+                    0,
+                    $now,
+                    $now
+                )
+            );
+
+            if ($result !== false) {
+                ++$queued_count;
+            }
+        }
+
+        Logger::info('SMS campaign recipients queued.', array('campaign_id' => $campaign_id, 'queued_count' => $queued_count));
+
+        return array('success' => true, 'queued_count' => $queued_count, 'message' => sprintf('%d recipient(s) queued.', $queued_count));
+    }
+
+    /**
+     * Map an SMS provider-specific status string to a canonical queue status.
+     *
+     * @param string $provider_status Raw status from provider (e.g. 'delivered', 'undelivered').
+     * @return string Canonical queue status.
+     */
+    public static function map_sms_provider_status(string $provider_status): string
+    {
+        $map = array(
+            'sent'         => 'sent',
+            'queued'       => 'pending',
+            'delivered'    => 'delivered',
+            'undelivered'  => 'failed',
+            'failed'       => 'failed',
+            'read'         => 'delivered',
+            'rejected'     => 'rejected',
+            'blocked'      => 'rejected',
+            'expired'      => 'failed',
+            'unknown'      => 'failed',
+            'accepted'     => 'sent',
+            'scheduled'    => 'pending',
+            'canceled'     => 'failed',
+            'cancelled'    => 'failed',
+        );
+
+        $normalized = strtolower(trim($provider_status));
+
+        return isset($map[$normalized]) ? $map[$normalized] : 'failed';
+    }
 }

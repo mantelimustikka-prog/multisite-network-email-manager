@@ -239,6 +239,38 @@ class Installer
             }
         }
 
+        // Migration: add SMS campaign support columns to mnem_queue.
+        $queue_table_sms = $tracking_prefix . 'mnem_queue';
+        $queue_sms_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $queue_table_sms));
+        if ($queue_sms_exists === $queue_table_sms) {
+            foreach (array(
+                'sms_campaign_id' => "ADD COLUMN sms_campaign_id bigint(20) unsigned NULL",
+                'phone_number'    => "ADD COLUMN phone_number varchar(20) NOT NULL DEFAULT ''",
+                'message_type'    => "ADD COLUMN message_type varchar(20) NOT NULL DEFAULT 'email'",
+            ) as $col => $alter_clause) {
+                $col_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+                    $queue_table_sms,
+                    $col
+                ));
+                if ($col_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$queue_table_sms}` {$alter_clause}");
+                }
+            }
+            foreach (array('idx_queue_sms_campaign' => 'sms_campaign_id', 'idx_queue_message_type' => 'message_type') as $idx_name => $col_name) {
+                $idx_exists = (int) $wpdb->get_var($wpdb->prepare(
+                    'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+                    $queue_table_sms,
+                    $idx_name
+                ));
+                if ($idx_exists === 0) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    $wpdb->query("ALTER TABLE `{$queue_table_sms}` ADD KEY `{$idx_name}` (`{$col_name}`)");
+                }
+            }
+        }
+
         // Migration: consolidate old site-based tables (wp_N_mnem_*) into central tables.
         if (function_exists('get_sites')) {
             $sites = get_sites(array('number' => 0, 'fields' => 'ids'));
@@ -547,6 +579,59 @@ class Installer
                     KEY phone_number (phone_number),
                     KEY subscription_status (subscription_status),
                     UNIQUE KEY list_user (list_id, user_id)
+                ){$charset_suffix};",
+            ),
+            'mnem_sms_campaigns' => array(
+                'name' => $tracking_prefix . 'mnem_sms_campaigns',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'name' => 'varchar(255)',
+                    'description' => 'longtext',
+                    'message_body' => 'longtext',
+                    'sms_list_id' => 'bigint(20) unsigned',
+                    'status' => "varchar(50)",
+                    'total_recipients' => 'int(11) unsigned',
+                    'sent_count' => 'int(11) unsigned',
+                    'failed_count' => 'int(11) unsigned',
+                    'bounce_count' => 'int(11) unsigned',
+                    'delivery_status_map' => 'longtext',
+                    'scheduled_at' => 'datetime',
+                    'started_at' => 'datetime',
+                    'completed_at' => 'datetime',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                    'created_by' => 'bigint(20) unsigned',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'idx_site_id' => array('site_id'),
+                    'idx_status' => array('status'),
+                    'idx_created_at' => array('created_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_sms_campaigns (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    name varchar(255) NOT NULL,
+                    description longtext NULL,
+                    message_body longtext NOT NULL,
+                    sms_list_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    status varchar(50) NOT NULL DEFAULT 'draft',
+                    total_recipients int(11) unsigned NOT NULL DEFAULT 0,
+                    sent_count int(11) unsigned NOT NULL DEFAULT 0,
+                    failed_count int(11) unsigned NOT NULL DEFAULT 0,
+                    bounce_count int(11) unsigned NOT NULL DEFAULT 0,
+                    delivery_status_map longtext NULL,
+                    scheduled_at datetime NULL,
+                    started_at datetime NULL,
+                    completed_at datetime NULL,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+                    PRIMARY KEY  (id),
+                    KEY idx_site_id (site_id),
+                    KEY idx_status (status),
+                    KEY idx_created_at (created_at)
                 ){$charset_suffix};",
             ),
             'mnem_invalid_phone_numbers' => array(
