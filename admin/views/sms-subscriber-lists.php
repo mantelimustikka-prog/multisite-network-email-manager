@@ -126,6 +126,9 @@ defined('ABSPATH') || exit;
                     <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists-bulk-add&list_id=' . (int) $active_list['id'])); ?>" class="button button-primary">
                         <?php esc_html_e('+ Add from Network Users', 'multisite-network-email-manager'); ?>
                     </a>
+                    <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-invalid-phone-numbers&list_id=' . (int) $active_list['id'])); ?>" class="button" style="margin-left: 8px;">
+                        <?php esc_html_e('Review Invalid Numbers', 'multisite-network-email-manager'); ?>
+                    </a>
                 </div>
                 <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
