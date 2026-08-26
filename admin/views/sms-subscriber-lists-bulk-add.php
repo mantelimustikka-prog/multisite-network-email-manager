@@ -274,7 +274,8 @@ defined('ABSPATH') || exit;
 </style>
 
 <script>
-var mnemSmsBulkAddNonce = <?php echo wp_json_encode(wp_create_nonce('mnem_bulk_add_sms_users')); ?>;
+var mnemSmsBulkAddNonce = <?php echo wp_json_encode(wp_create_nonce('mnem_bulk_add_users')); ?>;
+var mnemSmsBulkAddSmsNonce = <?php echo wp_json_encode(wp_create_nonce('mnem_bulk_add_sms_users')); ?>;
 var mnemSmsBulkListId = <?php echo (int) $active_list['id']; ?>;
 var mnemSmsBulkAddStrings = {
     initialEmpty: <?php echo wp_json_encode(__('No users loaded yet. Choose a batch size and start loading users.', 'multisite-network-email-manager')); ?>,
@@ -717,7 +718,7 @@ document.getElementById('mnem_sms_bulk_add_form').addEventListener('submit', asy
             },
             body: new URLSearchParams({
                 action: 'mnem_bulk_add_sms_subscribers',
-                nonce: mnemSmsBulkAddNonce,
+                nonce: mnemSmsBulkAddSmsNonce,
                 list_id: mnemSmsBulkListId,
                 user_ids: selectedIds.join(','),
                 phone_handling: document.getElementById('mnem_sms_phone_handling_value').value,
