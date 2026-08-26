@@ -60,10 +60,45 @@ defined('ABSPATH') || exit;
                 <?php submit_button($active_list ? 'Save List' : 'Create List'); ?>
             </form>
             <?php if ($active_list) : ?>
-                <form method="post" onsubmit="return confirm('Delete this SMS subscriber list?');">
+                <?php
+                $delete_counts = isset($delete_impact['counts']) && is_array($delete_impact['counts']) ? $delete_impact['counts'] : array();
+                $delete_total_related = isset($delete_impact['total_related']) ? (int) $delete_impact['total_related'] : 0;
+                $delete_confirmation_message = sprintf(
+                    'Delete this SMS subscriber list and cascade delete %d related records?',
+                    $delete_total_related
+                );
+                ?>
+                <div class="notice notice-warning inline">
+                    <p>
+                        <?php
+                        echo esc_html(sprintf(
+                            'Deleting this SMS list will also remove %1$d subscribers, %2$d invalid phone records, %3$d logs, %4$d queue items, and %5$d mapping rows.',
+                            isset($delete_counts['subscribers']) ? (int) $delete_counts['subscribers'] : 0,
+                            isset($delete_counts['invalid_phones']) ? (int) $delete_counts['invalid_phones'] : 0,
+                            isset($delete_counts['logs']) ? (int) $delete_counts['logs'] : 0,
+                            isset($delete_counts['queue_items']) ? (int) $delete_counts['queue_items'] : 0,
+                            isset($delete_counts['mapping_rows']) ? (int) $delete_counts['mapping_rows'] : 0
+                        ));
+                        ?>
+                    </p>
+                    <?php if (!empty($delete_impact['notes'])) : ?>
+                        <p><?php echo esc_html(implode(' ', array_map('strval', (array) $delete_impact['notes']))); ?></p>
+                    <?php endif; ?>
+                </div>
+                <form method="post" onsubmit="return confirm(<?php echo wp_json_encode($delete_confirmation_message); ?>);">
                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
                     <input type="hidden" name="mnem_action" value="sms_subscriber_delete_list" />
                     <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
+                    <?php if (!empty($delete_requires_confirmation)) : ?>
+                        <p>
+                            <label>
+                                <input type="checkbox" name="confirm_cascade_delete" value="1" required />
+                                <?php echo esc_html(sprintf('I understand this will permanently delete %d related records.', $delete_total_related)); ?>
+                            </label>
+                        </p>
+                    <?php else : ?>
+                        <input type="hidden" name="confirm_cascade_delete" value="1" />
+                    <?php endif; ?>
                     <?php submit_button('Delete List', 'delete', 'submit', false); ?>
                 </form>
             <?php endif; ?>

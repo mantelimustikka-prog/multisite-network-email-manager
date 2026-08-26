@@ -16,6 +16,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_save_status_interval_settings'));
         add_action('admin_init', array($this, 'handle_save_general_settings'));
         add_action('admin_init', array($this, 'handle_sms_settings_save'));
+        add_action('admin_init', array($this, 'handle_sms_data_integrity_action'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
@@ -329,6 +330,42 @@ class NetworkAdmin
         $this->redirect_with_notice('mnem-settings', $saved ? 'sms_settings_saved' : 'sms_settings_failed', array('tab' => 'sms'));
     }
 
+    public function handle_sms_data_integrity_action()
+    {
+        if (!isset($_POST['mnem_sms_integrity_action']) || !in_array($_POST['mnem_sms_integrity_action'], array('check_sms_data_integrity', 'cleanup_sms_orphans', 'export_sms_cleanup_report'), true)) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['mnem_sms_integrity_nonce']) ? sanitize_text_field(wp_unslash($_POST['mnem_sms_integrity_nonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_data_integrity')) {
+            $this->redirect_with_notice('mnem-settings', 'sms_integrity_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        if ($_POST['mnem_sms_integrity_action'] === 'check_sms_data_integrity') {
+            $result = \MNEM\SmsSubscriberLists::check_data_integrity();
+            $this->store_sms_integrity_result(array('type' => 'check', 'result' => $result));
+            $this->redirect_with_notice('mnem-settings', 'sms_integrity_checked', array('tab' => 'sms'));
+            return;
+        }
+
+        if ($_POST['mnem_sms_integrity_action'] === 'cleanup_sms_orphans') {
+            $result = \MNEM\SmsSubscriberLists::cleanup_orphaned_records();
+            $this->store_sms_integrity_result(array('type' => 'cleanup', 'result' => $result));
+            $notice = empty($result['errors']) ? 'sms_integrity_cleaned' : 'sms_integrity_failed';
+            $this->redirect_with_notice('mnem-settings', $notice, array('tab' => 'sms'));
+            return;
+        }
+
+        $report = \MNEM\SmsSubscriberLists::export_cleanup_report();
+        $this->store_sms_integrity_result(array('type' => 'export', 'report' => $report));
+        $this->redirect_with_notice('mnem-settings', 'sms_integrity_report_generated', array('tab' => 'sms'));
+    }
+
     public function handle_suppression_action()
     {
         if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], array('add_suppression', 'remove_suppression'), true)) {
@@ -591,8 +628,47 @@ class NetworkAdmin
         }
 
         if ($action === 'sms_subscriber_delete_list') {
-            $result = \MNEM\SmsSubscriberLists::delete($list_id);
-            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_list_deleted' : 'sms_subscriber_operation_failed');
+            $impact = \MNEM\SmsSubscriberLists::get_delete_impact($list_id);
+            $total_related = isset($impact['total_related']) ? (int) $impact['total_related'] : 0;
+            $confirmed = !empty($_POST['confirm_cascade_delete']);
+
+            if ($total_related > 100 && !$confirmed) {
+                \MNEM\Logger::warning('SMS subscriber list delete requires explicit confirmation.', array(
+                    'list_id' => $list_id,
+                    'total_related' => $total_related,
+                    'admin_id' => get_current_user_id(),
+                ));
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_delete_confirmation_required', array(
+                    'list_id' => $list_id,
+                    'deleted_total' => $total_related,
+                ));
+                return;
+            }
+
+            \MNEM\Logger::info('SMS subscriber list delete requested.', array(
+                'list_id' => $list_id,
+                'impact' => $impact,
+                'admin_id' => get_current_user_id(),
+            ));
+            $result = \MNEM\SmsSubscriberLists::delete($list_id, $impact);
+            if (!empty($result['success'])) {
+                $deleted_counts = isset($result['deleted_counts']) && is_array($result['deleted_counts']) ? $result['deleted_counts'] : array();
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_list_deleted', array(
+                    'deleted_total' => (int) (isset($deleted_counts['subscribers']) ? $deleted_counts['subscribers'] : 0)
+                        + (int) (isset($deleted_counts['invalid_phones']) ? $deleted_counts['invalid_phones'] : 0)
+                        + (int) (isset($deleted_counts['queue_items']) ? $deleted_counts['queue_items'] : 0)
+                        + (int) (isset($deleted_counts['logs']) ? $deleted_counts['logs'] : 0)
+                        + (int) (isset($deleted_counts['mapping_rows']) ? $deleted_counts['mapping_rows'] : 0),
+                    'mnem_alert' => $this->build_sms_delete_summary($result),
+                ));
+                return;
+            }
+
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', array(
+                'list_id' => $list_id,
+                'mnem_alert' => isset($result['message']) ? (string) $result['message'] : 'SMS subscriber list operation failed.',
+            ));
+            return;
         }
 
         if ($action === 'sms_subscriber_add_user') {
@@ -1573,9 +1649,70 @@ class NetworkAdmin
         return '';
     }
 
+    /**
+     * @return array<string,mixed>
+     */
+    public static function get_and_clear_sms_integrity_result(): array
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id === 0) {
+            return array();
+        }
+
+        $key = 'mnem_sms_integrity_result_' . $user_id;
+        $detail = get_transient($key);
+        if ($detail !== false && is_array($detail)) {
+            delete_transient($key);
+
+            return $detail;
+        }
+
+        return array();
+    }
+
     private function maybe_wrap_with_global_header_footer(string $body): string
     {
         return \MNEM\EmailFormatter::apply_global_header_footer($body);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function store_sms_integrity_result(array $payload): void
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id === 0) {
+            return;
+        }
+
+        set_transient('mnem_sms_integrity_result_' . $user_id, $payload, 60);
+    }
+
+    /**
+     * @param array<string,mixed> $result
+     */
+    private function build_sms_delete_summary(array $result): string
+    {
+        $counts = isset($result['deleted_counts']) && is_array($result['deleted_counts']) ? $result['deleted_counts'] : array();
+        $parts = array();
+
+        foreach (array(
+            'subscribers' => 'subscribers',
+            'invalid_phones' => 'invalid phone records',
+            'queue_items' => 'queue items',
+            'logs' => 'logs',
+            'mapping_rows' => 'mapping rows',
+        ) as $key => $label) {
+            if (!isset($counts[$key]) || (int) $counts[$key] <= 0) {
+                continue;
+            }
+
+            $parts[] = sprintf('%d %s', (int) $counts[$key], $label);
+        }
+
+        return empty($parts)
+            ? 'Deleted SMS list with no related records to remove.'
+            : 'Deleted SMS list and removed ' . implode(', ', $parts) . '.';
     }
 
     public function handle_send_campaign_test_email()
