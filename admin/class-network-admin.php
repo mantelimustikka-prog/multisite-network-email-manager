@@ -18,6 +18,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
         add_action('admin_init', array($this, 'handle_subscriber_list_action'));
+        add_action('admin_init', array($this, 'handle_sms_subscriber_list_action'));
         add_action('admin_init', array($this, 'handle_email_template_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
         add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
@@ -466,6 +467,116 @@ class NetworkAdmin
 
         $result = \MNEM\SubscriberLists::unsubscribe_user((int) $list_id, $user_id, $reason);
         $this->redirect_with_notice('mnem-subscriber-lists', $result ? 'subscriber_unsubscribed' : 'subscriber_operation_failed', $redirect_args);
+    }
+
+    public function handle_sms_subscriber_list_action()
+    {
+        if (!isset($_POST['mnem_action']) || strpos((string) $_POST['mnem_action'], 'sms_subscriber_') !== 0) {
+            return;
+        }
+
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_sms_subscriber_lists')) {
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed');
+            return;
+        }
+
+        $action = sanitize_text_field(wp_unslash($_POST['mnem_action']));
+        $list_id = isset($_POST['list_id']) ? (int) $_POST['list_id'] : 0;
+        $redirect_args = array();
+        if ($list_id > 0) {
+            $redirect_args['list_id'] = $list_id;
+        }
+
+        if ($action === 'sms_subscriber_save_list') {
+            $name = isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '';
+            $description = isset($_POST['description']) ? wp_kses_post(wp_unslash($_POST['description'])) : '';
+            $result = $list_id > 0
+                ? \MNEM\SmsSubscriberLists::update($list_id, $name, $description)
+                : \MNEM\SmsSubscriberLists::create($name, $description);
+            if (is_int($result)) {
+                $redirect_args['list_id'] = $result;
+            }
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_list_saved' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_delete_list') {
+            $result = \MNEM\SmsSubscriberLists::delete($list_id);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_list_deleted' : 'sms_subscriber_operation_failed');
+        }
+
+        if ($action === 'sms_subscriber_add_user') {
+            $identifier = isset($_POST['user_identifier']) ? trim((string) wp_unslash($_POST['user_identifier'])) : '';
+            $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+            $user_id = ctype_digit($identifier) ? (int) $identifier : 0;
+            if ($user_id <= 0 && function_exists('get_users')) {
+                $users = get_users(array(
+                    'search' => $identifier,
+                    'search_columns' => array('user_login'),
+                    'number' => 1,
+                    'fields' => array('ID'),
+                ));
+                $user = isset($users[0]) ? $users[0] : null;
+                $user_id = is_object($user) && isset($user->ID) ? (int) $user->ID : (is_array($user) && isset($user['ID']) ? (int) $user['ID'] : 0);
+            }
+            if ($user_id <= 0) {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+
+            $result = \MNEM\SmsSubscriberLists::add_subscriber($list_id, $user_id, $phone_number);
+            if ($result instanceof \WP_Error) {
+                $redirect_args['mnem_alert'] = $result->get_error_message();
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+            }
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_remove_user') {
+            $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+            $result = \MNEM\SmsSubscriberLists::remove_subscriber($list_id, $user_id);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_removed' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_unsubscribe_user') {
+            $this->handle_sms_subscriber_unsubscribe_action($list_id, $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_restore_user') {
+            $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+            $result = \MNEM\SmsSubscriberLists::resubscribe_user($list_id, $user_id);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_restored' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_import_csv') {
+            $csv_content = isset($_POST['csv_content']) ? (string) wp_unslash($_POST['csv_content']) : '';
+            if ($csv_content === '' && isset($_FILES['csv_file']['tmp_name']) && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
+                $csv_content = (string) file_get_contents($_FILES['csv_file']['tmp_name']);
+            }
+            $result = \MNEM\SmsSubscriberLists::import_from_csv($list_id, $csv_content);
+            \MNEM\Logger::info('SMS subscriber CSV imported.', array('list_id' => $list_id, 'result' => $result));
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_csv_imported', $redirect_args);
+        }
+    }
+
+    private function handle_sms_subscriber_unsubscribe_action($list_id, array $redirect_args = array())
+    {
+        $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+        if ((int) $list_id <= 0 || $user_id <= 0 || !\MNEM\SmsSubscriberLists::is_subscribed((int) $list_id, $user_id)) {
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+            return;
+        }
+
+        $reason = isset($_POST['unsubscribe_reason']) ? sanitize_text_field(wp_unslash($_POST['unsubscribe_reason'])) : '';
+        if ($reason === '') {
+            $reason = 'Unsubscribed by admin';
+        }
+
+        $result = \MNEM\SmsSubscriberLists::unsubscribe_user((int) $list_id, $user_id, $reason);
+        $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_unsubscribed' : 'sms_subscriber_operation_failed', $redirect_args);
     }
 
     public function handle_email_template_action()

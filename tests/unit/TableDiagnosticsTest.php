@@ -41,7 +41,9 @@ class TableDiagnosticsTest extends TestCase
         $this->assertArrayHasKey('mnem_suppression', $schema);
         $this->assertArrayHasKey('mnem_subscriber_lists', $schema);
         $this->assertArrayHasKey('mnem_list_subscribers', $schema);
-        $expected_keys = array('mnem_queue', 'mnem_suppression', 'mnem_campaigns', 'mnem_subscriber_lists', 'mnem_list_subscribers');
+        $this->assertArrayHasKey('mnem_sms_subscriber_lists', $schema);
+        $this->assertArrayHasKey('mnem_sms_list_subscribers', $schema);
+        $expected_keys = array('mnem_queue', 'mnem_suppression', 'mnem_campaigns', 'mnem_subscriber_lists', 'mnem_list_subscribers', 'mnem_sms_subscriber_lists', 'mnem_sms_list_subscribers');
         $actual_keys = array_keys($schema);
         sort($expected_keys);
         sort($actual_keys);
