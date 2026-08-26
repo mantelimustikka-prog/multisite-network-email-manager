@@ -13,7 +13,7 @@ class InvalidPhoneNumbers
         $table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
         $phone_number = self::normalize_phone_number($phone_number);
         $reason = sanitize_key((string) $reason);
-        $list_id = $list_id !== null ? (int) $list_id : null;
+        $list_id = self::normalize_list_id($list_id);
         $user_id = $user_id !== null ? (int) $user_id : null;
         $now = self::current_time_mysql();
         $existing_id = self::find_existing_id($phone_number, $list_id);
@@ -233,7 +233,7 @@ class InvalidPhoneNumbers
 
         if ($list_id !== null) {
             $clauses[] = 'list_id = %d';
-            $args[] = (int) $list_id;
+            $args[] = self::normalize_list_id($list_id);
         }
 
         if ($status === 'blocked') {
@@ -276,22 +276,18 @@ class InvalidPhoneNumbers
 
         $table = $wpdb->base_prefix . 'mnem_invalid_phone_numbers';
 
-        if ($list_id === null) {
-            return (int) $wpdb->get_var(
-                $wpdb->prepare(
-                    "SELECT id FROM {$table} WHERE phone_number = %s AND list_id IS NULL ORDER BY id DESC LIMIT 1",
-                    $phone_number
-                )
-            );
-        }
-
         return (int) $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT id FROM {$table} WHERE phone_number = %s AND list_id = %d ORDER BY id DESC LIMIT 1",
                 $phone_number,
-                (int) $list_id
+                self::normalize_list_id($list_id)
             )
         );
+    }
+
+    private static function normalize_list_id($list_id): int
+    {
+        return $list_id === null ? 0 : max(0, (int) $list_id);
     }
 
     private static function normalize_phone_number($phone_number): string

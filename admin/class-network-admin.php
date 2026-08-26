@@ -1281,6 +1281,7 @@ class NetworkAdmin
             ++$failed;
         }
 
+        /* translators: 1: added count, 2: skipped count, 3: failed count, 4: invalid count, 5: duplicate count */
         $message = sprintf(
             __('Added %1$d subscribers, skipped %2$d, failed %3$d, invalid %4$d, duplicates %5$d.', 'multisite-network-email-manager'),
             $added,
@@ -1358,11 +1359,12 @@ class NetworkAdmin
 
     public function ajax_get_invalid_phone_numbers()
     {
+        check_ajax_referer('mnem_invalid_phone_numbers', 'nonce');
+
         if (!$this->current_user_can_manage_network()) {
             wp_send_json_error(array('message' => 'Forbidden'), 403);
             return;
         }
-        check_ajax_referer('mnem_invalid_phone_numbers', 'nonce');
 
         $list_id = isset($_GET['list_id']) && $_GET['list_id'] !== '' ? (int) $_GET['list_id'] : null;
         $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : 'all';

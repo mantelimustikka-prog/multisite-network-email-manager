@@ -159,17 +159,13 @@ class SmsSubscriberListsTest extends TestCase
     public function test_add_subscriber_rejects_duplicate_phone_number_in_same_list()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
-            public function get_results($query, $output = OBJECT)
-            {
-                $this->queries[] = $query;
-                return array(
-                    array('user_id' => 7, 'phone_number' => '+1234567890', 'subscription_status' => 'subscribed'),
-                );
-            }
-
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
+                if (strpos($query, 'phone_number') !== false) {
+                    return array('user_id' => 7, 'phone_number' => '+1234567890', 'subscription_status' => 'subscribed');
+                }
+
                 return null;
             }
 

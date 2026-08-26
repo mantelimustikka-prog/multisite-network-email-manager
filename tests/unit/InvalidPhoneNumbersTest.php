@@ -59,6 +59,13 @@ class InvalidPhoneNumbersTest extends TestCase
         $this->assertStringContainsString('INSERT INTO wp_mnem_invalid_phone_numbers', implode("\n", $GLOBALS['wpdb']->queries));
     }
 
+    public function test_log_invalid_number_uses_zero_list_id_for_global_entries()
+    {
+        InvalidPhoneNumbers::log_invalid_number('+12345678901', 'format_invalid', null, 7);
+
+        $this->assertStringContainsString('list_id = 0', implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
     public function test_is_blocked_returns_true_when_matching_blocked_record_exists()
     {
         $GLOBALS['wpdb']->var = 1;

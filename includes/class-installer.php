@@ -519,7 +519,7 @@ class Installer
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     phone_number varchar(20) NOT NULL,
                     reason varchar(50) NOT NULL DEFAULT 'format_invalid',
-                    list_id bigint(20) unsigned NULL,
+                    list_id bigint(20) unsigned NOT NULL DEFAULT 0,
                     user_id bigint(20) unsigned NULL,
                     blocked tinyint(1) NOT NULL DEFAULT 0,
                     created_at datetime NOT NULL,

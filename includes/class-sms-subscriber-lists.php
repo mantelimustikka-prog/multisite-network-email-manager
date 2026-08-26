@@ -491,27 +491,18 @@ class SmsSubscriberLists
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
-        $rows = (array) $wpdb->get_results(
+
+        $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT user_id, phone_number, subscription_status FROM {$table} WHERE list_id = %d",
-                $list_id
+                "SELECT user_id, phone_number, subscription_status FROM {$table} WHERE list_id = %d AND phone_number = %s AND subscription_status = %s LIMIT 1",
+                $list_id,
+                $phone_number,
+                'subscribed'
             ),
             ARRAY_A
         );
-        $country_code = SmsSettings::get_validation_country_code();
 
-        foreach ($rows as $row) {
-            if (!isset($row['phone_number']) || (isset($row['subscription_status']) && $row['subscription_status'] !== 'subscribed')) {
-                continue;
-            }
-
-            $formatted = PhoneValidator::format_phone_number((string) $row['phone_number'], $country_code);
-            if ($formatted !== '' && $formatted === $phone_number) {
-                return $row;
-            }
-        }
-
-        return null;
+        return is_array($row) ? $row : null;
     }
 
     private static function maybe_auto_block_invalid_number(string $phone_number): void

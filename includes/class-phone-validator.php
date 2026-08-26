@@ -97,7 +97,7 @@ class PhoneValidator
             }
         }
 
-        $should_check_leading_digit = is_array($rule) || strpos($phone_number, '+') !== 0;
+        $should_check_leading_digit = !( !is_array($rule) && strpos($phone_number, '+') === 0 );
         if ($national_number === '' || ($should_check_leading_digit && preg_match('/^[01]/', $national_number))) {
             return array(
                 'valid' => false,
