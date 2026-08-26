@@ -27,6 +27,7 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Settings', 'Settings', 'manage_network_options', 'mnem-settings', array($this, 'render_settings'));
         add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
         add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
+        add_submenu_page('mnem-dashboard', 'SMS Subscriber Lists', 'SMS Subscriber Lists', 'manage_network_options', 'mnem-sms-subscriber-lists', array($this, 'render_sms_subscriber_lists'));
         add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
         add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
@@ -376,8 +377,70 @@ class AdminMenu
         ));
     }
 
-    public function render_email_templates()
+    public function render_sms_subscriber_lists()
     {
+        global $wpdb;
+
+        $lists = \MNEM\SmsSubscriberLists::get_all();
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+        $active_list_id = isset($_GET['list_id']) ? (int) $_GET['list_id'] : 0;
+        $active_list = $active_list_id > 0 ? \MNEM\SmsSubscriberLists::get($active_list_id) : null;
+        $subscriber_search = isset($_GET['subscriber_search']) ? sanitize_text_field(wp_unslash($_GET['subscriber_search'])) : '';
+        $allowed_subscriber_per_page = array(100, 500, 1000);
+        $subscriber_per_page = isset($_GET['subscriber_per_page']) ? (int) $_GET['subscriber_per_page'] : 100;
+        if (!in_array($subscriber_per_page, $allowed_subscriber_per_page, true)) {
+            $subscriber_per_page = 100;
+        }
+
+        $subscribed_current_page = isset($_GET['subscribed_paged']) ? max(1, (int) $_GET['subscribed_paged']) : 1;
+        $unsubscribed_current_page = isset($_GET['unsubscribed_paged']) ? max(1, (int) $_GET['unsubscribed_paged']) : 1;
+
+        $subscribers = array();
+        $unsubscribed = array();
+        $subscribed_total = 0;
+        $unsubscribed_total = 0;
+        $subscribed_total_pages = 1;
+        $unsubscribed_total_pages = 1;
+
+        if ($active_list_id > 0) {
+            $subscribed_result = $this->get_sms_subscriber_table_data($wpdb, $active_list_id, 'subscribed', $subscriber_search, $subscriber_per_page, $subscribed_current_page);
+            $unsubscribed_result = $this->get_sms_subscriber_table_data($wpdb, $active_list_id, 'unsubscribed', $subscriber_search, $subscriber_per_page, $unsubscribed_current_page);
+
+            $subscribers = $subscribed_result['rows'];
+            $unsubscribed = $unsubscribed_result['rows'];
+            $subscribed_total = $subscribed_result['total'];
+            $unsubscribed_total = $unsubscribed_result['total'];
+            $subscribed_total_pages = $subscribed_result['total_pages'];
+            $unsubscribed_total_pages = $unsubscribed_result['total_pages'];
+            $subscribed_current_page = $subscribed_result['current_page'];
+            $unsubscribed_current_page = $unsubscribed_result['current_page'];
+        }
+        $alert_message = isset($_GET['mnem_alert']) ? sanitize_text_field(wp_unslash($_GET['mnem_alert'])) : '';
+
+        $this->render_view('sms-subscriber-lists.php', compact(
+            'lists',
+            'notice',
+            'notice_message',
+            'notice_class',
+            'active_list',
+            'active_list_id',
+            'subscribers',
+            'unsubscribed',
+            'alert_message',
+            'subscriber_search',
+            'subscriber_per_page',
+            'subscribed_current_page',
+            'unsubscribed_current_page',
+            'subscribed_total',
+            'unsubscribed_total',
+            'subscribed_total_pages',
+            'unsubscribed_total_pages'
+        ));
+    }
+
+    public function render_email_templates()    {
         $templates = \MNEM\EmailTemplates::get_all_templates();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
@@ -591,8 +654,57 @@ class AdminMenu
         );
     }
 
-    private function get_notice_message($notice)
+    private function get_sms_subscriber_table_data($wpdb, $list_id, $status, $search, $per_page, $current_page)
     {
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $users_table = $wpdb->base_prefix . 'users';
+
+        $where_clauses = array('s.list_id = %d', 's.subscription_status = %s');
+        $where_args = array((int) $list_id, (string) $status);
+
+        if ($search !== '') {
+            $search_like = '%' . strtolower($wpdb->esc_like((string) $search)) . '%';
+            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s)';
+            $where_args[] = $search_like;
+            $where_args[] = $search_like;
+        }
+
+        $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
+
+        $count_query = call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                array("SELECT COUNT(1) FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql}"),
+                $where_args
+            )
+        );
+        $total = (int) $wpdb->get_var($count_query);
+
+        $total_pages = max(1, (int) ceil($total / $per_page));
+        $current_page = min(max(1, (int) $current_page), $total_pages);
+        $offset = ($current_page - 1) * $per_page;
+
+        $rows_query = call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                array("SELECT s.user_id, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                $where_args,
+                array($per_page, $offset)
+            )
+        );
+        $rows = (array) $wpdb->get_results($rows_query, ARRAY_A);
+
+        return array(
+            'rows' => $rows,
+            'total' => $total,
+            'total_pages' => $total_pages,
+            'current_page' => $current_page,
+        );
+    }
+
+    private function get_notice_message($notice)    {
         $count = isset($_GET['count']) ? (int) $_GET['count'] : 0;
         $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
@@ -639,6 +751,14 @@ class AdminMenu
             'subscriber_restored' => 'Subscriber restored successfully.',
             'subscriber_csv_imported' => 'Subscriber CSV import processed.',
             'subscriber_operation_failed' => 'Subscriber list operation failed.',
+            'sms_subscriber_list_saved' => 'SMS subscriber list saved.',
+            'sms_subscriber_list_deleted' => 'SMS subscriber list deleted.',
+            'sms_subscriber_added' => 'SMS subscriber added successfully.',
+            'sms_subscriber_removed' => 'SMS subscriber removed successfully.',
+            'sms_subscriber_unsubscribed' => 'SMS subscriber unsubscribed successfully.',
+            'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
+            'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
+            'sms_subscriber_operation_failed' => 'SMS subscriber list operation failed.',
             'email_template_saved' => 'Email template saved.',
             'email_template_deleted' => 'Email template deleted.',
             'email_template_reset' => 'Template reset to default.',
@@ -665,7 +785,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed'), true)) {
             return 'notice notice-error';
         }
 

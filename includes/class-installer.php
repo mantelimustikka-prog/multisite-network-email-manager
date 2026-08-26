@@ -433,6 +433,64 @@ class Installer
                     UNIQUE KEY list_user (list_id, user_id)
                 ){$charset_suffix};",
             ),
+            'mnem_sms_subscriber_lists' => array(
+                'name' => $tracking_prefix . 'mnem_sms_subscriber_lists',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'name' => 'varchar(255)',
+                    'description' => 'longtext',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'created_at' => array('created_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_sms_subscriber_lists (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    name varchar(255) NOT NULL,
+                    description longtext NULL,
+                    created_at datetime NOT NULL,
+                    updated_at datetime NOT NULL,
+                    PRIMARY KEY  (id),
+                    KEY created_at (created_at)
+                ){$charset_suffix};",
+            ),
+            'mnem_sms_list_subscribers' => array(
+                'name' => $tracking_prefix . 'mnem_sms_list_subscribers',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'list_id' => 'bigint(20) unsigned',
+                    'user_id' => 'bigint(20) unsigned',
+                    'phone_number' => 'varchar(20)',
+                    'subscription_status' => "enum('subscribed','unsubscribed')",
+                    'subscribed_at' => 'datetime',
+                    'unsubscribed_at' => 'datetime',
+                    'unsubscribed_reason' => 'text',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'list_id' => array('list_id'),
+                    'user_id' => array('user_id'),
+                    'subscription_status' => array('subscription_status'),
+                    'list_user' => array('list_id', 'user_id'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_sms_list_subscribers (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    list_id bigint(20) unsigned NOT NULL,
+                    user_id bigint(20) unsigned NOT NULL,
+                    phone_number varchar(20) NOT NULL DEFAULT '',
+                    subscription_status enum('subscribed','unsubscribed') NOT NULL DEFAULT 'subscribed',
+                    subscribed_at datetime NOT NULL,
+                    unsubscribed_at datetime NULL,
+                    unsubscribed_reason text NULL,
+                    PRIMARY KEY  (id),
+                    KEY list_id (list_id),
+                    KEY user_id (user_id),
+                    KEY subscription_status (subscription_status),
+                    UNIQUE KEY list_user (list_id, user_id)
+                ){$charset_suffix};",
+            ),
         );
     }
 
