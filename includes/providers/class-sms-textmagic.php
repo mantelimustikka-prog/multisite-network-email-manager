@@ -42,7 +42,7 @@ class SmsTextmagic extends SmsBaseProvider
             return $this->error_result('TextMagic Username and API Key are required.');
         }
 
-        $response = $this->http_get(self::API_BASE . '/account', array(
+        $response = $this->http_get(self::API_BASE . '/user', array(
             'X-TM-Username' => $username,
             'X-TM-Key'      => $api_key,
             'Accept'        => 'application/json',
