@@ -1060,4 +1060,59 @@ class NetworkAdminTest extends TestCase
         $this->assertStringContainsString('mnem_notice=sms_subscriber_csv_imported', $GLOBALS['mnem_last_redirect']);
         $this->assertStringContainsString('list_id=2', $GLOBALS['mnem_last_redirect']);
     }
+
+    public function test_init_registers_test_sms_connection_hook()
+    {
+        $admin = new NetworkAdmin();
+        $admin->init();
+
+        $this->assertArrayHasKey('wp_ajax_mnem_test_sms_connection', $GLOBALS['mnem_hooks']);
+    }
+
+    public function test_ajax_test_sms_connection_without_configured_provider()
+    {
+        $GLOBALS['mnem_site_options'][\MNEM\SmsSettings::OPTION_PROVIDER] = '';
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_test_sms_connection();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertSame('No SMS provider configured.', $GLOBALS['mnem_last_json_response']['data']['message']);
+    }
+
+    public function test_ajax_test_sms_connection_with_invalid_provider_key()
+    {
+        $GLOBALS['mnem_site_options'][\MNEM\SmsSettings::OPTION_PROVIDER] = 'nonexistent_provider';
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_test_sms_connection();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertSame('SMS provider not available.', $GLOBALS['mnem_last_json_response']['data']['message']);
+    }
+
+    public function test_ajax_test_sms_connection_with_valid_provider_returns_provider_result()
+    {
+        $GLOBALS['mnem_site_options'][\MNEM\SmsSettings::OPTION_PROVIDER] = 'twilio';
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_test_sms_connection();
+
+        // The base provider returns success=false with 'Not implemented.' message
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertSame('Not implemented.', $GLOBALS['mnem_last_json_response']['data']['message']);
+    }
+
+    public function test_ajax_test_sms_connection_insufficient_permissions()
+    {
+        $GLOBALS['mnem_current_user_can'] = false;
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_test_sms_connection();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+    }
 }

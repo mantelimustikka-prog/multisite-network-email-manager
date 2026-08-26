@@ -322,6 +322,32 @@
         runSmtpAction('mnem_test_connection');
     });
 
+    $(document).on('click', '#mnem_test_sms_connection', function(){
+        var $button = $(this);
+        var $result = $('#mnem_sms_test_result');
+        var originalText = $button.text();
+
+        $button.prop('disabled', true).text('Testing...');
+        $result.html('');
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_test_sms_connection',
+            nonce: mnemAdmin.nonce
+        }, function(response){
+            if (response && response.success) {
+                $result.html('<span style="color:green;">&#10003; ' + response.data.message + '</span>');
+            } else {
+                $result.html('<span style="color:red;">&#10007; ' + (response.data && response.data.message ? response.data.message : 'Test failed') + '</span>');
+            }
+        }).fail(function(jqXHR){
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            var message = data.message || 'Connection test failed.';
+            $result.html('<span style="color:red;">&#10007; ' + message + '</span>');
+        }).always(function(){
+            $button.prop('disabled', false).text(originalText);
+        });
+    });
+
     $(document).on('click', '[data-mnem-smtp-action="send-test-email"]', function(){
         runSmtpAction('mnem_send_test_email', {
             email: $('#mnem-smtp-test-email').val() || ''
