@@ -1246,7 +1246,7 @@ class NetworkAdmin
             }
 
             $phone_number = \MNEM\SmsSubscriberLists::get_resolved_phone_number($user_id);
-            if ($phone_number === '' && $phone_handling === 'exclude') {
+            if ($phone_number === '' && in_array($phone_handling, array('skip', 'exclude'), true)) {
                 ++$skipped;
                 continue;
             }

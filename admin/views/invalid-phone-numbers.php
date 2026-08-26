@@ -23,7 +23,7 @@ defined('ABSPATH') || exit;
         <div>
             <label for="mnem_invalid_status"><strong><?php esc_html_e('Status', 'multisite-network-email-manager'); ?></strong></label><br />
             <select id="mnem_invalid_status" name="status">
-                <?php foreach (array('all' => 'All', 'blocked' => 'Blocked', 'not_blocked' => 'Not Blocked') as $value => $label) : ?>
+                <?php foreach (array('all' => __('All', 'multisite-network-email-manager'), 'blocked' => __('Blocked', 'multisite-network-email-manager'), 'not_blocked' => __('Not Blocked', 'multisite-network-email-manager')) as $value => $label) : ?>
                     <option value="<?php echo esc_attr($value); ?>"<?php selected($status, $value); ?>><?php echo esc_html($label); ?></option>
                 <?php endforeach; ?>
             </select>
