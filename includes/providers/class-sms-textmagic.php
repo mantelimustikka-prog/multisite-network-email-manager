@@ -42,7 +42,7 @@ class SmsTextmagic extends SmsBaseProvider
             return $this->error_result('TextMagic Username and API Key are required.');
         }
 
-        $response = $this->http_get(self::API_BASE . '/me', array(
+        $response = $this->http_get(self::API_BASE . '/account', array(
             'X-TM-Username' => $username,
             'X-TM-Key'      => $api_key,
             'Accept'        => 'application/json',
@@ -53,9 +53,9 @@ class SmsTextmagic extends SmsBaseProvider
         }
 
         if ($response['code'] === 200) {
-            $data  = json_decode($response['body'], true);
-            $email = isset($data['email']) ? (string) $data['email'] : '';
-            return $this->success_result('TextMagic connected successfully.' . ($email !== '' ? ' Account: ' . $email : ''));
+            $data       = json_decode($response['body'], true);
+            $first_name = isset($data['firstName']) ? (string) $data['firstName'] : '';
+            return $this->success_result('TextMagic connected successfully.' . ($first_name !== '' ? ' Account: ' . $first_name : ''));
         }
 
         if ($response['code'] === 401) {
