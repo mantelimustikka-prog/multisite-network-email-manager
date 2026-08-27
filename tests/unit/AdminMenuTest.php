@@ -3,6 +3,7 @@
 defined('ABSPATH') || exit;
 
 use MNEM\Admin\AdminMenu;
+use MNEM\Admin\TableDiagnostics;
 use PHPUnit\Framework\TestCase;
 
 class AdminMenuTest extends TestCase
@@ -15,13 +16,13 @@ class AdminMenuTest extends TestCase
         $_GET = array();
     }
 
-    public function test_register_menus_uses_network_email_manager_and_removes_smtp_submenus()
+    public function test_register_menus_uses_updated_main_menu_title_and_removes_smtp_submenus()
     {
         $menu = new AdminMenu();
         $menu->register_menus();
 
         $this->assertNotEmpty($GLOBALS['mnem_menu_pages']);
-        $this->assertSame('Network Email Manager', $GLOBALS['mnem_menu_pages'][0][1]);
+        $this->assertSame('SMS Campaign & Network Emails', $GLOBALS['mnem_menu_pages'][0][1]);
 
         $submenu_slugs = array_map(static function ($submenu) {
             return $submenu[4];
@@ -33,18 +34,68 @@ class AdminMenuTest extends TestCase
         $this->assertContains('mnem-invalid-phone-numbers', $submenu_slugs);
     }
 
-    public function test_register_menus_sets_visible_titles_for_bulk_add_submenus()
+    public function test_register_menus_sets_updated_visible_titles_for_submenus()
     {
         $menu = new AdminMenu();
         $menu->register_menus();
+        $menu->register_logs_submenu();
 
         $submenu_titles_by_slug = array();
         foreach ($GLOBALS['mnem_submenu_pages'] as $submenu) {
             $submenu_titles_by_slug[$submenu[4]] = $submenu[2];
         }
 
-        $this->assertSame('Add Bulk Subscribers', $submenu_titles_by_slug['mnem-subscriber-lists-bulk-add']);
+        $this->assertSame('Email Campaigns', $submenu_titles_by_slug['mnem-campaigns']);
+        $this->assertSame('Email Subscribers Lists', $submenu_titles_by_slug['mnem-subscriber-lists']);
+        $this->assertSame('Email Event Rules', $submenu_titles_by_slug['mnem-user-event-rules']);
+        $this->assertSame('Email Suppression', $submenu_titles_by_slug['mnem-suppression']);
+        $this->assertSame('Add Bulk Email Subscribers', $submenu_titles_by_slug['mnem-subscriber-lists-bulk-add']);
+        $this->assertSame('Logs', $submenu_titles_by_slug['mnem-queue']);
         $this->assertSame('Add Bulk SMS Subscribers', $submenu_titles_by_slug['mnem-sms-subscriber-lists-bulk-add']);
+    }
+
+    public function test_register_menus_groups_email_and_sms_submenus_with_separators_and_logs_last()
+    {
+        $menu = new AdminMenu();
+        $diagnostics = new TableDiagnostics();
+
+        $menu->register_menus();
+        $diagnostics->register_submenu();
+        $menu->register_logs_submenu();
+
+        $dashboard_submenus = array_values(array_filter($GLOBALS['mnem_submenu_pages'], static function ($submenu) {
+            return 'mnem-dashboard' === $submenu[0];
+        }));
+
+        $dashboard_submenu_slugs = array_map(static function ($submenu) {
+            return $submenu[4];
+        }, $dashboard_submenus);
+
+        $this->assertSame(
+            array(
+                'mnem-dashboard',
+                'mnem-settings',
+                'mnem-separator-email',
+                'mnem-campaigns',
+                'mnem-subscriber-lists',
+                'mnem-user-event-rules',
+                'mnem-suppression',
+                'mnem-subscriber-lists-bulk-add',
+                'mnem-separator-sms',
+                'mnem-sms-campaigns',
+                'mnem-sms-subscriber-lists',
+                'mnem-invalid-phone-numbers',
+                'mnem-sms-subscriber-lists-bulk-add',
+                'mnem-separator-space',
+                'mnem-table-diagnosis',
+                'mnem-queue',
+            ),
+            $dashboard_submenu_slugs
+        );
+
+        $this->assertSame(null, $dashboard_submenus[2][5]);
+        $this->assertSame(null, $dashboard_submenus[8][5]);
+        $this->assertSame(null, $dashboard_submenus[13][5]);
     }
 
     public function test_render_queue_applies_email_and_subject_search_filters()
