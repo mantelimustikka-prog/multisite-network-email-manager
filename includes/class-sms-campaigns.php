@@ -476,7 +476,7 @@ class SmsCampaigns
         }
 
         $sms_list_id = (int) $campaign['sms_list_id'];
-        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $queue_table = $wpdb->base_prefix . 'mnem_sms_queue';
         $subscribers = SmsSubscriberLists::get_all_subscribers_mixed($sms_list_id, 100000, 0);
 
         if (empty($subscribers)) {
@@ -491,12 +491,11 @@ class SmsCampaigns
             $phone  = (string) $subscriber['phone_number'];
             $result = $wpdb->query(
                 $wpdb->prepare(
-                    "INSERT INTO {$queue_table} (site_id, phone_number, body, status, message_type, sms_campaign_id) VALUES (%d, %s, %s, %s, %s, %d)",
+                    "INSERT INTO {$queue_table} (site_id, phone_number, body, status, sms_campaign_id) VALUES (%d, %s, %s, %s, %d)",
                     $site_id,
                     $phone,
                     (string) $campaign['message_body'],
                     'pending',
-                    'sms',
                     $id
                 )
             );

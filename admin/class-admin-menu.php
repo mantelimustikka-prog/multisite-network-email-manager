@@ -177,7 +177,7 @@ class AdminMenu
         $sms_stats            = array('total' => 0, 'pending' => 0, 'sent' => 0, 'failed' => 0);
 
         if ($active_tab === 'sms') {
-            $queue_table         = $wpdb->base_prefix . 'mnem_queue';
+            $queue_table         = $wpdb->base_prefix . 'mnem_sms_queue';
             $sms_campaigns_table = $wpdb->base_prefix . 'mnem_sms_campaigns';
 
             $sms_status_filter   = isset($_GET['sms_status']) ? sanitize_text_field(wp_unslash($_GET['sms_status'])) : '';
@@ -195,8 +195,8 @@ class AdminMenu
             $sms_current_page = isset($_GET['sms_paged']) ? max(1, (int) $_GET['sms_paged']) : 1;
             $sms_offset       = ($sms_current_page - 1) * $sms_per_page;
 
-            // Base WHERE for SMS records.
-            $sms_base_where  = "q.message_type = 'sms' AND q.sms_campaign_id IS NOT NULL";
+            // Base WHERE for SMS records (all rows in mnem_sms_queue are SMS).
+            $sms_base_where  = '1=1';
             $sms_where_extra = array();
             $sms_where_args  = array();
 

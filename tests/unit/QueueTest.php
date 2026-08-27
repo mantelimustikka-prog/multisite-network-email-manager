@@ -516,7 +516,7 @@ class QueueTest extends TestCase
         $this->assertSame('complaint', Queue::map_webhook_status('postmark', 'SpamComplaint'));
     }
 
-    public function test_process_batch_queries_sms_items_from_queue()
+    public function test_process_sms_batch_queries_sms_items_from_sms_queue()
     {
         $queries = array();
 
@@ -550,35 +550,35 @@ class QueueTest extends TestCase
             }
         };
 
-        Queue::process_batch(5);
+        Queue::process_sms_batch(5);
 
         $joined = implode("\n", $queries);
-        $this->assertStringContainsString("message_type = 'sms'", $joined);
+        $this->assertStringContainsString('wp_mnem_sms_queue', $joined);
         $this->assertStringContainsString("status = 'pending'", $joined);
+        $this->assertStringNotContainsString("message_type = 'sms'", $joined);
     }
 
-    public function test_process_item_routes_sms_items_to_sms_handler_when_phone_missing()
+    public function test_process_sms_batch_routes_sms_items_to_sms_handler_when_phone_missing()
     {
         unset($GLOBALS['mnem_last_wp_mail']);
 
         $GLOBALS['wpdb'] = new class extends wpdb {
-            public function get_var($query)
+            private bool $sms_col_returned = false;
+
+            public function get_col($query)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT message_type FROM wp_mnem_queue WHERE id = 77') !== false) {
-                    return 'sms';
+                if (strpos($query, 'wp_mnem_sms_queue') !== false && !$this->sms_col_returned) {
+                    $this->sms_col_returned = true;
+                    return array(77);
                 }
-                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
-                    return 'wp_mnem_logs';
-                }
-
-                return 0;
+                return array();
             }
 
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, "SELECT id, phone_number, body FROM wp_mnem_queue WHERE id = 77 AND message_type = 'sms'") !== false) {
+                if (strpos($query, 'SELECT id, phone_number, body FROM wp_mnem_sms_queue WHERE id = 77') !== false) {
                     return array(
                         'id'           => 77,
                         'phone_number' => '',
@@ -594,20 +594,28 @@ class QueueTest extends TestCase
                 $this->queries[] = $query;
                 return 1;
             }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
         };
 
-        $result = Queue::process_item(77);
+        $processed = Queue::process_sms_batch(1);
 
-        $this->assertTrue($result['processed']);
-        $this->assertFalse($result['success']);
-        $this->assertSame('failed', $result['status']);
+        $this->assertSame(0, $processed);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('wp_mnem_sms_queue', $joined);
+        $this->assertStringContainsString("status = 'failed'", $joined);
         $this->assertArrayNotHasKey('mnem_last_wp_mail', $GLOBALS);
-        $this->assertStringContainsString('SELECT message_type FROM wp_mnem_queue WHERE id = 77', implode("\n", $GLOBALS['wpdb']->queries));
-        $this->assertStringContainsString("message_type = 'sms'", implode("\n", $GLOBALS['wpdb']->queries));
-        $this->assertStringNotContainsString('recipient_email', implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertStringNotContainsString('recipient_email', $joined);
     }
 
-    public function test_process_item_routes_sms_items_to_sms_handler_and_records_provider_message_id()
+    public function test_process_sms_batch_routes_sms_items_and_records_provider_message_id()
     {
         unset($GLOBALS['mnem_last_wp_mail']);
         $GLOBALS['mnem_site_options']['mnem_sms_provider'] = 'twilio';
@@ -624,23 +632,22 @@ class QueueTest extends TestCase
         );
 
         $GLOBALS['wpdb'] = new class extends wpdb {
-            public function get_var($query)
+            private bool $sms_col_returned = false;
+
+            public function get_col($query)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT message_type FROM wp_mnem_queue WHERE id = 78') !== false) {
-                    return 'sms';
+                if (strpos($query, 'wp_mnem_sms_queue') !== false && !$this->sms_col_returned) {
+                    $this->sms_col_returned = true;
+                    return array(78);
                 }
-                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
-                    return 'wp_mnem_logs';
-                }
-
-                return 0;
+                return array();
             }
 
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, "SELECT id, phone_number, body FROM wp_mnem_queue WHERE id = 78 AND message_type = 'sms'") !== false) {
+                if (strpos($query, 'SELECT id, phone_number, body FROM wp_mnem_sms_queue WHERE id = 78') !== false) {
                     return array(
                         'id'           => 78,
                         'phone_number' => '+15550001111',
@@ -656,19 +663,26 @@ class QueueTest extends TestCase
                 $this->queries[] = $query;
                 return 1;
             }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
         };
 
-        $result = Queue::process_item(78);
+        $processed = Queue::process_sms_batch(1);
         unset($GLOBALS['mnem_http_response']);
 
-        $this->assertTrue($result['processed']);
-        $this->assertTrue($result['success']);
-        $this->assertSame('sent', $result['status']);
-        $this->assertSame('twilio', $result['provider']);
-        $this->assertSame('SM123', $result['message_id']);
+        $this->assertSame(1, $processed);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('wp_mnem_sms_queue', $joined);
+        $this->assertStringContainsString("provider_type = 'twilio'", $joined);
+        $this->assertStringContainsString("provider_message_id = 'SM123'", $joined);
         $this->assertArrayNotHasKey('mnem_last_wp_mail', $GLOBALS);
-        $this->assertStringContainsString("provider_type = 'twilio'", implode("\n", $GLOBALS['wpdb']->queries));
-        $this->assertStringContainsString("provider_message_id = 'SM123'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_process_sms_item_marks_failed_when_phone_missing()
@@ -720,7 +734,7 @@ class QueueTest extends TestCase
             }
         };
 
-        $processed = Queue::process_batch(1);
+        $processed = Queue::process_sms_batch(1);
 
         $this->assertSame(0, $processed);
         $joined = implode("\n", $queries);

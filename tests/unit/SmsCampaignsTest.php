@@ -356,12 +356,13 @@ class SmsCampaignsTest extends TestCase
 
         $this->assertSame(1, $queued);
         $this->assertStringContainsString(
-            'INSERT INTO wp_mnem_queue (site_id, phone_number, body, status, message_type, sms_campaign_id)',
+            'INSERT INTO wp_mnem_sms_queue (site_id, phone_number, body, status, sms_campaign_id)',
             $insert_query
         );
         $this->assertStringContainsString("'+351911969387'", $insert_query);
         $this->assertStringContainsString("'pending'", $insert_query);
-        $this->assertStringContainsString("'sms'", $insert_query);
+        $this->assertStringNotContainsString("'sms'", $insert_query);
+        $this->assertStringNotContainsString('message_type', $insert_query);
         $this->assertStringNotContainsString('created_at', $insert_query);
         $this->assertStringNotContainsString('updated_at', $insert_query);
     }
