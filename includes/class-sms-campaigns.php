@@ -491,13 +491,12 @@ class SmsCampaigns
             $phone  = (string) $subscriber['phone_number'];
             $result = $wpdb->query(
                 $wpdb->prepare(
-                    "INSERT INTO {$queue_table} (site_id, email, subject, body, status, campaign_id, sms_campaign_id, phone_number, message_type, created_at, updated_at) VALUES (%d, %s, %s, %s, 'pending', 0, %d, %s, 'sms', %s, %s)",
+                    "INSERT INTO {$queue_table} (site_id, recipient_email, phone_number, body, status, message_type, sms_campaign_id, created_at, updated_at) VALUES (%d, %s, %s, %s, 'pending', 'sms', %d, %s, %s)",
                     $site_id,
                     '',
-                    '',
+                    $phone,
                     (string) $campaign['message_body'],
                     $id,
-                    $phone,
                     $now,
                     $now
                 )
