@@ -49,7 +49,253 @@ class AdminMenu
 
     public function register_logs_submenu()
     {
-        add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
+        add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-logs', array($this, 'render_logs'));
+    }
+
+    public function render_logs()
+    {
+        global $wpdb;
+
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'email';
+        if (!in_array($active_tab, array('email', 'sms'), true)) {
+            $active_tab = 'email';
+        }
+
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
+
+        // ── Email tab data ──────────────────────────────────────────────────────
+        $queue_items       = array();
+        $queue_stats       = array();
+        $queue_summary     = array();
+        $total_all_records = 0;
+        $total_filtered    = 0;
+        $total_pages       = 1;
+        $current_page      = 1;
+        $per_page          = 50;
+        $status_filter     = '';
+        $all_statuses      = array();
+        $search_email      = '';
+        $search_subject    = '';
+
+        if ($active_tab === 'email') {
+            $queue_table = $wpdb->base_prefix . 'mnem_queue';
+
+            $status_filter  = isset($_GET['status_filter']) ? sanitize_text_field(wp_unslash($_GET['status_filter'])) : '';
+            $search_email   = isset($_GET['search_email']) ? sanitize_text_field(wp_unslash($_GET['search_email'])) : '';
+            $search_subject = isset($_GET['search_subject']) ? sanitize_text_field(wp_unslash($_GET['search_subject'])) : '';
+
+            $allowed_per_page = array(10, 20, 50, 100, 200, 500);
+            $per_page = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 50;
+            if (!in_array($per_page, $allowed_per_page, true)) {
+                $per_page = 50;
+            }
+
+            $current_page = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
+            $offset       = ($current_page - 1) * $per_page;
+
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $total_all_records = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table}");
+
+            $where_clauses = array();
+            $where_args    = array();
+
+            if ($status_filter !== '') {
+                $where_clauses[] = 'status = %s';
+                $where_args[]    = $status_filter;
+            }
+            if ($search_email !== '') {
+                $where_clauses[] = 'LOWER(recipient_email) LIKE %s';
+                $where_args[]    = '%' . strtolower($wpdb->esc_like($search_email)) . '%';
+            }
+            if ($search_subject !== '') {
+                $where_clauses[] = 'LOWER(subject) LIKE %s';
+                $where_args[]    = '%' . strtolower($wpdb->esc_like($search_subject)) . '%';
+            }
+
+            $where_sql = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+
+            if (!empty($where_args)) {
+                $count_query = call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        array("SELECT COUNT(1) FROM {$queue_table} {$where_sql}"),
+                        $where_args
+                    )
+                );
+                $total_filtered = (int) $wpdb->get_var($count_query);
+            } else {
+                $total_filtered = $total_all_records;
+            }
+
+            $queue_select_columns = 'id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
+            if (!empty($where_args)) {
+                $queue_query = call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        array("SELECT {$queue_select_columns} FROM {$queue_table} {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d"),
+                        $where_args,
+                        array($per_page, $offset)
+                    )
+                );
+            } else {
+                $queue_query = $wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    "SELECT {$queue_select_columns} FROM {$queue_table} ORDER BY created_at DESC LIMIT %d OFFSET %d",
+                    $per_page,
+                    $offset
+                );
+            }
+
+            $queue_items = (array) $wpdb->get_results($queue_query, ARRAY_A);
+
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $all_statuses = (array) $wpdb->get_col("SELECT DISTINCT status FROM {$queue_table} ORDER BY status ASC");
+
+            $total_pages = $per_page > 0 ? (int) ceil($total_filtered / $per_page) : 1;
+
+            $queue_stats   = \MNEM\Queue::get_stats(null);
+            $queue_summary = \MNEM\StatusSummary::get_summary(null);
+        }
+
+        // ── SMS tab data ────────────────────────────────────────────────────────
+        $sms_items            = array();
+        $sms_campaigns_list   = array();
+        $sms_total_all        = 0;
+        $sms_total_filtered   = 0;
+        $sms_total_pages      = 1;
+        $sms_current_page     = 1;
+        $sms_per_page         = 50;
+        $sms_status_filter    = '';
+        $sms_campaign_filter  = '';
+        $sms_phone_search     = '';
+        $sms_date_from        = '';
+        $sms_date_to          = '';
+        $sms_stats            = array('total' => 0, 'pending' => 0, 'sent' => 0, 'failed' => 0);
+
+        if ($active_tab === 'sms') {
+            $queue_table         = $wpdb->base_prefix . 'mnem_queue';
+            $sms_campaigns_table = $wpdb->base_prefix . 'mnem_sms_campaigns';
+
+            $sms_status_filter   = isset($_GET['sms_status']) ? sanitize_text_field(wp_unslash($_GET['sms_status'])) : '';
+            $sms_campaign_filter = isset($_GET['sms_campaign']) ? sanitize_text_field(wp_unslash($_GET['sms_campaign'])) : '';
+            $sms_phone_search    = isset($_GET['sms_phone']) ? sanitize_text_field(wp_unslash($_GET['sms_phone'])) : '';
+            $sms_date_from       = isset($_GET['sms_date_from']) ? sanitize_text_field(wp_unslash($_GET['sms_date_from'])) : '';
+            $sms_date_to         = isset($_GET['sms_date_to']) ? sanitize_text_field(wp_unslash($_GET['sms_date_to'])) : '';
+
+            $allowed_sms_per_page = array(10, 20, 50, 100, 200, 500);
+            $sms_per_page = isset($_GET['sms_per_page']) ? (int) $_GET['sms_per_page'] : 50;
+            if (!in_array($sms_per_page, $allowed_sms_per_page, true)) {
+                $sms_per_page = 50;
+            }
+
+            $sms_current_page = isset($_GET['sms_paged']) ? max(1, (int) $_GET['sms_paged']) : 1;
+            $sms_offset       = ($sms_current_page - 1) * $sms_per_page;
+
+            // Base WHERE for SMS records.
+            $sms_base_where  = "q.message_type = 'sms' AND q.sms_campaign_id IS NOT NULL";
+            $sms_where_extra = array();
+            $sms_where_args  = array();
+
+            if ($sms_status_filter !== '') {
+                $sms_where_extra[] = 'q.status = %s';
+                $sms_where_args[]  = $sms_status_filter;
+            }
+            if ($sms_campaign_filter !== '') {
+                $sms_where_extra[] = 'q.sms_campaign_id = %d';
+                $sms_where_args[]  = (int) $sms_campaign_filter;
+            }
+            if ($sms_phone_search !== '') {
+                $sms_where_extra[] = 'q.phone_number LIKE %s';
+                $sms_where_args[]  = '%' . $wpdb->esc_like($sms_phone_search) . '%';
+            }
+            if ($sms_date_from !== '') {
+                $sms_where_extra[] = 'q.created_at >= %s';
+                $sms_where_args[]  = $sms_date_from . ' 00:00:00';
+            }
+            if ($sms_date_to !== '') {
+                $sms_where_extra[] = 'q.created_at <= %s';
+                $sms_where_args[]  = $sms_date_to . ' 23:59:59';
+            }
+
+            $sms_full_where = $sms_base_where;
+            if (!empty($sms_where_extra)) {
+                $sms_full_where .= ' AND ' . implode(' AND ', $sms_where_extra);
+            }
+
+            // Stats summary (always use base filter only, no text search for totals).
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_total_all = (int) $wpdb->get_var("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where}");
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_stats['total']   = $sms_total_all;
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_stats['pending'] = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'pending'));
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_stats['sent']    = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'sent'));
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_stats['failed']  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'failed'));
+
+            if (!empty($sms_where_args)) {
+                $sms_count_query = call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        array("SELECT COUNT(1) FROM {$queue_table} q LEFT JOIN {$sms_campaigns_table} sc ON q.sms_campaign_id = sc.id WHERE {$sms_full_where}"),
+                        $sms_where_args
+                    )
+                );
+                $sms_total_filtered = (int) $wpdb->get_var($sms_count_query);
+            } else {
+                $sms_total_filtered = $sms_total_all;
+            }
+
+            $sms_select = 'q.id, q.sms_campaign_id, q.phone_number, q.body, q.status, q.sent_at, q.attempts, q.created_at, sc.name AS campaign_name';
+            if (!empty($sms_where_args)) {
+                $sms_data_query = call_user_func_array(
+                    array($wpdb, 'prepare'),
+                    array_merge(
+                        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                        array("SELECT {$sms_select} FROM {$queue_table} q LEFT JOIN {$sms_campaigns_table} sc ON q.sms_campaign_id = sc.id WHERE {$sms_full_where} ORDER BY q.created_at DESC LIMIT %d OFFSET %d"),
+                        $sms_where_args,
+                        array($sms_per_page, $sms_offset)
+                    )
+                );
+            } else {
+                $sms_data_query = $wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    "SELECT {$sms_select} FROM {$queue_table} q LEFT JOIN {$sms_campaigns_table} sc ON q.sms_campaign_id = sc.id WHERE {$sms_full_where} ORDER BY q.created_at DESC LIMIT %d OFFSET %d",
+                    $sms_per_page,
+                    $sms_offset
+                );
+            }
+            $sms_items = (array) $wpdb->get_results($sms_data_query, ARRAY_A);
+
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_total_pages = $sms_per_page > 0 ? (int) ceil($sms_total_filtered / $sms_per_page) : 1;
+
+            // Campaign list for the filter dropdown.
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_campaigns_list = (array) $wpdb->get_results("SELECT id, name FROM {$sms_campaigns_table} ORDER BY name ASC", ARRAY_A);
+        }
+
+        $this->render_view('logs.php', compact(
+            'active_tab',
+            'notice', 'notice_message', 'notice_class',
+            // email vars
+            'queue_items', 'queue_stats', 'queue_summary',
+            'total_all_records', 'total_filtered', 'total_pages',
+            'current_page', 'per_page', 'status_filter', 'all_statuses',
+            'search_email', 'search_subject',
+            // sms vars
+            'sms_items', 'sms_campaigns_list',
+            'sms_total_all', 'sms_total_filtered', 'sms_total_pages',
+            'sms_current_page', 'sms_per_page',
+            'sms_status_filter', 'sms_campaign_filter', 'sms_phone_search',
+            'sms_date_from', 'sms_date_to', 'sms_stats'
+        ));
     }
 
     public function render_subscriber_lists_bulk_add()

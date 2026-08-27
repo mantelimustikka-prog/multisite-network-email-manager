@@ -50,7 +50,7 @@ class AdminMenuTest extends TestCase
         $this->assertSame('Email Event Rules', $submenu_titles_by_slug['mnem-user-event-rules']);
         $this->assertSame('Email Suppression', $submenu_titles_by_slug['mnem-suppression']);
         $this->assertSame('Add Bulk Email Subscribers', $submenu_titles_by_slug['mnem-subscriber-lists-bulk-add']);
-        $this->assertSame('Logs', $submenu_titles_by_slug['mnem-queue']);
+        $this->assertSame('Logs', $submenu_titles_by_slug['mnem-logs']);
         $this->assertSame('Add Bulk SMS Subscribers', $submenu_titles_by_slug['mnem-sms-subscriber-lists-bulk-add']);
     }
 
@@ -88,7 +88,7 @@ class AdminMenuTest extends TestCase
                 'mnem-sms-subscriber-lists-bulk-add',
                 'mnem-separator-space',
                 'mnem-table-diagnosis',
-                'mnem-queue',
+                'mnem-logs',
             ),
             $dashboard_submenu_slugs
         );
