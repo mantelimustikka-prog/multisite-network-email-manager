@@ -274,11 +274,12 @@ class SmsSubscriberLists
             }
 
             // Unsubscribed (or any other non-subscribed status): restore the subscription.
-            $restored = self::resubscribe_user($list_id, $user_id);
+            $restored    = self::resubscribe_user($list_id, $user_id);
+            $existing_id = $restored && isset($existing['id']) ? (int) $existing['id'] : null;
             if ($restored) {
                 Logger::info('Subscriber restored to SMS list.', array('list_id' => $list_id, 'user_id' => $user_id));
             }
-            return self::build_add_response($restored, $restored, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.', $restored ? 'restored' : 'error');
+            return self::build_add_response($restored, $restored, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.', $restored ? 'restored' : 'error', $existing_id);
         }
 
         // No existing record: insert a fresh subscription.
@@ -301,7 +302,8 @@ class SmsSubscriberLists
             Logger::info('Subscriber added to SMS list.', array('list_id' => $list_id, 'user_id' => $user_id));
         }
 
-        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Subscriber added successfully.' : 'Failed to add subscriber.', $result !== false ? 'added' : 'error');
+        $new_id = $result !== false && isset($wpdb->insert_id) ? (int) $wpdb->insert_id : null;
+        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Subscriber added successfully.' : 'Failed to add subscriber.', $result !== false ? 'added' : 'error', $new_id);
     }
 
     /**
@@ -404,7 +406,8 @@ class SmsSubscriberLists
             }
 
             // Unsubscribed (or any other non-subscribed status): restore and update name.
-            $restored = self::resubscribe_standalone($list_id, $formatted_phone);
+            $restored    = self::resubscribe_standalone($list_id, $formatted_phone);
+            $existing_id = $restored && isset($existing['id']) ? (int) $existing['id'] : null;
             if ($restored) {
                 $wpdb->query(
                     $wpdb->prepare(
@@ -417,7 +420,7 @@ class SmsSubscriberLists
                 );
                 Logger::info('Standalone subscriber restored to SMS list.', array('list_id' => $list_id, 'phone_number' => $formatted_phone));
             }
-            return self::build_add_response($restored, $restored, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.', $restored ? 'restored' : 'error');
+            return self::build_add_response($restored, $restored, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.', $restored ? 'restored' : 'error', $existing_id);
         }
 
         // No existing record: insert a fresh subscription.
@@ -440,7 +443,8 @@ class SmsSubscriberLists
             Logger::info('Standalone subscriber added to SMS list.', array('list_id' => $list_id, 'phone_number' => $formatted_phone));
         }
 
-        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Standalone subscriber added successfully.' : 'Failed to add standalone subscriber.', $result !== false ? 'added' : 'error');
+        $new_id = $result !== false && isset($wpdb->insert_id) ? (int) $wpdb->insert_id : null;
+        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Standalone subscriber added successfully.' : 'Failed to add standalone subscriber.', $result !== false ? 'added' : 'error', $new_id);
     }
 
     public static function remove_subscriber(int $list_id, int $user_id)
@@ -1495,7 +1499,7 @@ class SmsSubscriberLists
     /**
      * @return array<string,mixed>
      */
-    private static function build_add_response(bool $success, bool $added, bool $is_duplicate, ?int $duplicate_user_id, array $validation, string $message, string $action = ''): array
+    private static function build_add_response(bool $success, bool $added, bool $is_duplicate, ?int $duplicate_user_id, array $validation, string $message, string $action = '', ?int $subscriber_id = null): array
     {
         if ($action === '') {
             if (!$success) {
@@ -1505,7 +1509,7 @@ class SmsSubscriberLists
             } elseif ($is_duplicate) {
                 $action = 'duplicate';
             } else {
-                $action = 'ok';
+                $action = 'unknown';
             }
         }
 
@@ -1521,7 +1525,7 @@ class SmsSubscriberLists
             'existing_user_id'  => $duplicate_user_id,
             'added'             => $added,
             'formatted_phone'   => isset($validation['formatted']) ? (string) $validation['formatted'] : '',
-            'subscriber_id'     => null,
+            'subscriber_id'     => $subscriber_id,
         );
     }
 
