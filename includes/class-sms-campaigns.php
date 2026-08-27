@@ -476,16 +476,8 @@ class SmsCampaigns
         }
 
         $sms_list_id = (int) $campaign['sms_list_id'];
-        $table       = $wpdb->base_prefix . 'mnem_sms_subscribers';
         $queue_table = $wpdb->base_prefix . 'mnem_queue';
-
-        $subscribers = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT user_id, phone_number FROM {$table} WHERE list_id = %d AND subscription_status = 'subscribed' AND phone_number != ''",
-                $sms_list_id
-            ),
-            ARRAY_A
-        );
+        $subscribers = SmsSubscriberLists::get_all_subscribers_mixed($sms_list_id, 100000, 0);
 
         if (empty($subscribers)) {
             return 0;
@@ -610,17 +602,8 @@ class SmsCampaigns
         }
 
         $sms_list_id = (int) $campaign['sms_list_id'];
-        $table       = $wpdb->base_prefix . 'mnem_sms_subscribers';
         $limit       = max(1, min(100, $limit));
-
-        return (array) $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT user_id, phone_number FROM {$table} WHERE list_id = %d AND subscription_status = 'subscribed' AND phone_number != '' ORDER BY id ASC LIMIT %d",
-                $sms_list_id,
-                $limit
-            ),
-            ARRAY_A
-        );
+        return SmsSubscriberLists::get_all_subscribers_mixed($sms_list_id, $limit, 0);
     }
 
     /**
@@ -639,14 +622,7 @@ class SmsCampaigns
         }
 
         $sms_list_id = (int) $campaign['sms_list_id'];
-        $table       = $wpdb->base_prefix . 'mnem_sms_subscribers';
-
-        return (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND subscription_status = 'subscribed' AND phone_number != ''",
-                $sms_list_id
-            )
-        );
+        return SmsSubscriberLists::get_list_subscribers_count($sms_list_id);
     }
 
     /**

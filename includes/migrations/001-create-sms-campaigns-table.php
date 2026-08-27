@@ -24,6 +24,7 @@ function mnem_migration_001()
 
     $table_name      = $wpdb->base_prefix . 'mnem_sms_campaigns';
     $queue_table     = $wpdb->base_prefix . 'mnem_queue';
+    $subs_table      = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
     $charset_collate = $wpdb->get_charset_collate();
 
     // -------------------------------------------------------------------------
@@ -154,6 +155,63 @@ function mnem_migration_001()
         }
     } else {
         $messages[] = 'Index idx_message_type already exists in mnem_queue.';
+    }
+
+    // -------------------------------------------------------------------------
+    // Update mnem_sms_list_subscribers for standalone subscribers
+    // -------------------------------------------------------------------------
+    $subs_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $subs_table));
+    if ($subs_exists === $subs_table) {
+        $subscriber_name_column = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+            $subs_table,
+            'subscriber_name'
+        ));
+        if ($subscriber_name_column === 0) {
+            $wpdb->query("ALTER TABLE {$subs_table} ADD COLUMN subscriber_name varchar(255) NOT NULL DEFAULT '' AFTER user_id");
+            if ($wpdb->last_error !== '') {
+                $messages[] = 'Error adding subscriber_name to mnem_sms_list_subscribers: ' . $wpdb->last_error;
+                $success    = false;
+            } else {
+                $messages[] = 'Column subscriber_name added to mnem_sms_list_subscribers.';
+            }
+        } else {
+            $messages[] = 'Column subscriber_name already exists in mnem_sms_list_subscribers.';
+        }
+
+        $list_user_unique = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s AND NON_UNIQUE = 0',
+            $subs_table,
+            'list_user'
+        ));
+        if ($list_user_unique > 0) {
+            $wpdb->query("ALTER TABLE {$subs_table} DROP INDEX list_user");
+            if ($wpdb->last_error !== '') {
+                $messages[] = 'Error dropping unique list_user index from mnem_sms_list_subscribers: ' . $wpdb->last_error;
+                $success    = false;
+            } else {
+                $messages[] = 'Unique list_user index dropped from mnem_sms_list_subscribers.';
+            }
+        }
+
+        $list_user_index = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+            $subs_table,
+            'list_user'
+        ));
+        if ($list_user_index === 0) {
+            $wpdb->query("ALTER TABLE {$subs_table} ADD KEY list_user (list_id, user_id)");
+            if ($wpdb->last_error !== '') {
+                $messages[] = 'Error adding list_user index to mnem_sms_list_subscribers: ' . $wpdb->last_error;
+                $success    = false;
+            } else {
+                $messages[] = 'Index list_user added to mnem_sms_list_subscribers.';
+            }
+        } else {
+            $messages[] = 'Index list_user already exists in mnem_sms_list_subscribers.';
+        }
+    } else {
+        $messages[] = 'Table mnem_sms_list_subscribers does not exist yet; standalone subscriber schema update skipped.';
     }
 
     return array(

@@ -196,6 +196,7 @@ class Installer
                 'phone_country_iso2'      => "ADD COLUMN phone_country_iso2 varchar(2) NULL",
                 'phone_raw_input'         => "ADD COLUMN phone_raw_input varchar(50) NULL",
                 'phone_detection_source'  => "ADD COLUMN phone_detection_source varchar(20) NULL",
+                'subscriber_name'         => "ADD COLUMN subscriber_name varchar(255) NOT NULL DEFAULT '' AFTER user_id",
             ) as $col => $alter_clause) {
                 $col_exists = (int) $wpdb->get_var($wpdb->prepare(
                     'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
@@ -206,6 +207,26 @@ class Installer
                     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
                     $wpdb->query("ALTER TABLE `{$subs_table}` {$alter_clause}");
                 }
+            }
+
+            $list_user_unique_exists = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s AND NON_UNIQUE = 0',
+                $subs_table,
+                'list_user'
+            ));
+            if ($list_user_unique_exists > 0) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$subs_table}` DROP INDEX `list_user`");
+            }
+
+            $list_user_index_exists = (int) $wpdb->get_var($wpdb->prepare(
+                'SELECT COUNT(1) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+                $subs_table,
+                'list_user'
+            ));
+            if ($list_user_index_exists === 0) {
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                $wpdb->query("ALTER TABLE `{$subs_table}` ADD KEY `list_user` (`list_id`, `user_id`)");
             }
         }
 
@@ -513,6 +534,7 @@ class Installer
                     'id' => 'bigint(20) unsigned',
                     'list_id' => 'bigint(20) unsigned',
                     'user_id' => 'bigint(20) unsigned',
+                    'subscriber_name' => 'varchar(255)',
                     'phone_number' => 'varchar(20)',
                     'subscription_status' => "enum('subscribed','unsubscribed')",
                     'subscribed_at' => 'datetime',
@@ -533,6 +555,7 @@ class Installer
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
                     list_id bigint(20) unsigned NOT NULL,
                     user_id bigint(20) unsigned NOT NULL,
+                    subscriber_name varchar(255) NOT NULL DEFAULT '',
                     phone_number varchar(20) NOT NULL DEFAULT '',
                     subscription_status enum('subscribed','unsubscribed') NOT NULL DEFAULT 'subscribed',
                     subscribed_at datetime NOT NULL,
@@ -546,7 +569,7 @@ class Installer
                     KEY user_id (user_id),
                     KEY phone_number (phone_number),
                     KEY subscription_status (subscription_status),
-                    UNIQUE KEY list_user (list_id, user_id)
+                    KEY list_user (list_id, user_id)
                 ){$charset_suffix};",
             ),
             'mnem_invalid_phone_numbers' => array(

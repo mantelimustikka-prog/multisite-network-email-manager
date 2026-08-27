@@ -20,6 +20,7 @@ class SmsSubscriberListsTest extends TestCase
             7 => array('phone_number' => '2345678901'),
             8 => array('phone_number' => '3456789012'),
         );
+        unset($GLOBALS['mnem_users']);
     }
 
     public function test_create_sms_subscriber_list_returns_insert_id()
@@ -257,6 +258,43 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertStringContainsString('+9876543210', $GLOBALS['wpdb']->last_query);
     }
 
+    public function test_import_from_csv_supports_standalone_name_phone_syntax()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $last_query = '';
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->last_query = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::import_from_csv(1, "Jane Smith:+1234567890");
+
+        $this->assertSame(1, $result['added']);
+        $this->assertSame(1, $result['added_standalone']);
+        $this->assertStringContainsString('Jane Smith', $GLOBALS['wpdb']->last_query);
+    }
+
     public function test_export_to_csv_contains_subscribers()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -264,16 +302,51 @@ class SmsSubscriberListsTest extends TestCase
             {
                 $this->queries[] = $query;
                 return array(
-                    array('user_id' => 7, 'phone_number' => '+1234567890', 'subscribed_at' => '2026-01-01 00:00:00'),
+                    array('user_id' => 7, 'subscriber_name' => '', 'phone_number' => '+1234567890', 'subscribed_at' => '2026-01-01 00:00:00'),
+                    array('user_id' => 0, 'subscriber_name' => 'Vendor Contact', 'phone_number' => '+358401234567', 'subscribed_at' => '2026-01-02 00:00:00'),
                 );
             }
         };
 
         $csv = SmsSubscriberLists::export_to_csv(1);
 
-        $this->assertStringContainsString('user_id,username,phone_number,subscribed_at', $csv);
+        $this->assertStringContainsString('type,user_id,username,subscriber_name,phone_number,subscribed_at', $csv);
+        $this->assertStringContainsString('user,7', $csv);
+        $this->assertStringContainsString('standalone,0', $csv);
         $this->assertStringContainsString('"alice"', $csv);
+        $this->assertStringContainsString('"Vendor Contact"', $csv);
         $this->assertStringContainsString('"+1234567890"', $csv);
+    }
+
+    public function test_add_standalone_subscriber_inserts_record()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $last_query = '';
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->last_query = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::add_standalone_subscriber(1, 'External Partner', '+1234567890');
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['added']);
+        $this->assertStringContainsString('External Partner', $GLOBALS['wpdb']->last_query);
     }
 
     public function test_delete_cascade_removes_related_sms_records_in_transaction()

@@ -313,9 +313,10 @@ class SmsSubscriberLists
         $now = self::current_time_mysql();
         $result = $wpdb->query(
             $wpdb->prepare(
-                "INSERT INTO {$table} (list_id, user_id, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s)",
+                "INSERT INTO {$table} (list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s, %s)",
                 $list_id,
                 $user_id,
+                '',
                 $formatted_phone,
                 'subscribed',
                 $now,
@@ -329,6 +330,146 @@ class SmsSubscriberLists
         }
 
         return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Subscriber added successfully.' : 'Failed to add subscriber.');
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public static function add_standalone_subscriber(int $list_id, string $name, string $phone_number, ?string $country_code = null): array
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $name = sanitize_text_field($name);
+        $phone_number = trim($phone_number);
+
+        if ($name === '' || $phone_number === '') {
+            return self::build_add_response(false, false, false, null, array('valid' => false, 'error' => 'Name and phone number are required.'), 'Name and phone number are required.');
+        }
+
+        $legacy_country = SmsSettings::get_validation_country_code();
+        if (SmsSettings::is_phone_validation_enabled()) {
+            if (SmsSettings::is_multi_country_mode() || $country_code !== null) {
+                $default_country = SmsSettings::get_default_validation_country();
+                $effective_hint = ($country_code !== null) ? $country_code : null;
+                $validation = PhoneValidator::validate_with_country_hint($phone_number, $effective_hint, $default_country);
+
+                if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
+                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, 0);
+                    self::maybe_auto_block_invalid_number($phone_number);
+
+                    return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.');
+                }
+
+                $allowed = SmsSettings::get_allowed_countries();
+                if ($validation['valid'] && !empty($allowed)) {
+                    $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
+                    if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
+                        InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, 0);
+
+                        return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country));
+                    }
+                }
+            } else {
+                $base = PhoneValidator::validate_phone_number($phone_number, $legacy_country);
+                $validation = array_merge(array(
+                    'country_iso2'         => $legacy_country,
+                    'country_calling_code' => null,
+                    'national_number'      => null,
+                    'input_format'         => strpos($phone_number, '+') === 0 ? 'e164' : 'national',
+                    'ambiguous'            => false,
+                    'possible_countries'   => array(),
+                    'reason_code'          => $base['valid'] ? null : 'format_invalid',
+                ), $base);
+            }
+        } else {
+            $validation = array(
+                'valid'                => true,
+                'formatted'            => trim($phone_number),
+                'error'                => '',
+                'country_iso2'         => null,
+                'country_calling_code' => null,
+                'national_number'      => null,
+                'input_format'         => 'unknown',
+                'ambiguous'            => false,
+                'possible_countries'   => array(),
+                'reason_code'          => null,
+            );
+        }
+
+        if (empty($validation['valid'])) {
+            $reason = (isset($validation['reason_code']) && $validation['reason_code'] !== null) ? (string) $validation['reason_code'] : 'format_invalid';
+            InvalidPhoneNumbers::log_invalid_number($phone_number, $reason, $list_id, 0);
+            self::maybe_auto_block_invalid_number($phone_number);
+
+            return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.');
+        }
+
+        $formatted_phone = (string) $validation['formatted'];
+
+        if (InvalidPhoneNumbers::is_blocked($formatted_phone)) {
+            return self::build_add_response(false, false, false, null, array(
+                'valid' => true,
+                'formatted' => $formatted_phone,
+                'error' => '',
+            ), 'Phone number has been blocked from subscribing.');
+        }
+
+        if (!SmsSettings::allow_duplicate_numbers()) {
+            $duplicate = self::find_subscriber_by_phone($list_id, $formatted_phone);
+            if (is_array($duplicate)) {
+                InvalidPhoneNumbers::log_invalid_number($formatted_phone, 'duplicate', $list_id, 0);
+
+                return self::build_add_response(false, false, true, isset($duplicate['user_id']) ? (int) $duplicate['user_id'] : null, $validation, 'Phone number is already subscribed to this list.');
+            }
+        }
+
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s", $list_id, 0, $formatted_phone),
+            ARRAY_A
+        );
+
+        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'unsubscribed') {
+            $restored = self::resubscribe_standalone($list_id, $formatted_phone);
+            if ($restored) {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET subscriber_name = %s WHERE list_id = %d AND user_id = %d AND phone_number = %s",
+                        $name,
+                        $list_id,
+                        0,
+                        $formatted_phone
+                    )
+                );
+            }
+
+            return self::build_add_response((bool) $restored, false, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.');
+        }
+
+        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'subscribed') {
+            return self::build_add_response(true, false, true, 0, $validation, 'Phone number is already subscribed to this list.');
+        }
+
+        $now = self::current_time_mysql();
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "INSERT INTO {$table} (list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s, %s)",
+                $list_id,
+                0,
+                $name,
+                $formatted_phone,
+                'subscribed',
+                $now,
+                null,
+                ''
+            )
+        );
+
+        if ($result !== false) {
+            Logger::info('Standalone subscriber added to SMS list.', array('list_id' => $list_id, 'phone_number' => $formatted_phone));
+        }
+
+        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Standalone subscriber added successfully.' : 'Failed to add standalone subscriber.');
     }
 
     public static function remove_subscriber(int $list_id, int $user_id)
@@ -421,6 +562,16 @@ class SmsSubscriberLists
         return self::get_users_by_status($list_id, 'unsubscribed', $limit, $offset);
     }
 
+    public static function get_standalone_subscribers(int $list_id, int $limit = 1000, int $offset = 0): array
+    {
+        return self::get_standalone_by_status($list_id, 'subscribed', $limit, $offset);
+    }
+
+    public static function get_all_subscribers_mixed(int $list_id, int $limit = 1000, int $offset = 0): array
+    {
+        return self::get_users_by_status($list_id, 'subscribed', $limit, $offset);
+    }
+
     public static function get_list_subscribers_count(int $list_id)
     {
         global $wpdb;
@@ -461,9 +612,113 @@ class SmsSubscriberLists
         return (int) $count > 0;
     }
 
+    public static function is_standalone_subscriber(int $list_id, string $phone_number): bool
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $count = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s AND subscription_status = %s",
+                $list_id,
+                0,
+                trim($phone_number),
+                'subscribed'
+            )
+        );
+
+        return (int) $count > 0;
+    }
+
+    public static function remove_standalone_subscriber(int $list_id, string $phone_number): bool
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $result = $wpdb->query(
+            $wpdb->prepare("DELETE FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s", $list_id, 0, trim($phone_number))
+        );
+
+        if ($result !== false) {
+            Logger::info('Standalone subscriber removed from SMS list.', array('list_id' => $list_id, 'phone_number' => $phone_number));
+        }
+
+        return $result !== false;
+    }
+
+    public static function unsubscribe_standalone(int $list_id, string $phone_number, string $reason = ''): bool
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $phone_number = trim($phone_number);
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT subscriber_name FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s", $list_id, 0, $phone_number),
+            ARRAY_A
+        );
+        $now = self::current_time_mysql();
+
+        if (is_array($existing)) {
+            $result = $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET subscription_status = %s, unsubscribed_at = %s, unsubscribed_reason = %s WHERE list_id = %d AND user_id = %d AND phone_number = %s",
+                    'unsubscribed',
+                    $now,
+                    sanitize_text_field($reason),
+                    $list_id,
+                    0,
+                    $phone_number
+                )
+            );
+        } else {
+            $result = $wpdb->query(
+                $wpdb->prepare(
+                    "INSERT INTO {$table} (list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s, %s)",
+                    $list_id,
+                    0,
+                    '',
+                    $phone_number,
+                    'unsubscribed',
+                    $now,
+                    $now,
+                    sanitize_text_field($reason)
+                )
+            );
+        }
+
+        if ($result !== false) {
+            Logger::info('Standalone subscriber unsubscribed from SMS list.', array('list_id' => $list_id, 'phone_number' => $phone_number, 'reason' => $reason));
+        }
+
+        return $result !== false;
+    }
+
+    public static function resubscribe_standalone(int $list_id, string $phone_number): bool
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET subscription_status = %s, subscribed_at = %s, unsubscribed_at = %s, unsubscribed_reason = %s WHERE list_id = %d AND user_id = %d AND phone_number = %s",
+                'subscribed',
+                self::current_time_mysql(),
+                null,
+                '',
+                $list_id,
+                0,
+                trim($phone_number)
+            )
+        );
+
+        if ($result !== false) {
+            Logger::info('Standalone subscriber restored to subscribed in SMS list.', array('list_id' => $list_id, 'phone_number' => $phone_number));
+        }
+
+        return $result !== false;
+    }
+
     public static function import_from_csv(int $list_id, string $csv_content)
     {
         $lines = preg_split('/\r\n|\r|\n/', $csv_content);
+        $added_users = 0;
+        $added_standalone = 0;
         $added = 0;
         $skipped = 0;
         $invalid = 0;
@@ -486,6 +741,30 @@ class SmsSubscriberLists
             }
 
             $user_id = self::resolve_user_id($identifier);
+            if ($user_id <= 0 && $phone_number !== '' && $identifier !== '') {
+                $result = self::add_standalone_subscriber($list_id, $identifier, $phone_number);
+                if (empty($result['success'])) {
+                    ++$skipped;
+                    if (!empty($result['phone_valid']) && !empty($result['is_duplicate'])) {
+                        ++$duplicates;
+                    }
+                    if (empty($result['phone_valid'])) {
+                        ++$invalid;
+                        $invalid_numbers[] = $phone_number;
+                    }
+                    $errors[] = $identifier . ' - ' . (isset($result['message']) ? $result['message'] : 'unable to add');
+                    continue;
+                }
+                if (!empty($result['added'])) {
+                    ++$added;
+                    ++$added_standalone;
+                } else {
+                    ++$skipped;
+                    $errors[] = $identifier . ' - already in list';
+                }
+                continue;
+            }
+
             if ($user_id <= 0) {
                 ++$skipped;
                 $errors[] = $identifier . ' - user not found';
@@ -507,6 +786,7 @@ class SmsSubscriberLists
             }
             if (!empty($result['added'])) {
                 ++$added;
+                ++$added_users;
             } else {
                 ++$skipped;
                 $errors[] = $identifier . ' - already in list';
@@ -515,6 +795,8 @@ class SmsSubscriberLists
 
         return array(
             'added' => $added,
+            'added_users' => $added_users,
+            'added_standalone' => $added_standalone,
             'skipped' => $skipped,
             'invalid' => $invalid,
             'duplicates' => $duplicates,
@@ -530,13 +812,16 @@ class SmsSubscriberLists
 
     public static function export_to_csv(int $list_id)
     {
-        $subscribers = self::get_subscribers($list_id, 100000, 0);
-        $rows = array('user_id,username,phone_number,subscribed_at');
+        $subscribers = self::get_all_subscribers_mixed($list_id, 100000, 0);
+        $rows = array('type,user_id,username,subscriber_name,phone_number,subscribed_at');
 
         foreach ($subscribers as $subscriber) {
+            $type = (int) $subscriber['user_id'] === 0 ? 'standalone' : 'user';
             $rows[] = implode(',', array(
+                $type,
                 (int) $subscriber['user_id'],
                 self::csv_escape(isset($subscriber['user_login']) ? (string) $subscriber['user_login'] : ''),
+                self::csv_escape(isset($subscriber['subscriber_name']) ? (string) $subscriber['subscriber_name'] : ''),
                 self::csv_escape(isset($subscriber['phone_number']) ? (string) $subscriber['phone_number'] : ''),
                 self::csv_escape(isset($subscriber['subscribed_at']) ? (string) $subscriber['subscribed_at'] : ''),
             ));
@@ -739,6 +1024,16 @@ class SmsSubscriberLists
             );
         }
 
+        $invalid_standalone_subscribers = self::count_invalid_standalone_subscribers();
+        if ($invalid_standalone_subscribers > 0) {
+            $issues[] = array(
+                'type' => 'invalid_standalone_subscribers',
+                'title' => 'Invalid standalone subscribers',
+                'count' => $invalid_standalone_subscribers,
+                'description' => sprintf('Found %d standalone SMS subscribers missing a name or phone number.', $invalid_standalone_subscribers),
+            );
+        }
+
         return array(
             'issues' => $issues,
             'notes' => $notes,
@@ -764,6 +1059,8 @@ class SmsSubscriberLists
         return array(
             'total_lists' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$lists_table}"),
             'total_subscribers' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$subs_table}"),
+            'total_standalone_subscribers' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$subs_table} WHERE user_id = 0"),
+            'total_user_based_subscribers' => (int) $wpdb->get_var("SELECT COUNT(1) FROM {$subs_table} WHERE user_id > 0"),
             'total_invalid_phone_numbers' => self::table_exists($invalid_table)
                 ? (int) $wpdb->get_var("SELECT COUNT(1) FROM {$invalid_table}")
                 : 0,
@@ -822,8 +1119,44 @@ class SmsSubscriberLists
         );
 
         foreach ($rows as &$row) {
-            $user = function_exists('get_userdata') ? get_userdata((int) $row['user_id']) : null;
-            $row['user_login'] = is_object($user) && isset($user->user_login) ? (string) $user->user_login : '';
+            $row['subscriber_name'] = isset($row['subscriber_name']) ? (string) $row['subscriber_name'] : '';
+            if ((int) $row['user_id'] > 0) {
+                $user = function_exists('get_userdata') ? get_userdata((int) $row['user_id']) : null;
+                $row['user_login'] = is_object($user) && isset($user->user_login) ? (string) $user->user_login : '';
+                $row['subscriber_type'] = 'user';
+                $row['display_name'] = $row['user_login'] !== '' ? $row['user_login'] : ('user_id:' . (int) $row['user_id']);
+            } else {
+                $row['user_login'] = '';
+                $row['subscriber_type'] = 'standalone';
+                $row['display_name'] = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private static function get_standalone_by_status(int $list_id, string $status, int $limit, int $offset): array
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $rows = (array) $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND subscription_status = %s ORDER BY id DESC LIMIT %d OFFSET %d",
+                $list_id,
+                0,
+                $status,
+                max(1, $limit),
+                max(0, $offset)
+            ),
+            ARRAY_A
+        );
+
+        foreach ($rows as &$row) {
+            $row['subscriber_name'] = isset($row['subscriber_name']) ? (string) $row['subscriber_name'] : '';
+            $row['user_login'] = '';
+            $row['subscriber_type'] = 'standalone';
+            $row['display_name'] = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
         }
         unset($row);
 
@@ -918,6 +1251,17 @@ class SmsSubscriberLists
 
         return (int) $wpdb->get_var(
             "SELECT COUNT(1) FROM {$queue_table} q LEFT JOIN {$lists_table} l ON l.id = q.list_id WHERE q.list_id > 0 AND l.id IS NULL"
+        );
+    }
+
+    private static function count_invalid_standalone_subscribers(): int
+    {
+        global $wpdb;
+
+        $subs_table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(1) FROM {$subs_table} WHERE user_id = 0 AND (TRIM(COALESCE(phone_number, '')) = '' OR TRIM(COALESCE(subscriber_name, '')) = '')"
         );
     }
 
