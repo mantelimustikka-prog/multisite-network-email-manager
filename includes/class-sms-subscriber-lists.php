@@ -307,7 +307,7 @@ class SmsSubscriberLists
         if (is_array($existing)) {
             $restored = self::resubscribe_user($list_id, $user_id);
 
-            return self::build_add_response((bool) $restored, false, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.');
+            return self::build_add_response(true, $restored, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.');
         }
 
         $now = self::current_time_mysql();
@@ -460,7 +460,7 @@ class SmsSubscriberLists
                 );
             }
 
-            return self::build_add_response((bool) $restored, false, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.');
+            return self::build_add_response(true, $restored, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.');
         }
 
         if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'subscribed') {
