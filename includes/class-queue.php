@@ -257,6 +257,8 @@ class Queue
             }
         }
 
+        SmsCampaigns::auto_update_sending_campaign_statuses();
+
         return $processed;
     }
 
@@ -271,13 +273,18 @@ class Queue
     {
         $result = self::process_sms_item_result($id, $force);
 
+        $campaign_id = isset($result['campaign_id']) ? (int) $result['campaign_id'] : 0;
+        if ($campaign_id > 0 && !empty($result['processed']) && in_array((string) $result['status'], array('sent', 'failed'), true)) {
+            SmsCampaigns::auto_update_campaign_status($campaign_id);
+        }
+
         return !empty($result['success']);
     }
 
     /**
      * @param int  $id    Queue row ID.
      * @param bool $force Whether to force processing for non-processing rows.
-     * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string}
+     * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string,campaign_id:int}
      */
     private static function process_sms_item_result(int $id, bool $force = false): array
     {
@@ -315,12 +322,13 @@ class Queue
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
+                'campaign_id' => 0,
             );
         }
 
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, phone_number, body FROM {$table} WHERE id = %d",
+                "SELECT id, phone_number, body, sms_campaign_id FROM {$table} WHERE id = %d",
                 $id
             ),
             ARRAY_A
@@ -342,11 +350,13 @@ class Queue
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
+                'campaign_id' => 0,
             );
         }
 
         $phone   = trim((string) ($row['phone_number'] ?? ''));
         $message = trim((string) ($row['body'] ?? ''));
+        $campaign_id = (int) ($row['sms_campaign_id'] ?? 0);
 
         if ($phone === '' || $message === '') {
             $wpdb->query(
@@ -365,6 +375,7 @@ class Queue
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
+                'campaign_id' => $campaign_id,
             );
         }
 
@@ -385,6 +396,7 @@ class Queue
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
+                'campaign_id' => $campaign_id,
             );
         }
 
@@ -407,6 +419,7 @@ class Queue
                 'queue_id' => $id,
                 'provider' => '',
                 'message_id' => '',
+                'campaign_id' => $campaign_id,
             );
         }
 
@@ -438,6 +451,7 @@ class Queue
                 'queue_id' => $id,
                 'provider' => $provider_type,
                 'message_id' => $provider_message_id,
+                'campaign_id' => $campaign_id,
             );
         }
 
@@ -459,6 +473,7 @@ class Queue
             'queue_id' => $id,
             'provider' => $provider_type,
             'message_id' => $provider_message_id,
+            'campaign_id' => $campaign_id,
         );
     }
 

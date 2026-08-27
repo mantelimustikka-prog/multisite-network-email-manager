@@ -555,6 +555,7 @@ class QueueTest extends TestCase
         $joined = implode("\n", $queries);
         $this->assertStringContainsString('wp_mnem_sms_queue', $joined);
         $this->assertStringContainsString("status = 'pending'", $joined);
+        $this->assertStringContainsString("FROM wp_mnem_sms_campaigns WHERE status = 'sending'", $joined);
         $this->assertStringNotContainsString("message_type = 'sms'", $joined);
     }
 
@@ -578,11 +579,12 @@ class QueueTest extends TestCase
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT id, phone_number, body FROM wp_mnem_sms_queue WHERE id = 77') !== false) {
+                if (strpos($query, 'SELECT id, phone_number, body, sms_campaign_id FROM wp_mnem_sms_queue WHERE id = 77') !== false) {
                     return array(
                         'id'           => 77,
                         'phone_number' => '',
                         'body'         => 'Hello',
+                        'sms_campaign_id' => 14,
                     );
                 }
 
@@ -647,11 +649,12 @@ class QueueTest extends TestCase
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT id, phone_number, body FROM wp_mnem_sms_queue WHERE id = 78') !== false) {
+                if (strpos($query, 'SELECT id, phone_number, body, sms_campaign_id FROM wp_mnem_sms_queue WHERE id = 78') !== false) {
                     return array(
                         'id'           => 78,
                         'phone_number' => '+15550001111',
                         'body'         => 'Hello',
+                        'sms_campaign_id' => 15,
                     );
                 }
 

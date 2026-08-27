@@ -23,6 +23,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_sms_subscriber_list_action'));
         add_action('admin_init', array($this, 'handle_invalid_phone_action'));
         add_action('admin_init', array($this, 'handle_sms_campaign_action'));
+        add_action('admin_init', array($this, 'auto_update_sms_campaign_statuses'));
         add_action('admin_init', array($this, 'handle_email_template_action'));
         add_action('admin_init', array($this, 'handle_queue_action'));
         add_action('admin_init', array($this, 'handle_queue_item_delete_action'));
@@ -1917,13 +1918,27 @@ class NetworkAdmin
         }
 
         $result = \MNEM\SmsCampaigns::create($site_id, $data);
-
         if (!$result) {
             $this->store_error_detail('SMS campaign could not be created.');
             $this->redirect_with_notice($page, 'sms_campaign_save_failed');
         } else {
             $this->redirect_with_notice($page, 'sms_campaign_created');
         }
+    }
+
+    public function auto_update_sms_campaign_statuses()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_text_field(wp_unslash($_GET['page'])) : '';
+        if ($page !== 'mnem-sms-campaigns') {
+            return;
+        }
+
+        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        \MNEM\SmsCampaigns::auto_update_sending_campaign_statuses($site_id);
     }
 
     public function ajax_send_sms_test()

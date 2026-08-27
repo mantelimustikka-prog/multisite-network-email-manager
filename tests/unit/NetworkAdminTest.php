@@ -77,6 +77,33 @@ class NetworkAdminTest extends TestCase
         $this->assertContains('handle_invalid_phone_action', $admin_init_callbacks);
         $this->assertContains('handle_sms_data_integrity_action', $admin_init_callbacks);
         $this->assertContains('handle_sms_campaign_action', $admin_init_callbacks);
+        $this->assertContains('auto_update_sms_campaign_statuses', $admin_init_callbacks);
+    }
+
+    public function test_auto_update_sms_campaign_statuses_runs_on_sms_campaigns_page()
+    {
+        $_GET['page'] = 'mnem-sms-campaigns';
+        $queries = array();
+
+        $GLOBALS['wpdb'] = new class($queries) extends wpdb {
+            private $queries_ref;
+
+            public function __construct(array &$queries_ref)
+            {
+                $this->queries_ref = &$queries_ref;
+            }
+
+            public function get_col($query)
+            {
+                $this->queries_ref[] = $query;
+                return array();
+            }
+        };
+
+        $admin = new NetworkAdmin();
+        $admin->auto_update_sms_campaign_statuses();
+
+        $this->assertStringContainsString("FROM wp_mnem_sms_campaigns WHERE site_id = 1 AND status = 'sending'", implode("\n", $queries));
     }
 
     public function test_ajax_send_test_email_returns_error_when_mail_fails()
