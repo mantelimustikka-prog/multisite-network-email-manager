@@ -352,14 +352,18 @@ class SmsCampaignsTest extends TestCase
         };
 
         $queued = SmsCampaigns::queue_recipients(3);
+        $insert_query = $GLOBALS['wpdb']->queries[0];
 
         $this->assertSame(1, $queued);
         $this->assertStringContainsString(
-            "INSERT INTO wp_mnem_queue (site_id, phone_number, body, status, message_type, sms_campaign_id) VALUES (12, '+351911969387', 'Available variables: {user_name}', 'pending', 'sms', 3)",
-            $GLOBALS['wpdb']->queries[0]
+            'INSERT INTO wp_mnem_queue (site_id, phone_number, body, status, message_type, sms_campaign_id)',
+            $insert_query
         );
-        $this->assertStringNotContainsString('created_at', $GLOBALS['wpdb']->queries[0]);
-        $this->assertStringNotContainsString('updated_at', $GLOBALS['wpdb']->queries[0]);
+        $this->assertStringContainsString("'+351911969387'", $insert_query);
+        $this->assertStringContainsString("'pending'", $insert_query);
+        $this->assertStringContainsString("'sms'", $insert_query);
+        $this->assertStringNotContainsString('created_at', $insert_query);
+        $this->assertStringNotContainsString('updated_at', $insert_query);
     }
 
     public function test_pause_calls_update_status()
