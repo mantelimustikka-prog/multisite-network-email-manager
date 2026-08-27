@@ -1,17 +1,11 @@
 <?php
 
 defined('ABSPATH') || exit;
-?>
-<div class="wrap mnem-dashboard">
-    <h1>
-        <?php
-        printf(
-            esc_html__('Email Status Logs (%s Records)', 'multisite-network-email-manager'),
-            esc_html(number_format($total_all_records))
-        );
-        ?>
-    </h1>
 
+// Page slug and tab param are set by the parent view (logs.php).
+$_email_page_slug = 'mnem-logs';
+$_email_tab_param = '&tab=email';
+?>
     <?php if ($notice_message !== '') : ?>
         <div class="<?php echo esc_attr($notice_class); ?>"><p><?php echo esc_html($notice_message); ?></p></div>
     <?php endif; ?>
@@ -91,13 +85,13 @@ defined('ABSPATH') || exit;
             <form method="post">
                 <?php wp_nonce_field('mnem_queue'); ?>
                 <input type="hidden" name="mnem_action" value="process_queue_now" />
-                <input type="hidden" name="redirect_page" value="mnem-queue" />
+                <input type="hidden" name="redirect_page" value="mnem-logs" />
                 <?php submit_button('Process Queue Now', 'secondary', 'submit', false); ?>
             </form>
             <form method="post">
                 <?php wp_nonce_field('mnem_queue'); ?>
                 <input type="hidden" name="mnem_action" value="retry_failed_queue" />
-                <input type="hidden" name="redirect_page" value="mnem-queue" />
+                <input type="hidden" name="redirect_page" value="mnem-logs" />
                 <?php submit_button('Retry Failed Items', 'secondary', 'submit', false); ?>
             </form>
         </div>
@@ -105,7 +99,7 @@ defined('ABSPATH') || exit;
 
     <?php
     // Build base URL preserving current filters except paged.
-    $base_url_args = array('page' => 'mnem-queue');
+    $base_url_args = array('page' => 'mnem-logs', 'tab' => 'email');
     if ($status_filter !== '') {
         $base_url_args['status_filter'] = $status_filter;
     }
@@ -121,20 +115,21 @@ defined('ABSPATH') || exit;
     $base_url = network_admin_url('admin.php?' . http_build_query($base_url_args, '', '&'));
 
     // Build filter form URL (without paged/status_filter/per_page — the form provides them).
-    $filter_form_url = network_admin_url('admin.php?page=mnem-queue');
+    $filter_form_url = network_admin_url('admin.php?page=mnem-logs&tab=email');
     ?>
 
     <!-- Bulk action POST form (hidden - controls reference it via form="mnem-bulk-form") -->
     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-bulk-form" class="mnem-queue-bulk-form">
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
-        <input type="hidden" name="redirect_page" value="mnem-queue" />
+        <input type="hidden" name="redirect_page" value="mnem-logs" />
         <input type="hidden" name="status_filter" value="<?php echo esc_attr($status_filter); ?>" />
         <input type="hidden" name="per_page" value="<?php echo esc_attr((string) $per_page); ?>" />
     </form>
 
     <!-- Filter GET form (hidden - controls reference it via form="mnem-filter-form") -->
     <form method="get" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" id="mnem-filter-form">
-        <input type="hidden" name="page" value="mnem-queue" />
+        <input type="hidden" name="page" value="mnem-logs" />
+        <input type="hidden" name="tab" value="email" />
     </form>
 
     <div class="mnem-panel" style="padding: 12px 16px;">
@@ -163,7 +158,8 @@ defined('ABSPATH') || exit;
             <?php if ($status_filter !== '') : ?>
                 <?php
                 $clear_filter_args = array(
-                    'page' => 'mnem-queue',
+                    'page' => 'mnem-logs',
+                    'tab' => 'email',
                     'per_page' => $per_page,
                 );
                 if ($search_email !== '') {
@@ -208,7 +204,8 @@ defined('ABSPATH') || exit;
             <?php if ($search_email !== '' || $search_subject !== '') : ?>
                 <?php
                 $clear_search_args = array(
-                    'page' => 'mnem-queue',
+                    'page' => 'mnem-logs',
+                    'tab' => 'email',
                 );
                 if ($status_filter !== '') {
                     $clear_search_args['status_filter'] = $status_filter;
@@ -280,7 +277,8 @@ defined('ABSPATH') || exit;
                 <?php
                 $page_url_base = network_admin_url('admin.php?' . http_build_query(
                     array_filter(array(
-                        'page'          => 'mnem-queue',
+                        'page'          => 'mnem-logs',
+                        'tab'           => 'email',
                         'status_filter' => $status_filter !== '' ? $status_filter : null,
                         'search_email'  => $search_email !== '' ? $search_email : null,
                         'search_subject'=> $search_subject !== '' ? $search_subject : null,
@@ -410,8 +408,7 @@ defined('ABSPATH') || exit;
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="mnem_action" value="delete_queue_item" />
         <input type="hidden" name="queue_id" value="" />
-        <input type="hidden" name="redirect_page" value="mnem-queue" />
+        <input type="hidden" name="redirect_page" value="mnem-logs" />
     </form>
 
     <p class="description">Retry backoff status: <?php echo esc_html($queue_stats['next_retry_at'] !== '' ? $queue_stats['next_retry_at'] . ' (attempt ' . (string) $queue_stats['next_retry_attempts'] . ')' : 'No retries scheduled'); ?></p>
-</div>
