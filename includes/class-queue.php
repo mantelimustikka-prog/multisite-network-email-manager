@@ -224,28 +224,61 @@ class Queue
     /**
      * Process a single SMS queue item: validate, send via the active SMS provider, and update status.
      *
-     * @param int $id Queue row ID.
+     * @param int  $id    Queue row ID.
+     * @param bool $force Whether to force processing for non-processing rows.
      * @return bool True if the SMS was sent successfully, false otherwise.
      */
-    private static function process_sms_item(int $id): bool
+    private static function process_sms_item(int $id, bool $force = false): bool
+    {
+        $result = self::process_sms_item_result($id, $force);
+
+        return !empty($result['success']);
+    }
+
+    /**
+     * @param int  $id    Queue row ID.
+     * @param bool $force Whether to force processing for non-processing rows.
+     * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string}
+     */
+    private static function process_sms_item_result(int $id, bool $force = false): array
     {
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_queue';
 
         // Claim the row by moving it from 'pending' to 'processing'.
-        $claimed = $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s AND message_type = %s",
-                'processing',
-                $id,
-                'pending',
-                'sms'
+        $claim_time = self::current_time_mysql();
+        $claimed = $force
+            ? $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status <> %s AND message_type = %s",
+                    'processing',
+                    $claim_time,
+                    $id,
+                    'processing',
+                    'sms'
+                )
             )
-        );
+            : $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s AND message_type = %s",
+                    'processing',
+                    $id,
+                    'pending',
+                    'sms'
+                )
+            );
 
         if (!$claimed) {
-            return false;
+            return array(
+                'processed' => false,
+                'success' => false,
+                'status' => 'not_claimed',
+                'message' => $force ? 'Queue item is already processing or unavailable.' : 'Queue item is not ready to process.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
         }
 
         $row = $wpdb->get_row(
@@ -265,7 +298,15 @@ class Queue
                     $id
                 )
             );
-            return false;
+            return array(
+                'processed' => false,
+                'success' => false,
+                'status' => 'pending',
+                'message' => 'Queue item could not be loaded.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
         }
 
         $phone   = trim((string) ($row['phone_number'] ?? ''));
@@ -280,7 +321,15 @@ class Queue
                 )
             );
             Logger::warning('SMS queue item skipped: missing phone number or message body.', array('queue_id' => $id));
-            return false;
+            return array(
+                'processed' => true,
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'SMS queue item is missing phone number or message body.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
         }
 
         if (!class_exists('\\MNEM\\SmsProviderManager')) {
@@ -292,7 +341,15 @@ class Queue
                 )
             );
             Logger::warning('SMS processing skipped: SmsProviderManager class not available.', array('queue_id' => $id));
-            return false;
+            return array(
+                'processed' => true,
+                'success' => false,
+                'status' => 'pending',
+                'message' => 'SMS provider manager is not available.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
         }
 
         $provider = SmsProviderManager::get_active_provider();
@@ -306,34 +363,67 @@ class Queue
                 )
             );
             Logger::warning('SMS processing skipped: no active SMS provider configured.', array('queue_id' => $id));
-            return false;
+            return array(
+                'processed' => true,
+                'success' => false,
+                'status' => 'pending',
+                'message' => 'No active SMS provider configured.',
+                'queue_id' => $id,
+                'provider' => '',
+                'message_id' => '',
+            );
         }
 
-        $success = (bool) $provider->send_sms($phone, $message);
+        $provider_type = is_callable(array(get_class($provider), 'get_provider_key'))
+            ? (string) $provider::get_provider_key()
+            : '';
+        $provider_result = $provider->send($phone, $message);
+        $provider_message_id = isset($provider_result['message_id']) ? (string) $provider_result['message_id'] : '';
+        $success = !empty($provider_result['success']);
 
         if ($success) {
             $sent_at = self::current_time_mysql();
             $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s, sent_at = %s WHERE id = %d",
+                    "UPDATE {$table} SET status = %s, sent_at = %s, provider_type = %s, provider_message_id = %s WHERE id = %d",
                     'sent',
                     $sent_at,
+                    $provider_type,
+                    $provider_message_id,
                     $id
                 )
             );
             Logger::info('SMS queue item sent successfully.', array('queue_id' => $id, 'phone' => $phone));
-            return true;
+            return array(
+                'processed' => true,
+                'success' => true,
+                'status' => 'sent',
+                'message' => isset($provider_result['message']) ? (string) $provider_result['message'] : '',
+                'queue_id' => $id,
+                'provider' => $provider_type,
+                'message_id' => $provider_message_id,
+            );
         }
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE id = %d",
+                "UPDATE {$table} SET status = %s, provider_type = %s, provider_message_id = %s WHERE id = %d",
                 'failed',
+                $provider_type,
+                $provider_message_id,
                 $id
             )
         );
         Logger::error('SMS queue item failed to send.', array('queue_id' => $id, 'phone' => $phone));
-        return false;
+        return array(
+            'processed' => true,
+            'success' => false,
+            'status' => 'failed',
+            'message' => isset($provider_result['message']) ? (string) $provider_result['message'] : 'SMS queue item failed to send.',
+            'queue_id' => $id,
+            'provider' => $provider_type,
+            'message_id' => $provider_message_id,
+        );
     }
 
     /**
@@ -361,6 +451,16 @@ class Queue
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_queue';
+        $message_type = (string) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT message_type FROM {$table} WHERE id = %d",
+                $id
+            )
+        );
+        if ($message_type === 'sms') {
+            return self::process_sms_item_result($id, $force);
+        }
+
         $claim_time = self::current_time_mysql();
         $claimed = $force
             ? $wpdb->query(
@@ -615,10 +715,12 @@ class Queue
             array($wpdb, 'prepare'),
             array_merge(
                 array(
-                    "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d AND source IN ({$placeholders}) ORDER BY created_at ASC, id ASC LIMIT %d",
+                    "SELECT id FROM {$table} WHERE status = %s AND scheduled_at <= %s AND attempts < %d AND COALESCE(NULLIF(message_type, ''), %s) = %s AND source IN ({$placeholders}) ORDER BY created_at ASC, id ASC LIMIT %d",
                     'pending',
                     $now,
                     self::MAX_ATTEMPTS,
+                    'email',
+                    'email',
                 ),
                 $sources,
                 array($limit)
