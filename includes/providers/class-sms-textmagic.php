@@ -10,6 +10,7 @@ defined('ABSPATH') || exit;
  * Requires:
  * - Username
  * - API Key
+ * - Sender ID (optional, up to 11 characters)
  *
  * Webhook Configuration:
  * Set the callback URL in TextMagic Account > API Settings.
@@ -25,7 +26,7 @@ class SmsTextmagic extends SmsBaseProvider
         return array(
             array('key' => 'username',  'label' => 'Username',  'type' => 'text'),
             array('key' => 'api_key',   'label' => 'API Key',   'type' => 'password'),
-            array('key' => 'sender_id', 'label' => 'Sender ID', 'type' => 'text', 'maxlength' => 1),
+            array('key' => 'sender_id', 'label' => 'Sender ID', 'type' => 'text', 'maxlength' => 11),
         );
     }
 
@@ -76,16 +77,16 @@ class SmsTextmagic extends SmsBaseProvider
             return $this->error_result('TextMagic Username and API Key are required.');
         }
 
-        $body = array(
+        $payload_data = array(
             'text'   => $message,
             'phones' => $phone,
         );
 
         if ($sender_id !== '') {
-            $body['from'] = $sender_id;
+            $payload_data['from'] = $sender_id;
         }
 
-        $payload  = wp_json_encode($body);
+        $payload  = wp_json_encode($payload_data);
 
         $response = $this->http_post(self::API_BASE . '/messages', array(
             'X-TM-Username' => $username,
