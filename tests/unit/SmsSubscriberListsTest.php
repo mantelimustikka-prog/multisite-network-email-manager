@@ -39,15 +39,9 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertSame(42, $id);
     }
 
-    public function test_add_subscriber_hard_blocks_unsubscribed_user()
+    public function test_add_subscriber_restores_unsubscribed_user()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
-            public function get_results($query, $output = OBJECT)
-            {
-                $this->queries[] = $query;
-                return array();
-            }
-
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
@@ -59,12 +53,20 @@ class SmsSubscriberListsTest extends TestCase
                 $this->queries[] = $query;
                 return 0;
             }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
         };
 
         $result = SmsSubscriberLists::add_subscriber(5, 7);
 
-        $this->assertFalse($result['success']);
-        $this->assertStringContainsString('unsubscribed', $result['message']);
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['added']);
+        $this->assertSame('restored', $result['action']);
+        $this->assertStringContainsString('restored', strtolower($result['message']));
     }
 
     public function test_add_subscriber_skips_already_subscribed()
@@ -347,6 +349,109 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertTrue($result['added']);
         $this->assertStringContainsString('External Partner', $GLOBALS['wpdb']->last_query);
+    }
+
+    public function test_add_standalone_subscriber_restores_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('subscription_status' => 'unsubscribed');
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::add_standalone_subscriber(1, 'Jane', '+1234567890');
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['added']);
+        $this->assertSame('restored', $result['action']);
+        $this->assertStringContainsString('restored', strtolower($result['message']));
+    }
+
+    public function test_search_subscribers_returns_paginated_results()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    array(
+                        'user_id'             => 0,
+                        'subscriber_name'     => 'Jane',
+                        'phone_number'        => '+1234567890',
+                        'subscribed_at'       => '2025-01-01 00:00:00',
+                        'unsubscribed_at'     => null,
+                        'unsubscribed_reason' => '',
+                        'user_login'          => '',
+                    ),
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::search_subscribers(1, 'Jane');
+
+        $this->assertSame(1, $result['total']);
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame('standalone', $result['rows'][0]['subscriber_type']);
+        $this->assertSame('Jane', $result['rows'][0]['display_name']);
+        $this->assertSame(1, $result['current_page']);
+        $this->assertSame(1, $result['total_pages']);
+    }
+
+    public function test_search_subscribers_filters_by_status()
+    {
+        $queries_made = array();
+        $GLOBALS['wpdb'] = new class($queries_made) extends wpdb {
+            private $captured;
+            public function __construct(&$ref)
+            {
+                $this->captured = &$ref;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                $this->captured[] = $query;
+                return 0;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                $this->captured[] = $query;
+                return array();
+            }
+        };
+
+        SmsSubscriberLists::search_subscribers(2, '', 'unsubscribed', 50, 1);
+
+        $found = false;
+        foreach ($queries_made as $q) {
+            if (strpos($q, 'unsubscribed') !== false) {
+                $found = true;
+                break;
+            }
+        }
+        $this->assertTrue($found, 'Expected an SQL query containing "unsubscribed".');
     }
 
     public function test_delete_cascade_removes_related_sms_records_in_transaction()
