@@ -106,6 +106,35 @@ register_deactivation_hook(
     }
 );
 
+/**
+ * Run database migrations if not already done.
+ */
+function mnem_ensure_migrations_run() {
+    if (get_site_option('mnem_migration_001_done')) {
+        return;
+    }
+
+    $migration_file = MNEM_PLUGIN_DIR . 'includes/migrations/001-create-sms-campaigns-table.php';
+    if (file_exists($migration_file)) {
+        require_once $migration_file;
+
+        if (function_exists('mnem_migration_001')) {
+            $result = mnem_migration_001();
+
+            if (!empty($result['success'])) {
+                update_site_option('mnem_migration_001_done', 1);
+            }
+        }
+    }
+}
+
+register_activation_hook(
+    __FILE__,
+    'mnem_ensure_migrations_run'
+);
+
+add_action('admin_init', 'mnem_ensure_migrations_run', 1);
+
 add_action(
     'plugins_loaded',
     static function () {
