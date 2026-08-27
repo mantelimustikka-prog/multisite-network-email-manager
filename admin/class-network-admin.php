@@ -702,7 +702,8 @@ class NetworkAdmin
                 $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
                 return;
             }
-            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_added', $redirect_args);
+            $notice = (isset($result['action']) && $result['action'] === 'restored') ? 'sms_subscriber_restored' : 'sms_subscriber_added';
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $notice, $redirect_args);
         }
 
         if ($action === 'sms_subscriber_add_standalone') {
@@ -721,10 +722,8 @@ class NetworkAdmin
                 return;
             }
 
-            if (empty($result['added']) && !empty($result['message'])) {
-                $redirect_args['mnem_notice_info'] = (string) $result['message'];
-            }
-            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_added', $redirect_args);
+            $notice = (isset($result['action']) && $result['action'] === 'restored') ? 'sms_subscriber_restored' : 'sms_subscriber_added';
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $notice, $redirect_args);
         }
 
         if ($action === 'sms_subscriber_remove_user') {

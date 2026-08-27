@@ -206,111 +206,83 @@ class SmsSubscriberLists
     {
         global $wpdb;
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
-        $legacy_country = SmsSettings::get_validation_country_code();
 
         if ($phone_number === '') {
             $phone_number = self::resolve_phone_number($user_id);
         }
 
-        if (SmsSettings::is_phone_validation_enabled()) {
-            if (SmsSettings::is_multi_country_mode() || $country_code !== null) {
-                $default_country = SmsSettings::get_default_validation_country();
-                $effective_hint = ($country_code !== null) ? $country_code : null;
-                $validation = PhoneValidator::validate_with_country_hint($phone_number, $effective_hint, $default_country);
+        $validation = self::validate_phone_number($phone_number, $country_code);
 
-                // Handle ambiguous numbers.
-                if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
-                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, $user_id);
-                    self::maybe_auto_block_invalid_number($phone_number);
-                    return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.');
-                }
-
-                // Handle unsupported countries (allowed_countries restriction).
-                $allowed = SmsSettings::get_allowed_countries();
-                if ($validation['valid'] && !empty($allowed)) {
-                    $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
-                    if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
-                        InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, $user_id);
-                        return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country));
-                    }
-                }
-            } else {
-                $base = PhoneValidator::validate_phone_number($phone_number, $legacy_country);
-                $validation = array_merge(array(
-                    'country_iso2'         => $legacy_country,
-                    'country_calling_code' => null,
-                    'national_number'      => null,
-                    'input_format'         => strpos($phone_number, '+') === 0 ? 'e164' : 'national',
-                    'ambiguous'            => false,
-                    'possible_countries'   => array(),
-                    'reason_code'          => $base['valid'] ? null : 'format_invalid',
-                ), $base);
-            }
-        } else {
-            $validation = array(
-                'valid'                => true,
-                'formatted'            => trim($phone_number),
-                'error'                => '',
-                'country_iso2'         => null,
-                'country_calling_code' => null,
-                'national_number'      => null,
-                'input_format'         => 'unknown',
-                'ambiguous'            => false,
-                'possible_countries'   => array(),
-                'reason_code'          => null,
-            );
+        // Ambiguous country: reject with explanation.
+        if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
+            InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, $user_id);
+            self::maybe_auto_block_invalid_number($phone_number);
+            return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.', 'error');
         }
 
+        // Unsupported country: reject.
+        if ($validation['valid']) {
+            $allowed = SmsSettings::get_allowed_countries();
+            if (!empty($allowed)) {
+                $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
+                if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
+                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, $user_id);
+                    return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country), 'error');
+                }
+            }
+        }
+
+        // Invalid format: reject.
         if (empty($validation['valid'])) {
             $reason = (isset($validation['reason_code']) && $validation['reason_code'] !== null) ? (string) $validation['reason_code'] : 'format_invalid';
             InvalidPhoneNumbers::log_invalid_number($phone_number, $reason, $list_id, $user_id);
             self::maybe_auto_block_invalid_number($phone_number);
-
-            return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.');
+            return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.', 'error');
         }
 
         $formatted_phone = (string) $validation['formatted'];
 
+        // Blocked number: reject.
         if (InvalidPhoneNumbers::is_blocked($formatted_phone)) {
             return self::build_add_response(false, false, false, null, array(
-                'valid' => true,
+                'valid'     => true,
                 'formatted' => $formatted_phone,
-                'error' => '',
-            ), 'Phone number has been blocked from subscribing.');
+                'error'     => '',
+            ), 'Phone number has been blocked from subscribing.', 'error');
         }
 
+        // Cross-user duplicate check.
         if (!SmsSettings::allow_duplicate_numbers()) {
             $duplicate = self::find_subscriber_by_phone($list_id, $formatted_phone);
             if (is_array($duplicate) && isset($duplicate['user_id']) && (int) $duplicate['user_id'] !== $user_id) {
                 InvalidPhoneNumbers::log_invalid_number($formatted_phone, 'duplicate', $list_id, $user_id);
-
-                return self::build_add_response(false, false, true, (int) $duplicate['user_id'], $validation, 'Phone number is already subscribed to this list.');
+                return self::build_add_response(false, false, true, (int) $duplicate['user_id'], $validation, 'Phone number is already subscribed to this list.', 'error');
             }
         }
 
+        // Look up any existing record for this user in this list.
         $existing = $wpdb->get_row(
             $wpdb->prepare("SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d", $list_id, $user_id),
             ARRAY_A
         );
 
-        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'unsubscribed') {
-            $user = function_exists('get_userdata') ? get_userdata($user_id) : null;
-            $username = is_object($user) && isset($user->user_login) ? (string) $user->user_login : ('user_id:' . $user_id);
-            Logger::warning('Attempted add blocked: user is unsubscribed from SMS list.', array('list_id' => $list_id, 'user_id' => $user_id, 'username' => $username));
-            return self::build_add_response(false, false, false, $user_id, $validation, sprintf('Cannot add %s - user is in unsubscribed list for this SMS list.', $username));
-        }
-
-        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'subscribed') {
-            return self::build_add_response(true, false, true, $user_id, $validation, 'User is already subscribed to this SMS list.');
-        }
-
         if (is_array($existing)) {
-            $restored = self::resubscribe_user($list_id, $user_id);
+            $status = isset($existing['subscription_status']) ? $existing['subscription_status'] : '';
 
-            return self::build_add_response(true, $restored, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.');
+            if ($status === 'subscribed') {
+                return self::build_add_response(true, false, true, $user_id, $validation, 'User is already subscribed to this SMS list.', 'duplicate');
+            }
+
+            // Unsubscribed (or any other non-subscribed status): restore the subscription.
+            $restored = self::resubscribe_user($list_id, $user_id);
+            if ($restored) {
+                Logger::info('Subscriber restored to SMS list.', array('list_id' => $list_id, 'user_id' => $user_id));
+            }
+            return self::build_add_response($restored, $restored, false, $user_id, $validation, $restored ? 'Subscriber restored successfully.' : 'Failed to restore subscriber.', $restored ? 'restored' : 'error');
         }
 
-        $now = self::current_time_mysql();
+        // No existing record: insert a fresh subscription.
+        $now    = self::current_time_mysql();
         $result = $wpdb->query(
             $wpdb->prepare(
                 "INSERT INTO {$table} (list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s, %s)",
@@ -329,7 +301,7 @@ class SmsSubscriberLists
             Logger::info('Subscriber added to SMS list.', array('list_id' => $list_id, 'user_id' => $user_id));
         }
 
-        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Subscriber added successfully.' : 'Failed to add subscriber.');
+        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Subscriber added successfully.' : 'Failed to add subscriber.', $result !== false ? 'added' : 'error');
     }
 
     /**
@@ -339,114 +311,99 @@ class SmsSubscriberLists
     {
         global $wpdb;
 
-        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
-        $name = sanitize_text_field($name);
+        $table        = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $name         = sanitize_text_field($name);
         $phone_number = trim($phone_number);
 
         if ($name === '' || $phone_number === '') {
-            return self::build_add_response(false, false, false, null, array('valid' => false, 'error' => 'Name and phone number are required.'), 'Name and phone number are required.');
+            return self::build_add_response(false, false, false, null, array('valid' => false, 'error' => 'Name and phone number are required.'), 'Name and phone number are required.', 'error');
         }
 
-        $legacy_country = SmsSettings::get_validation_country_code();
-        if (SmsSettings::is_phone_validation_enabled()) {
-            if (SmsSettings::is_multi_country_mode() || $country_code !== null) {
-                $default_country = SmsSettings::get_default_validation_country();
-                $effective_hint = ($country_code !== null) ? $country_code : null;
-                $validation = PhoneValidator::validate_with_country_hint($phone_number, $effective_hint, $default_country);
+        $validation = self::validate_phone_number($phone_number, $country_code);
 
-                if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
-                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, 0);
-                    self::maybe_auto_block_invalid_number($phone_number);
+        // Ambiguous country: reject with explanation.
+        if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
+            InvalidPhoneNumbers::log_invalid_number($phone_number, 'ambiguous_country', $list_id, 0);
+            self::maybe_auto_block_invalid_number($phone_number);
+            return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.', 'error');
+        }
 
-                    return self::build_add_response(false, false, false, null, $validation, 'Phone number is ambiguous: multiple countries could match.');
+        // Unsupported country: reject.
+        if ($validation['valid']) {
+            $allowed = SmsSettings::get_allowed_countries();
+            if (!empty($allowed)) {
+                $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
+                if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
+                    InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, 0);
+                    return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country), 'error');
                 }
-
-                $allowed = SmsSettings::get_allowed_countries();
-                if ($validation['valid'] && !empty($allowed)) {
-                    $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
-                    if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
-                        InvalidPhoneNumbers::log_invalid_number($phone_number, 'unsupported_country', $list_id, 0);
-
-                        return self::build_add_response(false, false, false, null, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country));
-                    }
-                }
-            } else {
-                $base = PhoneValidator::validate_phone_number($phone_number, $legacy_country);
-                $validation = array_merge(array(
-                    'country_iso2'         => $legacy_country,
-                    'country_calling_code' => null,
-                    'national_number'      => null,
-                    'input_format'         => strpos($phone_number, '+') === 0 ? 'e164' : 'national',
-                    'ambiguous'            => false,
-                    'possible_countries'   => array(),
-                    'reason_code'          => $base['valid'] ? null : 'format_invalid',
-                ), $base);
             }
-        } else {
-            $validation = array(
-                'valid'                => true,
-                'formatted'            => trim($phone_number),
-                'error'                => '',
-                'country_iso2'         => null,
-                'country_calling_code' => null,
-                'national_number'      => null,
-                'input_format'         => 'unknown',
-                'ambiguous'            => false,
-                'possible_countries'   => array(),
-                'reason_code'          => null,
-            );
         }
 
+        // Invalid format: reject.
         if (empty($validation['valid'])) {
             $reason = (isset($validation['reason_code']) && $validation['reason_code'] !== null) ? (string) $validation['reason_code'] : 'format_invalid';
             InvalidPhoneNumbers::log_invalid_number($phone_number, $reason, $list_id, 0);
             self::maybe_auto_block_invalid_number($phone_number);
-
-            return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.');
+            return self::build_add_response(false, false, false, null, $validation, 'Phone number is invalid.', 'error');
         }
 
         $formatted_phone = (string) $validation['formatted'];
 
+        // Blocked number: reject.
         if (InvalidPhoneNumbers::is_blocked($formatted_phone)) {
             return self::build_add_response(false, false, false, null, array(
-                'valid' => true,
+                'valid'     => true,
                 'formatted' => $formatted_phone,
-                'error' => '',
-            ), 'Phone number has been blocked from subscribing.');
+                'error'     => '',
+            ), 'Phone number has been blocked from subscribing.', 'error');
         }
 
+        // Cross-user duplicate check (only subscribed user-based records are flagged).
         if (!SmsSettings::allow_duplicate_numbers()) {
             $duplicate = self::find_subscriber_by_phone($list_id, $formatted_phone);
             if (is_array($duplicate)) {
                 $duplicate_user_id = isset($duplicate['user_id']) ? (int) $duplicate['user_id'] : 0;
 
-                if ($duplicate_user_id === 0) {
-                    // Duplicate is a STANDALONE subscriber — fall through to restoration logic below.
-                } else {
-                    // Duplicate is a USER-BASED subscriber — reject with a descriptive message.
+                if ($duplicate_user_id !== 0) {
+                    // Duplicate belongs to a network user — reject.
                     $user     = function_exists('get_userdata') ? get_userdata($duplicate_user_id) : null;
                     $username = is_object($user) && isset($user->user_login) ? (string) $user->user_login : ('user_id:' . $duplicate_user_id);
 
                     InvalidPhoneNumbers::log_invalid_number($formatted_phone, 'duplicate', $list_id, 0);
-
                     return self::build_add_response(
                         false,
                         false,
                         true,
                         $duplicate_user_id,
                         $validation,
-                        sprintf('Phone number already subscribed to user %s. Cannot add as standalone subscriber.', $username)
+                        sprintf('Phone number already subscribed to user %s. Cannot add as standalone subscriber.', $username),
+                        'error'
                     );
                 }
+                // Duplicate is standalone (user_id = 0): fall through to the restoration path.
             }
         }
 
+        // Look up existing standalone record (user_id = 0) regardless of status.
         $existing = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s", $list_id, 0, $formatted_phone),
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND phone_number = %s",
+                $list_id,
+                0,
+                $formatted_phone
+            ),
             ARRAY_A
         );
 
-        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'unsubscribed') {
+        if (is_array($existing)) {
+            $status = isset($existing['subscription_status']) ? $existing['subscription_status'] : '';
+
+            if ($status === 'subscribed') {
+                return self::build_add_response(true, false, true, 0, $validation, 'Phone number is already subscribed to this list.', 'duplicate');
+            }
+
+            // Unsubscribed (or any other non-subscribed status): restore and update name.
             $restored = self::resubscribe_standalone($list_id, $formatted_phone);
             if ($restored) {
                 $wpdb->query(
@@ -458,16 +415,13 @@ class SmsSubscriberLists
                         $formatted_phone
                     )
                 );
+                Logger::info('Standalone subscriber restored to SMS list.', array('list_id' => $list_id, 'phone_number' => $formatted_phone));
             }
-
-            return self::build_add_response(true, $restored, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.');
+            return self::build_add_response($restored, $restored, false, 0, $validation, $restored ? 'Standalone subscriber restored successfully.' : 'Failed to restore standalone subscriber.', $restored ? 'restored' : 'error');
         }
 
-        if (is_array($existing) && isset($existing['subscription_status']) && $existing['subscription_status'] === 'subscribed') {
-            return self::build_add_response(true, false, true, 0, $validation, 'Phone number is already subscribed to this list.');
-        }
-
-        $now = self::current_time_mysql();
+        // No existing record: insert a fresh subscription.
+        $now    = self::current_time_mysql();
         $result = $wpdb->query(
             $wpdb->prepare(
                 "INSERT INTO {$table} (list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason) VALUES (%d, %d, %s, %s, %s, %s, %s, %s)",
@@ -486,7 +440,7 @@ class SmsSubscriberLists
             Logger::info('Standalone subscriber added to SMS list.', array('list_id' => $list_id, 'phone_number' => $formatted_phone));
         }
 
-        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Standalone subscriber added successfully.' : 'Failed to add standalone subscriber.');
+        return self::build_add_response($result !== false, $result !== false, false, null, $validation, $result !== false ? 'Standalone subscriber added successfully.' : 'Failed to add standalone subscriber.', $result !== false ? 'added' : 'error');
     }
 
     public static function remove_subscriber(int $list_id, int $user_id)
@@ -595,6 +549,90 @@ class SmsSubscriberLists
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
         return (int) $wpdb->get_var(
             $wpdb->prepare("SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND subscription_status = %s", $list_id, 'subscribed')
+        );
+    }
+
+    /**
+     * Search subscribers in a list by username, phone number, or subscriber name.
+     *
+     * @param int    $list_id  SMS subscriber list ID.
+     * @param string $query    Search string (empty returns all).
+     * @param string $status   Subscription status filter: 'subscribed' or 'unsubscribed'.
+     * @param int    $per_page Results per page.
+     * @param int    $page     1-based page number.
+     * @return array{rows: array, total: int, total_pages: int, current_page: int}
+     */
+    public static function search_subscribers(int $list_id, string $query, string $status = 'subscribed', int $per_page = 100, int $page = 1): array
+    {
+        global $wpdb;
+
+        $table       = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $users_table = $wpdb->base_prefix . 'users';
+
+        if (!in_array($status, array('subscribed', 'unsubscribed'), true)) {
+            $status = 'subscribed';
+        }
+
+        $per_page = max(1, (int) $per_page);
+        $page     = max(1, (int) $page);
+
+        $where_clauses = array('s.list_id = %d', 's.subscription_status = %s');
+        $where_args    = array($list_id, $status);
+
+        if ($query !== '') {
+            $like            = '%' . strtolower($wpdb->esc_like($query)) . '%';
+            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s OR LOWER(s.subscriber_name) LIKE %s)';
+            $where_args[]    = $like;
+            $where_args[]    = $like;
+            $where_args[]    = $like;
+        }
+
+        $where_sql = 'WHERE ' . implode(' AND ', $where_clauses);
+
+        $count_sql = call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                array("SELECT COUNT(1) FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql}"),
+                $where_args
+            )
+        );
+        $total = (int) $wpdb->get_var($count_sql);
+
+        $total_pages  = max(1, (int) ceil($total / $per_page));
+        $current_page = min($page, $total_pages);
+        $offset       = ($current_page - 1) * $per_page;
+
+        $rows_sql = call_user_func_array(
+            array($wpdb, 'prepare'),
+            array_merge(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                array("SELECT s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                $where_args,
+                array($per_page, $offset)
+            )
+        );
+        $rows = (array) $wpdb->get_results($rows_sql, ARRAY_A);
+
+        foreach ($rows as &$row) {
+            $row['subscriber_name'] = isset($row['subscriber_name']) ? (string) $row['subscriber_name'] : '';
+            if ((int) $row['user_id'] > 0) {
+                $row['subscriber_type'] = 'user';
+                $row['display_name']    = isset($row['user_login']) && $row['user_login'] !== ''
+                    ? (string) $row['user_login']
+                    : ('user_id:' . (int) $row['user_id']);
+            } else {
+                $row['subscriber_type'] = 'standalone';
+                $row['display_name']    = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+            }
+        }
+        unset($row);
+
+        return array(
+            'rows'         => $rows,
+            'total'        => $total,
+            'total_pages'  => $total_pages,
+            'current_page' => $current_page,
         );
     }
 
@@ -1457,19 +1495,33 @@ class SmsSubscriberLists
     /**
      * @return array<string,mixed>
      */
-    private static function build_add_response(bool $success, bool $added, bool $is_duplicate, ?int $duplicate_user_id, array $validation, string $message): array
+    private static function build_add_response(bool $success, bool $added, bool $is_duplicate, ?int $duplicate_user_id, array $validation, string $message, string $action = ''): array
     {
+        if ($action === '') {
+            if (!$success) {
+                $action = 'error';
+            } elseif ($added) {
+                $action = 'added';
+            } elseif ($is_duplicate) {
+                $action = 'duplicate';
+            } else {
+                $action = 'ok';
+            }
+        }
+
         return array(
-            'success' => $success,
-            'message' => $message,
-            'phone_valid' => !empty($validation['valid']),
-            'phone_error' => isset($validation['error']) ? (string) $validation['error'] : '',
-            'is_duplicate' => $is_duplicate,
+            'success'           => $success,
+            'action'            => $action,
+            'message'           => $message,
+            'phone_valid'       => !empty($validation['valid']),
+            'phone_error'       => isset($validation['error']) ? (string) $validation['error'] : '',
+            'is_duplicate'      => $is_duplicate,
             'duplicate_user_id' => $duplicate_user_id,
-            'duplicate' => $is_duplicate,
-            'existing_user_id' => $duplicate_user_id,
-            'added' => $added,
-            'formatted_phone' => isset($validation['formatted']) ? (string) $validation['formatted'] : '',
+            'duplicate'         => $is_duplicate,
+            'existing_user_id'  => $duplicate_user_id,
+            'added'             => $added,
+            'formatted_phone'   => isset($validation['formatted']) ? (string) $validation['formatted'] : '',
+            'subscriber_id'     => null,
         );
     }
 
@@ -1493,6 +1545,53 @@ class SmsSubscriberLists
         );
 
         return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Resolve and normalise a phone number through the configured validation layer.
+     *
+     * Handles single-country, multi-country, and validation-disabled modes.
+     * Always returns a validation array — callers are responsible for acting on
+     * the 'valid', 'reason_code', and related fields.
+     *
+     * @param string      $phone_number Raw phone number string.
+     * @param string|null $country_code Optional explicit country hint (ISO-2).
+     * @return array<string,mixed>
+     */
+    private static function validate_phone_number(string $phone_number, ?string $country_code): array
+    {
+        if (!SmsSettings::is_phone_validation_enabled()) {
+            return array(
+                'valid'                => true,
+                'formatted'            => trim($phone_number),
+                'error'                => '',
+                'country_iso2'         => null,
+                'country_calling_code' => null,
+                'national_number'      => null,
+                'input_format'         => 'unknown',
+                'ambiguous'            => false,
+                'possible_countries'   => array(),
+                'reason_code'          => null,
+            );
+        }
+
+        $legacy_country = SmsSettings::get_validation_country_code();
+
+        if (SmsSettings::is_multi_country_mode() || $country_code !== null) {
+            $default_country = SmsSettings::get_default_validation_country();
+            return PhoneValidator::validate_with_country_hint($phone_number, $country_code, $default_country);
+        }
+
+        $base = PhoneValidator::validate_phone_number($phone_number, $legacy_country);
+        return array_merge(array(
+            'country_iso2'         => $legacy_country,
+            'country_calling_code' => null,
+            'national_number'      => null,
+            'input_format'         => strpos($phone_number, '+') === 0 ? 'e164' : 'national',
+            'ambiguous'            => false,
+            'possible_countries'   => array(),
+            'reason_code'          => $base['valid'] ? null : 'format_invalid',
+        ), $base);
     }
 
     private static function maybe_auto_block_invalid_number(string $phone_number): void
