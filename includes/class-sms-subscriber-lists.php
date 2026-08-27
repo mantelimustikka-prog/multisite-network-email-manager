@@ -418,9 +418,26 @@ class SmsSubscriberLists
         if (!SmsSettings::allow_duplicate_numbers()) {
             $duplicate = self::find_subscriber_by_phone($list_id, $formatted_phone);
             if (is_array($duplicate)) {
-                InvalidPhoneNumbers::log_invalid_number($formatted_phone, 'duplicate', $list_id, 0);
+                $duplicate_user_id = isset($duplicate['user_id']) ? (int) $duplicate['user_id'] : 0;
 
-                return self::build_add_response(false, false, true, isset($duplicate['user_id']) ? (int) $duplicate['user_id'] : null, $validation, 'Phone number is already subscribed to this list.');
+                if ($duplicate_user_id === 0) {
+                    // Duplicate is a STANDALONE subscriber — fall through to restoration logic below.
+                } else {
+                    // Duplicate is a USER-BASED subscriber — reject with a descriptive message.
+                    $user     = function_exists('get_userdata') ? get_userdata($duplicate_user_id) : null;
+                    $username = is_object($user) && isset($user->user_login) ? (string) $user->user_login : ('user_id:' . $duplicate_user_id);
+
+                    InvalidPhoneNumbers::log_invalid_number($formatted_phone, 'duplicate', $list_id, 0);
+
+                    return self::build_add_response(
+                        false,
+                        false,
+                        true,
+                        $duplicate_user_id,
+                        $validation,
+                        sprintf('Phone number already subscribed to user %s. Cannot add as standalone subscriber.', $username)
+                    );
+                }
             }
         }
 
