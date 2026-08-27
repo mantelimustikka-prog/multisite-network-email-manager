@@ -9,7 +9,7 @@ defined('ABSPATH') || exit;
         <div class="<?php echo esc_attr($notice_class); ?>"><p><?php echo esc_html($notice_message); ?></p></div>
     <?php endif; ?>
     <?php if (!empty($alert_message)) : ?>
-        <script>window.alert(<?php echo wp_json_encode($alert_message); ?>);</script>
+        <div class="notice notice-error"><p><?php echo esc_html($alert_message); ?></p></div>
     <?php endif; ?>
 
     <div class="mnem-grid">

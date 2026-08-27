@@ -698,10 +698,11 @@ class NetworkAdmin
 
             $result = \MNEM\SmsSubscriberLists::add_subscriber($list_id, $user_id, $phone_number);
             if (empty($result['success'])) {
-                $redirect_args['mnem_alert'] = isset($result['phone_error']) && $result['phone_error'] !== '' ? $result['phone_error'] : $result['message'];
+                $redirect_args['mnem_alert'] = isset($result['phone_error']) && $result['phone_error'] !== '' ? $result['phone_error'] : (isset($result['message']) ? $result['message'] : 'Failed to add subscriber.');
                 $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
             }
-            $this->redirect_with_notice('mnem-sms-subscriber-lists', !empty($result['added']) ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_added', $redirect_args);
         }
 
         if ($action === 'sms_subscriber_add_standalone') {
