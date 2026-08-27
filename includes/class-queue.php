@@ -257,7 +257,9 @@ class Queue
             }
         }
 
-        SmsCampaigns::auto_update_sending_campaign_statuses();
+        if ($processed === 0) {
+            SmsCampaigns::auto_update_sending_campaign_statuses();
+        }
 
         return $processed;
     }

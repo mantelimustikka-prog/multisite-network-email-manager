@@ -1926,6 +1926,11 @@ class NetworkAdmin
         }
     }
 
+    /**
+     * Reconcile SMS campaign statuses on SMS campaigns admin page load.
+     *
+     * @return void
+     */
     public function auto_update_sms_campaign_statuses()
     {
         if (!$this->current_user_can_manage_network()) {
