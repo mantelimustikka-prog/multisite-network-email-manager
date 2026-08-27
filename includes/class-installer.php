@@ -287,6 +287,15 @@ class Installer
                 }
             }
         }
+
+        // Migration 002: create mnem_sms_queue and move SMS rows from mnem_queue.
+        $migration_002 = __DIR__ . '/migrations/002-create-sms-queue-table.php';
+        if (file_exists($migration_002)) {
+            require_once $migration_002;
+            if (function_exists('mnem_migration_002')) {
+                mnem_migration_002();
+            }
+        }
     }
 
     public static function get_table_schema($prefix = null, $charset_collate = '')
@@ -621,6 +630,51 @@ class Installer
                     KEY created_at (created_at),
                     KEY detected_country_iso2 (detected_country_iso2),
                     UNIQUE KEY phone_list_unique (phone_number, list_id)
+                ){$charset_suffix};",
+            ),
+            'mnem_sms_queue' => array(
+                'name' => $tracking_prefix . 'mnem_sms_queue',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'site_id' => 'bigint(20) unsigned',
+                    'sms_campaign_id' => 'bigint(20) unsigned',
+                    'phone_number' => 'varchar(20)',
+                    'body' => 'longtext',
+                    'status' => 'varchar(50)',
+                    'message_type' => 'varchar(20)',
+                    'provider_type' => 'varchar(50)',
+                    'provider_message_id' => 'varchar(255)',
+                    'sent_at' => 'datetime',
+                    'attempts' => 'int(10) unsigned',
+                    'created_at' => 'datetime',
+                    'updated_at' => 'datetime',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'idx_status' => array('status'),
+                    'idx_site_id' => array('site_id'),
+                    'idx_sms_campaign_id' => array('sms_campaign_id'),
+                    'idx_created_at' => array('created_at'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_sms_queue (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    site_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    sms_campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                    phone_number varchar(20) NOT NULL DEFAULT '',
+                    body longtext NOT NULL,
+                    status varchar(50) NOT NULL DEFAULT 'pending',
+                    message_type varchar(20) NOT NULL DEFAULT 'sms',
+                    provider_type varchar(50) NOT NULL DEFAULT '',
+                    provider_message_id varchar(255) NOT NULL DEFAULT '',
+                    sent_at datetime NULL,
+                    attempts int(10) unsigned NOT NULL DEFAULT 0,
+                    created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY  (id),
+                    KEY idx_status (status),
+                    KEY idx_site_id (site_id),
+                    KEY idx_sms_campaign_id (sms_campaign_id),
+                    KEY idx_created_at (created_at)
                 ){$charset_suffix};",
             ),
         );

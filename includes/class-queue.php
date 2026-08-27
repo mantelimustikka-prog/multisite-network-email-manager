@@ -127,27 +127,7 @@ class Queue
 
         $processed = 0;
 
-        // Process pending SMS messages first, before email items.
-        $sms_ids = (array) $wpdb->get_col(
-            $wpdb->prepare(
-                "SELECT id FROM {$table} WHERE message_type = %s AND status = %s AND scheduled_at <= %s ORDER BY id ASC LIMIT %d",
-                'sms',
-                'pending',
-                $now,
-                $limit
-            )
-        );
-        foreach ($sms_ids as $sms_id) {
-            if (self::process_sms_item((int) $sms_id)) {
-                ++$processed;
-            }
-        }
-
-        $remaining = $limit - $processed;
-        if ($remaining < 1) {
-            return $processed;
-        }
-
+        $remaining = $limit;
         $transactional_ids = self::get_pending_ids_by_source($table, $now, $remaining, self::get_transactional_sources());
         foreach ($transactional_ids as $id) {
             $result = self::process_item((int) $id);
@@ -222,6 +202,67 @@ class Queue
     }
 
     /**
+     * Reset SMS queue rows stuck in "processing" back to "pending".
+     */
+    public static function recover_stuck_sms_processing_rows(): int
+    {
+        global $wpdb;
+
+        $table     = $wpdb->base_prefix . 'mnem_sms_queue';
+        $threshold = gmdate('Y-m-d H:i:s', time() - (defined('HOUR_IN_SECONDS') ? HOUR_IN_SECONDS : 3600));
+
+        $recovered = (int) $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET status = %s WHERE status = %s AND created_at < %s",
+                'pending',
+                'processing',
+                $threshold
+            )
+        );
+
+        if ($recovered > 0) {
+            Logger::warning('Recovered stuck SMS queue rows back to pending.', array('count' => $recovered));
+        }
+
+        return $recovered;
+    }
+
+    /**
+     * Process a batch of pending SMS items from mnem_sms_queue independently of email processing.
+     *
+     * @param int $limit Maximum number of SMS items to process.
+     * @return int Number of SMS items processed.
+     */
+    public static function process_sms_batch(int $limit = 20): int
+    {
+        global $wpdb;
+
+        self::recover_stuck_sms_processing_rows();
+
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
+        $now   = self::current_time_mysql();
+        $limit = max(1, $limit);
+
+        $sms_ids = (array) $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT id FROM {$table} WHERE status = %s AND created_at <= %s ORDER BY id ASC LIMIT %d",
+                'pending',
+                $now,
+                $limit
+            )
+        );
+
+        $processed = 0;
+        foreach ($sms_ids as $sms_id) {
+            if (self::process_sms_item((int) $sms_id)) {
+                ++$processed;
+            }
+        }
+
+        return $processed;
+    }
+
+    /**
      * Process a single SMS queue item: validate, send via the active SMS provider, and update status.
      *
      * @param int  $id    Queue row ID.
@@ -244,28 +285,26 @@ class Queue
     {
         global $wpdb;
 
-        $table = $wpdb->base_prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
 
         // Claim the row by moving it from 'pending' to 'processing'.
         $claim_time = self::current_time_mysql();
         $claimed = $force
             ? $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status <> %s AND message_type = %s",
+                    "UPDATE {$table} SET status = %s, scheduled_at = %s WHERE id = %d AND status <> %s",
                     'processing',
                     $claim_time,
                     $id,
-                    'processing',
-                    'sms'
+                    'processing'
                 )
             )
             : $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s AND message_type = %s",
+                    "UPDATE {$table} SET status = %s WHERE id = %d AND status = %s",
                     'processing',
                     $id,
-                    'pending',
-                    'sms'
+                    'pending'
                 )
             );
 
@@ -283,9 +322,8 @@ class Queue
 
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, phone_number, body FROM {$table} WHERE id = %d AND message_type = %s",
-                $id,
-                'sms'
+                "SELECT id, phone_number, body FROM {$table} WHERE id = %d",
+                $id
             ),
             ARRAY_A
         );
@@ -451,16 +489,6 @@ class Queue
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_queue';
-        $message_type = (string) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT message_type FROM {$table} WHERE id = %d",
-                $id
-            )
-        );
-        if ($message_type === 'sms') {
-            return self::process_sms_item_result($id, $force);
-        }
-
         $claim_time = self::current_time_mysql();
         $claimed = $force
             ? $wpdb->query(
@@ -1935,7 +1963,7 @@ class Queue
             return false;
         }
 
-        $table = $wpdb->base_prefix . 'mnem_queue';
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
         $row   = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT id, status, provider_metadata FROM {$table} WHERE provider_message_id = %s ORDER BY id DESC LIMIT %d",
