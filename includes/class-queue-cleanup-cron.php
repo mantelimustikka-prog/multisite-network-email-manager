@@ -60,6 +60,22 @@ class QueueCleanupCron
             )
         );
 
+        if ($queue_deleted === false) {
+            Logger::warning('Email queue cleanup failed.', array(
+                'table'          => $queue_table,
+                'days_before'    => $retention_days,
+                'threshold_date' => $threshold,
+            ));
+        }
+
+        if ($sms_deleted === false) {
+            Logger::warning('SMS queue cleanup failed.', array(
+                'table'          => $sms_table,
+                'days_before'    => $retention_days,
+                'threshold_date' => $threshold,
+            ));
+        }
+
         $queue_deleted = $queue_deleted === false ? 0 : (int) $queue_deleted;
         $sms_deleted = $sms_deleted === false ? 0 : (int) $sms_deleted;
         $total_deleted = $queue_deleted + $sms_deleted;
