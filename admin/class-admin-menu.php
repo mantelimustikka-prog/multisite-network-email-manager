@@ -1039,7 +1039,8 @@ class AdminMenu
 
         if ($search !== '') {
             $search_like = '%' . strtolower($wpdb->esc_like((string) $search)) . '%';
-            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s)';
+            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s OR LOWER(s.subscriber_name) LIKE %s)';
+            $where_args[] = $search_like;
             $where_args[] = $search_like;
             $where_args[] = $search_like;
         }
@@ -1064,12 +1065,26 @@ class AdminMenu
             array($wpdb, 'prepare'),
             array_merge(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                array("SELECT s.user_id, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                array("SELECT s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
                 $where_args,
                 array($per_page, $offset)
             )
         );
         $rows = (array) $wpdb->get_results($rows_query, ARRAY_A);
+
+        foreach ($rows as &$row) {
+            $row['subscriber_name'] = isset($row['subscriber_name']) ? (string) $row['subscriber_name'] : '';
+            if ((int) $row['user_id'] > 0) {
+                $row['subscriber_type'] = 'user';
+                $row['display_name'] = isset($row['user_login']) && $row['user_login'] !== ''
+                    ? (string) $row['user_login']
+                    : ('user_id:' . (int) $row['user_id']);
+            } else {
+                $row['subscriber_type'] = 'standalone';
+                $row['display_name'] = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+            }
+        }
+        unset($row);
 
         return array(
             'rows' => $rows,

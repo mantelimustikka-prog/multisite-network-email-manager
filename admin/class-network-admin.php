@@ -704,9 +704,33 @@ class NetworkAdmin
             $this->redirect_with_notice('mnem-sms-subscriber-lists', !empty($result['added']) ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
         }
 
+        if ($action === 'sms_subscriber_add_standalone') {
+            $subscriber_name = isset($_POST['subscriber_name']) ? sanitize_text_field(wp_unslash($_POST['subscriber_name'])) : '';
+            $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+
+            if ($list_id <= 0 || $subscriber_name === '' || $phone_number === '') {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+
+            $result = \MNEM\SmsSubscriberLists::add_standalone_subscriber($list_id, $subscriber_name, $phone_number);
+            if (empty($result['success'])) {
+                $redirect_args['mnem_alert'] = isset($result['phone_error']) && $result['phone_error'] !== '' ? $result['phone_error'] : $result['message'];
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+            }
+
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', !empty($result['added']) ? 'sms_subscriber_added' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
         if ($action === 'sms_subscriber_remove_user') {
             $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
             $result = \MNEM\SmsSubscriberLists::remove_subscriber($list_id, $user_id);
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_removed' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
+        if ($action === 'sms_subscriber_remove_standalone') {
+            $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+            $result = $phone_number !== '' ? \MNEM\SmsSubscriberLists::remove_standalone_subscriber($list_id, $phone_number) : false;
             $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_removed' : 'sms_subscriber_operation_failed', $redirect_args);
         }
 
@@ -720,6 +744,12 @@ class NetworkAdmin
             $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_restored' : 'sms_subscriber_operation_failed', $redirect_args);
         }
 
+        if ($action === 'sms_subscriber_restore_standalone') {
+            $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+            $result = $phone_number !== '' ? \MNEM\SmsSubscriberLists::resubscribe_standalone($list_id, $phone_number) : false;
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_restored' : 'sms_subscriber_operation_failed', $redirect_args);
+        }
+
         if ($action === 'sms_subscriber_import_csv') {
             $csv_content = isset($_POST['csv_content']) ? (string) wp_unslash($_POST['csv_content']) : '';
             if ($csv_content === '' && isset($_FILES['csv_file']['tmp_name']) && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
@@ -729,8 +759,10 @@ class NetworkAdmin
             \MNEM\Logger::info('SMS subscriber CSV imported.', array('list_id' => $list_id, 'result' => $result));
             if (!empty($result['invalid']) || !empty($result['duplicates'])) {
                 $redirect_args['mnem_alert'] = sprintf(
-                    'Added %1$d, skipped %2$d, invalid %3$d, duplicates %4$d.',
+                    'Added %1$d (users: %2$d, standalone: %3$d), skipped %4$d, invalid %5$d, duplicates %6$d.',
                     isset($result['added']) ? (int) $result['added'] : 0,
+                    isset($result['added_users']) ? (int) $result['added_users'] : 0,
+                    isset($result['added_standalone']) ? (int) $result['added_standalone'] : 0,
                     isset($result['skipped']) ? (int) $result['skipped'] : 0,
                     isset($result['invalid']) ? (int) $result['invalid'] : 0,
                     isset($result['duplicates']) ? (int) $result['duplicates'] : 0
@@ -742,8 +774,11 @@ class NetworkAdmin
 
     private function handle_sms_subscriber_unsubscribe_action($list_id, array $redirect_args = array())
     {
+        $subscriber_type = isset($_POST['subscriber_type']) ? sanitize_text_field(wp_unslash($_POST['subscriber_type'])) : 'user';
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-        if ((int) $list_id <= 0 || $user_id <= 0 || !\MNEM\SmsSubscriberLists::is_subscribed((int) $list_id, $user_id)) {
+        $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+
+        if ((int) $list_id <= 0) {
             $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
             return;
         }
@@ -753,7 +788,20 @@ class NetworkAdmin
             $reason = 'Unsubscribed by admin';
         }
 
-        $result = \MNEM\SmsSubscriberLists::unsubscribe_user((int) $list_id, $user_id, $reason);
+        if ($subscriber_type === 'standalone') {
+            if ($phone_number === '' || !\MNEM\SmsSubscriberLists::is_standalone_subscriber((int) $list_id, $phone_number)) {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+            $result = \MNEM\SmsSubscriberLists::unsubscribe_standalone((int) $list_id, $phone_number, $reason);
+        } else {
+            if ($user_id <= 0 || !\MNEM\SmsSubscriberLists::is_subscribed((int) $list_id, $user_id)) {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+            $result = \MNEM\SmsSubscriberLists::unsubscribe_user((int) $list_id, $user_id, $reason);
+        }
+
         $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_unsubscribed' : 'sms_subscriber_operation_failed', $redirect_args);
     }
 
@@ -1989,14 +2037,7 @@ class NetworkAdmin
             return;
         }
 
-        global $wpdb;
-        $table = $wpdb->base_prefix . 'mnem_sms_subscribers';
-        $count = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(1) FROM {$table} WHERE list_id = %d AND subscription_status = 'subscribed' AND phone_number != ''",
-                $list_id
-            )
-        );
+        $count = \MNEM\SmsSubscriberLists::get_list_subscribers_count($list_id);
 
         wp_send_json_success(array(
             'list'             => $list,

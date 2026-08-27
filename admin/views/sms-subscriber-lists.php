@@ -130,7 +130,7 @@ defined('ABSPATH') || exit;
                     <input type="hidden" name="subscribed_paged" value="1" />
                     <input type="hidden" name="unsubscribed_paged" value="1" />
                     <label for="mnem-sms-subscriber-search"><strong>Search:</strong></label>
-                    <input id="mnem-sms-subscriber-search" type="search" name="subscriber_search" value="<?php echo esc_attr($subscriber_search); ?>" placeholder="Search username or phone number" />
+                    <input id="mnem-sms-subscriber-search" type="search" name="subscriber_search" value="<?php echo esc_attr($subscriber_search); ?>" placeholder="Search username, standalone name, or phone number" />
                     <label for="mnem-sms-subscriber-per-page"><strong>Per page:</strong></label>
                     <select id="mnem-sms-subscriber-per-page" name="subscriber_per_page" onchange="this.form.submit();">
                         <?php foreach (array(100, 500, 1000) as $option) : ?>
@@ -156,7 +156,31 @@ defined('ABSPATH') || exit;
             </div>
 
             <div class="mnem-panel mnem-panel-wide">
-                <h2>Subscribed Users</h2>
+                <h2>Add Standalone Subscriber</h2>
+                <p class="description">Add phone numbers with custom names without requiring WordPress user accounts.</p>
+                <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
+                    <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
+                    <input type="hidden" name="mnem_action" value="sms_subscriber_add_standalone" />
+                    <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
+                    <table class="form-table" role="presentation" style="width:auto;">
+                        <tr>
+                            <th><label for="mnem_sms_subscriber_name">Subscriber Name / Identifier</label></th>
+                            <td><input id="mnem_sms_subscriber_name" type="text" name="subscriber_name" class="regular-text" placeholder="e.g., John Doe, Business Name, External Contact" required /></td>
+                        </tr>
+                        <tr>
+                            <th><label for="mnem_sms_standalone_phone_number">Phone Number</label></th>
+                            <td>
+                                <input id="mnem_sms_standalone_phone_number" type="text" name="phone_number" class="regular-text" placeholder="+1234567890 or local format" required />
+                                <p class="description">Enter phone number in E.164 format (+1234567890) or your local format.</p>
+                            </td>
+                        </tr>
+                    </table>
+                    <?php submit_button('Add Standalone Subscriber', 'secondary', 'submit', false); ?>
+                </form>
+            </div>
+
+            <div class="mnem-panel mnem-panel-wide">
+                <h2>Subscribed Users &amp; Standalone Subscribers</h2>
                 <div style="margin-bottom: 15px;">
                     <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists-bulk-add&list_id=' . (int) $active_list['id'])); ?>" class="button button-primary">
                         <?php esc_html_e('+ Add from Network Users', 'multisite-network-email-manager'); ?>
@@ -189,7 +213,10 @@ defined('ABSPATH') || exit;
                     <input type="hidden" name="mnem_action" value="sms_subscriber_import_csv" />
                     <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
                     <input type="file" name="csv_file" accept=".csv,text/csv,text/plain" />
-                    <textarea name="csv_content" rows="4" class="large-text" placeholder="user_id or username per line (optionally user_id:phone_number)"></textarea>
+                    <textarea name="csv_content" rows="4" class="large-text" placeholder="Format options:
+user_id or username (will use user's phone from meta)
+user_id:phone_number or username:phone_number
+name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textarea>
                     <?php submit_button('Upload CSV', 'secondary', 'submit', false); ?>
                 </form>
                 <p class="description">
@@ -203,27 +230,41 @@ defined('ABSPATH') || exit;
                     ?>
                 </p>
                 <table class="widefat striped">
-                    <thead><tr><th>Login</th><th>Phone Number</th><th>Subscribed At</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Login/Name</th><th>Type</th><th>Phone Number</th><th>Subscribed At</th><th>Actions</th></tr></thead>
                     <tbody>
                     <?php foreach ((array) $subscribers as $subscriber) : ?>
+                        <?php $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone'; ?>
                         <tr>
-                            <td><?php echo esc_html((string) $subscriber['user_login']); ?></td>
+                            <td><?php echo esc_html(isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : (string) $subscriber['user_login']); ?></td>
+                            <td>
+                                <?php if ($is_standalone) : ?>
+                                    <span class="tag">Standalone</span>
+                                <?php else : ?>
+                                    <span class="tag">User</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo esc_html((string) $subscriber['phone_number']); ?></td>
                             <td><?php echo esc_html((string) $subscriber['subscribed_at']); ?></td>
                             <td>
                                 <form method="post" class="mnem-inline-form">
                                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
-                                    <input type="hidden" name="mnem_action" value="sms_subscriber_remove_user" />
+                                    <input type="hidden" name="mnem_action" value="<?php echo esc_attr($is_standalone ? 'sms_subscriber_remove_standalone' : 'sms_subscriber_remove_user'); ?>" />
                                     <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
-                                    <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $subscriber['user_id']); ?>" />
+                                    <?php if ($is_standalone) : ?>
+                                        <input type="hidden" name="phone_number" value="<?php echo esc_attr((string) $subscriber['phone_number']); ?>" />
+                                    <?php else : ?>
+                                        <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $subscriber['user_id']); ?>" />
+                                    <?php endif; ?>
                                     <?php submit_button('Remove', 'delete', 'submit', false); ?>
                                 </form>
                                 <button
                                     type="button"
                                     class="button"
                                     style="margin-left:6px;"
+                                    data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
                                     data-user-id="<?php echo esc_attr((string) $subscriber['user_id']); ?>"
-                                    data-user-login="<?php echo esc_attr((string) $subscriber['user_login']); ?>"
+                                    data-user-login="<?php echo esc_attr((string) (isset($subscriber['display_name']) ? $subscriber['display_name'] : $subscriber['user_login'])); ?>"
+                                    data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
                                     onclick="mnemOpenSmsUnsubscribeModal(this);"
                                 >Unsubscribe</button>
                             </td>
@@ -255,7 +296,7 @@ defined('ABSPATH') || exit;
             </div>
 
             <div class="mnem-panel mnem-panel-wide">
-                <h2>Unsubscribed Users</h2>
+                <h2>Unsubscribed Users &amp; Standalone Subscribers</h2>
                 <p class="description">
                     <?php
                     printf(
@@ -267,20 +308,32 @@ defined('ABSPATH') || exit;
                     ?>
                 </p>
                 <table class="widefat striped">
-                    <thead><tr><th>Login</th><th>Phone Number</th><th>Unsubscribed At</th><th>Reason</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Login/Name</th><th>Type</th><th>Phone Number</th><th>Unsubscribed At</th><th>Reason</th><th>Actions</th></tr></thead>
                     <tbody>
                     <?php foreach ((array) $unsubscribed as $subscriber) : ?>
+                        <?php $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone'; ?>
                         <tr>
-                            <td><?php echo esc_html((string) $subscriber['user_login']); ?></td>
+                            <td><?php echo esc_html(isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : (string) $subscriber['user_login']); ?></td>
+                            <td>
+                                <?php if ($is_standalone) : ?>
+                                    <span class="tag">Standalone</span>
+                                <?php else : ?>
+                                    <span class="tag">User</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo esc_html((string) $subscriber['phone_number']); ?></td>
                             <td><?php echo esc_html((string) $subscriber['unsubscribed_at']); ?></td>
                             <td><?php echo esc_html((string) $subscriber['unsubscribed_reason']); ?></td>
                             <td>
                                 <form method="post" class="mnem-inline-form">
                                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
-                                    <input type="hidden" name="mnem_action" value="sms_subscriber_restore_user" />
+                                    <input type="hidden" name="mnem_action" value="<?php echo esc_attr($is_standalone ? 'sms_subscriber_restore_standalone' : 'sms_subscriber_restore_user'); ?>" />
                                     <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
-                                    <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $subscriber['user_id']); ?>" />
+                                    <?php if ($is_standalone) : ?>
+                                        <input type="hidden" name="phone_number" value="<?php echo esc_attr((string) $subscriber['phone_number']); ?>" />
+                                    <?php else : ?>
+                                        <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $subscriber['user_id']); ?>" />
+                                    <?php endif; ?>
                                     <?php submit_button('Restore', 'secondary', 'submit', false); ?>
                                 </form>
                             </td>
@@ -323,13 +376,15 @@ defined('ABSPATH') || exit;
 
             <div id="mnem-sms-unsubscribe-modal" style="display:none;position:fixed;z-index:9999;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5);">
                 <div style="background:#fff;max-width:500px;margin:120px auto;padding:20px;">
-                    <h3>Unsubscribe User from SMS List</h3>
+                    <h3>Unsubscribe Subscriber from SMS List</h3>
                     <p id="mnem-sms-unsubscribe-user-label"></p>
                     <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
                         <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
                         <input type="hidden" name="mnem_action" value="sms_subscriber_unsubscribe_user" />
                         <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
+                        <input type="hidden" name="subscriber_type" id="mnem-sms-unsubscribe-subscriber-type" value="user" />
                         <input type="hidden" name="user_id" id="mnem-sms-unsubscribe-user-id" value="" />
+                        <input type="hidden" name="phone_number" id="mnem-sms-unsubscribe-phone-number" value="" />
                         <label for="mnem-sms-unsubscribe-reason">Reason (optional)</label>
                         <textarea id="mnem-sms-unsubscribe-reason" name="unsubscribe_reason" rows="3" class="large-text" placeholder="Unsubscribed by admin"></textarea>
                         <div style="margin-top:10px;display:flex;gap:8px;">
@@ -343,14 +398,23 @@ defined('ABSPATH') || exit;
                 if (typeof mnemOpenSmsUnsubscribeModal === 'undefined') {
                     function mnemOpenSmsUnsubscribeModal(button) {
                         var modal = document.getElementById('mnem-sms-unsubscribe-modal');
+                        var subscriberTypeField = document.getElementById('mnem-sms-unsubscribe-subscriber-type');
                         var userField = document.getElementById('mnem-sms-unsubscribe-user-id');
+                        var phoneField = document.getElementById('mnem-sms-unsubscribe-phone-number');
                         var userLabel = document.getElementById('mnem-sms-unsubscribe-user-label');
-                        if (!modal || !userField || !userLabel || !button) {
+                        if (!modal || !subscriberTypeField || !userField || !phoneField || !userLabel || !button) {
                             return;
                         }
+                        var subscriberType = button.getAttribute('data-subscriber-type') || 'user';
+                        subscriberTypeField.value = subscriberType;
                         userField.value = button.getAttribute('data-user-id') || '';
+                        phoneField.value = button.getAttribute('data-phone-number') || '';
                         var userLogin = button.getAttribute('data-user-login') || '';
-                        userLabel.textContent = userLogin ? ('User: ' + userLogin) : '';
+                        if (subscriberType === 'standalone') {
+                            userLabel.textContent = userLogin ? ('Standalone subscriber: ' + userLogin) : '';
+                        } else {
+                            userLabel.textContent = userLogin ? ('User: ' + userLogin) : '';
+                        }
                         modal.style.display = 'block';
                     }
                 }
