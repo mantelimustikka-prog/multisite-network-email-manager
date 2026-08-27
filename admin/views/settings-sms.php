@@ -85,6 +85,7 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
                                     placeholder="<?php echo esc_attr($placeholder); ?>"
                                     class="regular-text"
                                     autocomplete="<?php echo esc_attr($field_type === 'password' ? 'new-password' : 'off'); ?>"
+                                    <?php if (!empty($field['maxlength'])) : ?>maxlength="<?php echo esc_attr((int) $field['maxlength']); ?>"<?php endif; ?>
                                 />
                             </td>
                         </tr>
