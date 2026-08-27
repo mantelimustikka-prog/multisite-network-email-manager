@@ -31,14 +31,15 @@ class QueueCleanupCron
         $terminal_statuses = array('sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected', 'blocked');
 
         $status_placeholders = implode(', ', array_fill(0, count($terminal_statuses), '%s'));
-        $table = $wpdb->base_prefix . 'mnem_queue';
+        $queue_table = $wpdb->base_prefix . 'mnem_queue';
+        $sms_table = $wpdb->base_prefix . 'mnem_sms_queue';
 
-        $deleted = $wpdb->query(
+        $queue_deleted = $wpdb->query(
             call_user_func_array(
                 array($wpdb, 'prepare'),
                 array_merge(
                     array(
-                        "DELETE FROM {$table} WHERE created_at < %s AND status IN ({$status_placeholders})",
+                        "DELETE FROM {$queue_table} WHERE created_at < %s AND status IN ({$status_placeholders})",
                         $threshold,
                     ),
                     $terminal_statuses
@@ -46,15 +47,34 @@ class QueueCleanupCron
             )
         );
 
-        if ($deleted !== false && $deleted > 0) {
+        $sms_deleted = $wpdb->query(
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    array(
+                        "DELETE FROM {$sms_table} WHERE created_at < %s AND status IN ({$status_placeholders})",
+                        $threshold,
+                    ),
+                    $terminal_statuses
+                )
+            )
+        );
+
+        $queue_deleted = $queue_deleted === false ? 0 : (int) $queue_deleted;
+        $sms_deleted = $sms_deleted === false ? 0 : (int) $sms_deleted;
+        $total_deleted = $queue_deleted + $sms_deleted;
+
+        if ($total_deleted > 0) {
             Logger::info('Old queue records cleaned up.', array(
                 'days_before'    => $retention_days,
-                'deleted_count'  => (int) $deleted,
+                'deleted_count'  => $total_deleted,
+                'email_deleted'  => $queue_deleted,
+                'sms_deleted'    => $sms_deleted,
                 'threshold_date' => $threshold,
             ));
         }
 
-        return $deleted === false ? 0 : (int) $deleted;
+        return $total_deleted;
     }
 
     public static function deactivate(): void

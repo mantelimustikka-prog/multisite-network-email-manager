@@ -869,6 +869,7 @@ require_once __DIR__ . '/../includes/class-email-tracker.php';
 require_once __DIR__ . '/../includes/class-queue.php';
 require_once __DIR__ . '/../includes/class-campaigns.php';
 require_once __DIR__ . '/../includes/class-cron.php';
+require_once __DIR__ . '/../includes/class-queue-cleanup-cron.php';
 require_once __DIR__ . '/../includes/class-status-summary.php';
 require_once __DIR__ . '/../includes/class-status-sync-cron.php';
 require_once __DIR__ . '/../includes/class-installer.php';
