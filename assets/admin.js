@@ -7,16 +7,20 @@
 
         $(document).on('click', '.mnem-delete-queue-item', function(event){
             var $button = $(this);
-            var recipient = $button.data('recipient') || 'this recipient';
+            var recipient = $button.data('recipient') || 'this queue item';
             var status = $button.data('status') || 'pending';
-            if (!window.confirm('Delete queued email for ' + recipient + ' (' + status + ')?')) {
+            var isForceDelete = String($button.data('force-delete') || '0') === '1';
+            var confirmMessage = isForceDelete
+                ? 'This queue item is still marked as processing and may still be active. Force delete ' + recipient + ' (' + status + ')?'
+                : 'Delete queue item for ' + recipient + ' (' + status + ')?';
+            if (!window.confirm(confirmMessage)) {
                 event.preventDefault();
                 return;
             }
 
             var $form = $('#mnem-single-queue-delete-form');
             $form.find('input[name="queue_id"]').val($button.data('queue-id'));
-            $button.prop('disabled', true).text('Deleting...');
+            $button.prop('disabled', true).text(isForceDelete ? 'Force Deleting...' : 'Deleting...');
             $form.trigger('submit');
         });
 
@@ -44,7 +48,7 @@
                 }
 
                 $actionField.val('delete_queue_items');
-                message = 'Delete ' + selectedCount + ' selected queued email' + (selectedCount === 1 ? '' : 's') + '?';
+                message = 'Delete ' + selectedCount + ' selected queue item' + (selectedCount === 1 ? '' : 's') + '?';
             } else if (bulkAction === 'delete_pending') {
                 $actionField.val('delete_queue_by_status');
                 $statusField.val('pending');
