@@ -39,6 +39,7 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
+        add_submenu_page('mnem-dashboard', 'SMS Campaigns', 'SMS Campaigns', 'manage_network_options', 'mnem-sms-campaigns', array($this, 'render_sms_campaigns'));
         add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', '', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
         add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', '', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
     }
@@ -494,6 +495,28 @@ class AdminMenu
         ));
     }
 
+    public function render_sms_campaigns()
+    {
+        $site_id        = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        $campaigns      = \MNEM\SmsCampaigns::get_list($site_id, '', 50, 0);
+        $sms_lists      = \MNEM\SmsSubscriberLists::get_all();
+        $notice         = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class   = $this->get_notice_class($notice);
+
+        $edit_campaign_id = isset($_GET['mnem_campaign']) ? (int) $_GET['mnem_campaign'] : 0;
+        $edit_campaign    = $edit_campaign_id > 0 ? \MNEM\SmsCampaigns::get($edit_campaign_id) : null;
+
+        $this->render_view('sms-campaigns.php', compact(
+            'campaigns',
+            'sms_lists',
+            'notice',
+            'notice_message',
+            'notice_class',
+            'edit_campaign'
+        ));
+    }
+
     public function render_email_templates()    {
         $templates = \MNEM\EmailTemplates::get_all_templates();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
@@ -809,7 +832,7 @@ class AdminMenu
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
-        $error_detail_notices = array('campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed');
+        $error_detail_notices = array('campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed');
         $error_detail = in_array($notice, $error_detail_notices, true)
             ? \MNEM\Admin\NetworkAdmin::get_and_clear_error_detail()
             : '';
@@ -885,6 +908,17 @@ class AdminMenu
             'sms_settings_failed' => 'Failed to save SMS settings.',
             'sms_no_hours_invalid' => "Invalid 'No SMS Hours' format. Use HH:MM:SS-HH:MM:SS",
             'sms_connection_tested' => 'SMS connection test completed.',
+            'sms_campaign_created' => 'SMS campaign created successfully.',
+            'sms_campaign_updated' => 'SMS campaign updated successfully.',
+            'sms_campaign_deleted' => 'SMS campaign deleted successfully.',
+            'sms_campaign_sent' => 'SMS campaign send has been queued.',
+            'sms_campaign_scheduled' => 'SMS campaign scheduled successfully.',
+            'sms_campaign_paused' => 'SMS campaign sending is now paused.',
+            'sms_campaign_resumed' => 'SMS campaign sending has resumed.',
+            'sms_campaign_cancelled' => 'SMS campaign cancelled successfully.',
+            'sms_campaign_nonce_failed' => 'SMS campaign security check failed.',
+            'sms_campaign_save_failed' => 'SMS campaign could not be saved' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
+            'sms_campaign_action_failed' => 'SMS campaign action failed' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -900,7 +934,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed', 'sms_campaign_nonce_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed'), true)) {
             return 'notice notice-error';
         }
 

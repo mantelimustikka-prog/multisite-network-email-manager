@@ -53,6 +53,10 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_list', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_action', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_delete_user', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_send_sms_test', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_get_sms_campaign_stats', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_preview_sms_recipients', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_get_sms_list_info', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_send_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_campaign_preview_test_email', $GLOBALS['mnem_hooks']);
         $this->assertArrayNotHasKey('wp_ajax_mnem_get_error_details', $GLOBALS['mnem_hooks']);
@@ -65,6 +69,7 @@ class NetworkAdminTest extends TestCase
         $this->assertContains('handle_queue_item_delete_action', $admin_init_callbacks);
         $this->assertContains('handle_invalid_phone_action', $admin_init_callbacks);
         $this->assertContains('handle_sms_data_integrity_action', $admin_init_callbacks);
+        $this->assertContains('handle_sms_campaign_action', $admin_init_callbacks);
     }
 
     public function test_ajax_send_test_email_returns_error_when_mail_fails()
