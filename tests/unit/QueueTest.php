@@ -372,6 +372,7 @@ class QueueTest extends TestCase
         $this->assertSame(1, $processed);
         $this->assertSame('transactional@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
         $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertStringContainsString("COALESCE(NULLIF(message_type, ''), 'email') = 'email'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_send_now_processes_failed_queue_item_immediately()
@@ -554,6 +555,56 @@ class QueueTest extends TestCase
         $joined = implode("\n", $queries);
         $this->assertStringContainsString("message_type = 'sms'", $joined);
         $this->assertStringContainsString("status = 'pending'", $joined);
+    }
+
+    public function test_process_item_routes_sms_items_to_sms_handler()
+    {
+        unset($GLOBALS['mnem_last_wp_mail']);
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT message_type FROM wp_mnem_queue WHERE id = 77') !== false) {
+                    return 'sms';
+                }
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+
+                return 0;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "SELECT id, phone_number, body FROM wp_mnem_queue WHERE id = 77 AND message_type = 'sms'") !== false) {
+                    return array(
+                        'id'           => 77,
+                        'phone_number' => '',
+                        'body'         => 'Hello',
+                    );
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = Queue::process_item(77);
+
+        $this->assertTrue($result['processed']);
+        $this->assertFalse($result['success']);
+        $this->assertSame('failed', $result['status']);
+        $this->assertArrayNotHasKey('mnem_last_wp_mail', $GLOBALS);
+        $this->assertStringContainsString('SELECT message_type FROM wp_mnem_queue WHERE id = 77', implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertStringContainsString("message_type = 'sms'", implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertStringNotContainsString('recipient_email', implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_process_sms_item_marks_failed_when_phone_missing()
