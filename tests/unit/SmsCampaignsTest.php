@@ -75,11 +75,11 @@ class SmsCampaignsTest extends TestCase
         $expected = array('id' => 7, 'name' => 'My Campaign', 'status' => 'draft');
 
         $GLOBALS['wpdb'] = new class($expected) extends wpdb {
-            private $row;
-            public function __construct($row) { $this->row = $row; }
+            private $expectedRow;
+            public function __construct($row) { $this->expectedRow = $row; }
             public function get_row($query, $output = OBJECT)
             {
-                return $this->row;
+                return $this->expectedRow;
             }
         };
 
