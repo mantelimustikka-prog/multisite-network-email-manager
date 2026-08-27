@@ -236,6 +236,8 @@ class Queue
     }
 
     /**
+     * @param int  $id    Queue row ID.
+     * @param bool $force Whether to force processing for non-processing rows.
      * @return array{processed:bool,success:bool,status:string,message:string,queue_id:int,provider:string,message_id:string}
      */
     private static function process_sms_item_result(int $id, bool $force = false): array
@@ -372,15 +374,22 @@ class Queue
             );
         }
 
-        $success = (bool) $provider->send_sms($phone, $message);
+        $provider_type = is_callable(array(get_class($provider), 'get_provider_key'))
+            ? (string) $provider::get_provider_key()
+            : '';
+        $provider_result = $provider->send($phone, $message);
+        $provider_message_id = isset($provider_result['message_id']) ? (string) $provider_result['message_id'] : '';
+        $success = !empty($provider_result['success']);
 
         if ($success) {
             $sent_at = self::current_time_mysql();
             $wpdb->query(
                 $wpdb->prepare(
-                    "UPDATE {$table} SET status = %s, sent_at = %s WHERE id = %d",
+                    "UPDATE {$table} SET status = %s, sent_at = %s, provider_type = %s, provider_message_id = %s WHERE id = %d",
                     'sent',
                     $sent_at,
+                    $provider_type,
+                    $provider_message_id,
                     $id
                 )
             );
@@ -389,17 +398,19 @@ class Queue
                 'processed' => true,
                 'success' => true,
                 'status' => 'sent',
-                'message' => '',
+                'message' => isset($provider_result['message']) ? (string) $provider_result['message'] : '',
                 'queue_id' => $id,
-                'provider' => '',
-                'message_id' => '',
+                'provider' => $provider_type,
+                'message_id' => $provider_message_id,
             );
         }
 
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE id = %d",
+                "UPDATE {$table} SET status = %s, provider_type = %s, provider_message_id = %s WHERE id = %d",
                 'failed',
+                $provider_type,
+                $provider_message_id,
                 $id
             )
         );
@@ -408,10 +419,10 @@ class Queue
             'processed' => true,
             'success' => false,
             'status' => 'failed',
-            'message' => 'SMS queue item failed to send.',
+            'message' => isset($provider_result['message']) ? (string) $provider_result['message'] : 'SMS queue item failed to send.',
             'queue_id' => $id,
-            'provider' => '',
-            'message_id' => '',
+            'provider' => $provider_type,
+            'message_id' => $provider_message_id,
         );
     }
 
