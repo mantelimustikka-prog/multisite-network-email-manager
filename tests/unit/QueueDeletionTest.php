@@ -45,11 +45,12 @@ class QueueDeletionTest extends TestCase
 
         $this->assertTrue(Queue::delete_item(12));
         $this->assertNotEmpty(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
-            return strpos($query, "DELETE FROM wp_mnem_queue WHERE id = 12 AND status IN ('pending', 'failed')") !== false;
+            return strpos($query, 'DELETE FROM wp_mnem_queue WHERE id = 12') !== false
+                && strpos($query, 'status IN') === false;
         }));
     }
 
-    public function test_delete_item_rejects_processing_item()
+    public function test_delete_item_deletes_processing_item()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public $item = array(
@@ -79,10 +80,11 @@ class QueueDeletionTest extends TestCase
             }
         };
 
-        $this->assertFalse(Queue::delete_item(19));
-        $this->assertSame(0, count(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
-            return strpos($query, 'DELETE FROM wp_mnem_queue') !== false;
-        })));
+        $this->assertTrue(Queue::delete_item(19));
+        $this->assertNotEmpty(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
+            return strpos($query, 'DELETE FROM wp_mnem_queue WHERE id = 19') !== false
+                && strpos($query, 'status IN') === false;
+        }));
     }
 
     public function test_delete_items_counts_only_deleted_items()
@@ -106,7 +108,7 @@ class QueueDeletionTest extends TestCase
             public function query($query)
             {
                 $this->queries[] = $query;
-                return strpos($query, 'id = 5') !== false || strpos($query, 'id = 7') !== false ? 1 : 0;
+                return strpos($query, 'DELETE FROM wp_mnem_queue WHERE id = ') !== false ? 1 : 0;
             }
 
             public function get_var($query)
@@ -116,7 +118,7 @@ class QueueDeletionTest extends TestCase
             }
         };
 
-        $this->assertSame(2, Queue::delete_items(array(5, 6, 7)));
+        $this->assertSame(3, Queue::delete_items(array(5, 6, 7)));
     }
 
     public function test_delete_by_status_deletes_pending_items_for_site()

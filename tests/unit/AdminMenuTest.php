@@ -251,6 +251,76 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('Clear Search', $output);
     }
 
+    public function test_render_queue_shows_force_delete_for_processing_items()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT COUNT(1) FROM wp_mnem_queue') !== false) {
+                    return 1;
+                }
+                return 0;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT id, blog_id, campaign_id, recipient_email, subject, status') !== false) {
+                    return array(
+                        array(
+                            'id' => 9,
+                            'blog_id' => 1,
+                            'campaign_id' => 0,
+                            'recipient_email' => 'stuck@example.com',
+                            'subject' => 'Stuck',
+                            'status' => 'processing',
+                            'attempts' => 1,
+                            'scheduled_at' => '2026-08-17 10:00:00',
+                            'sent_at' => null,
+                            'opened' => null,
+                            'clicked' => null,
+                            'opens_count' => 0,
+                            'clicks_count' => 0,
+                            'created_at' => '2026-08-17 09:00:00',
+                            'provider_message_id' => '',
+                            'provider_metadata' => '',
+                        ),
+                    );
+                }
+                return array();
+            }
+
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array('processing');
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('scheduled_at' => '', 'attempts' => 0);
+            }
+        };
+
+        $_GET = array(
+            'page' => 'mnem-queue',
+            'per_page' => 10,
+            'paged' => 1,
+        );
+
+        $menu = new AdminMenu();
+        ob_start();
+        $menu->render_queue();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString('name="queue_ids[]" form="mnem-bulk-form" value="9"', $output);
+        $this->assertStringNotContainsString('name="queue_ids[]" form="mnem-bulk-form" value="9" disabled="disabled"', $output);
+        $this->assertStringContainsString('data-force-delete="1"', $output);
+        $this->assertStringContainsString('>Force Delete</button>', $output);
+    }
+
     public function test_render_subscriber_lists_applies_search_and_pagination_controls()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {

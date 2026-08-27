@@ -331,12 +331,12 @@ $_email_tab_param = '&tab=email';
                     </tr>
                 <?php else : ?>
                     <?php foreach ($queue_items as $item) : ?>
-                        <?php $is_deletable = in_array($item['status'], \MNEM\Queue::DELETABLE_STATUSES, true); ?>
+                        <?php $is_processing = isset($item['status']) && $item['status'] === 'processing'; ?>
                         <?php $display_status = \MNEM\Queue::get_display_status($item); ?>
                         <?php $status_slug = isset($item['status']) ? strtolower((string) $item['status']) : 'failed'; ?>
                         <tr>
                             <th scope="row" class="check-column">
-                                <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" form="mnem-bulk-form" value="<?php echo esc_attr((string) $item['id']); ?>"<?php echo $is_deletable ? '' : ' disabled="disabled"'; ?> />
+                                <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" form="mnem-bulk-form" value="<?php echo esc_attr((string) $item['id']); ?>" />
                             </th>
                             <td><?php echo esc_html((string) $item['id']); ?></td>
                             <td><?php echo esc_html((string) $item['blog_id']); ?></td>
@@ -368,15 +368,14 @@ $_email_tab_param = '&tab=email';
                                         data-status="<?php echo esc_attr($item['status']); ?>"
                                     >Send Now!</button>
                                 <?php endif; ?>
-                                <?php if ($is_deletable) : ?>
-                                    <button
-                                        type="button"
-                                        class="button button-small button-link-delete mnem-delete-queue-item"
-                                        data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
-                                        data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
-                                        data-status="<?php echo esc_attr($item['status']); ?>"
-                                    >Delete</button>
-                                <?php endif; ?>
+                                <button
+                                    type="button"
+                                    class="button button-small button-link-delete mnem-delete-queue-item"
+                                    data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
+                                    data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
+                                    data-status="<?php echo esc_attr($item['status']); ?>"
+                                    data-force-delete="<?php echo esc_attr($is_processing ? '1' : '0'); ?>"
+                                ><?php echo esc_html($is_processing ? 'Force Delete' : 'Delete'); ?></button>
                             </td>
                         </tr>
                     <?php endforeach; ?>

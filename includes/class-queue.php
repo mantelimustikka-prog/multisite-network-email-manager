@@ -836,15 +836,12 @@ class Queue
         }
 
         $status = isset($item['status']) ? (string) $item['status'] : '';
-        if (!in_array($status, self::DELETABLE_STATUSES, true)) {
-            Logger::warning('Queue item deletion skipped because status is not deletable.', array('queue_id' => $id, 'status' => $status, 'deleted_by' => get_current_user_id()));
-            return false;
-        }
 
         $deleted = $wpdb->query(
             self::prepare_delete_query(
                 "DELETE FROM {$table} WHERE id = %d",
-                array($id)
+                array($id),
+                false
             )
         );
 
