@@ -9,6 +9,7 @@ class AdminMenu
     public function init()
     {
         add_action('network_admin_menu', array($this, 'register_menus'));
+        add_action('network_admin_menu', array($this, 'register_logs_submenu'), 30);
     }
 
     public function register_menus()
@@ -21,7 +22,7 @@ class AdminMenu
 
         add_menu_page(
             'MNEM Dashboard',
-            'Network Email Manager',
+            'SMS Campaign & Network Emails',
             'manage_network_options',
             'mnem-dashboard',
             array($this, 'render_dashboard'),
@@ -31,17 +32,24 @@ class AdminMenu
 
         add_submenu_page('mnem-dashboard', 'Dashboard', 'Dashboard', 'manage_network_options', 'mnem-dashboard', array($this, 'render_dashboard'));
         add_submenu_page('mnem-dashboard', 'Settings', 'Settings', 'manage_network_options', 'mnem-settings', array($this, 'render_settings'));
-        add_submenu_page('mnem-dashboard', 'Campaigns', 'Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
-        add_submenu_page('mnem-dashboard', 'Subscriber Lists', 'Subscriber Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
-        add_submenu_page('mnem-dashboard', 'SMS Subscriber Lists', 'SMS Subscriber Lists', 'manage_network_options', 'mnem-sms-subscriber-lists', array($this, 'render_sms_subscriber_lists'));
-        add_submenu_page('mnem-dashboard', 'Invalid Phone Numbers', $invalid_phone_menu_title, 'manage_network_options', 'mnem-invalid-phone-numbers', array($this, 'render_invalid_phone_numbers'));
-        add_submenu_page('mnem-dashboard', 'User Event Rules', 'User Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
-        add_submenu_page('mnem-dashboard', 'Email Status Logs', 'Email Status Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
-        add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
+        add_submenu_page('mnem-dashboard', '──────────────── EMAIL SECTION ────────────────', '──────────────── EMAIL SECTION ────────────────', 'manage_network_options', 'mnem-separator-email', null);
+        add_submenu_page('mnem-dashboard', 'Email Campaigns', 'Email Campaigns', 'manage_network_options', 'mnem-campaigns', array($this, 'render_campaigns'));
+        add_submenu_page('mnem-dashboard', 'Email Subscribers Lists', 'Email Subscribers Lists', 'manage_network_options', 'mnem-subscriber-lists', array($this, 'render_subscriber_lists'));
+        add_submenu_page('mnem-dashboard', 'Email Event Rules', 'Email Event Rules', 'manage_network_options', 'mnem-user-event-rules', array($this, 'render_user_event_rules'));
+        add_submenu_page('mnem-dashboard', 'Email Suppression', 'Email Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk Email Subscribers', 'Add Bulk Email Subscribers', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', '──────────────── SMS SECTION ────────────────', '──────────────── SMS SECTION ────────────────', 'manage_network_options', 'mnem-separator-sms', null);
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
         add_submenu_page('mnem-dashboard', 'SMS Campaigns', 'SMS Campaigns', 'manage_network_options', 'mnem-sms-campaigns', array($this, 'render_sms_campaigns'));
-        add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', 'Add Bulk Subscribers', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', 'SMS Subscriber Lists', 'SMS Subscriber Lists', 'manage_network_options', 'mnem-sms-subscriber-lists', array($this, 'render_sms_subscriber_lists'));
+        add_submenu_page('mnem-dashboard', 'Invalid Phone Numbers', $invalid_phone_menu_title, 'manage_network_options', 'mnem-invalid-phone-numbers', array($this, 'render_invalid_phone_numbers'));
         add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', 'Add Bulk SMS Subscribers', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', '', '', 'manage_network_options', 'mnem-separator-space', null);
+    }
+
+    public function register_logs_submenu()
+    {
+        add_submenu_page('mnem-dashboard', 'Logs', 'Logs', 'manage_network_options', 'mnem-queue', array($this, 'render_queue'));
     }
 
     public function render_subscriber_lists_bulk_add()
