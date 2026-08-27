@@ -94,4 +94,18 @@ class SmsProviderManager
         $name = sanitize_key($name);
         return isset(self::PROVIDER_CLASSES[$name]) ? self::PROVIDER_CLASSES[$name] : null;
     }
+
+    /**
+     * Return the configured and instantiated provider for the currently active SMS provider key.
+     *
+     * @return \MNEM\Interfaces\SmsProviderInterface|null
+     */
+    public static function get_active_provider(): ?\MNEM\Interfaces\SmsProviderInterface
+    {
+        $active = SmsSettings::get_provider();
+        if ($active === '') {
+            return null;
+        }
+        return self::get_provider($active);
+    }
 }
