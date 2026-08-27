@@ -10,6 +10,7 @@ defined('ABSPATH') || exit;
  * Requires:
  * - Username
  * - API Key
+ * - Sender ID (optional, up to 11 characters)
  *
  * Webhook Configuration:
  * Set the callback URL in TextMagic Account > API Settings.
@@ -23,8 +24,9 @@ class SmsTextmagic extends SmsBaseProvider
     public function get_config_schema(): array
     {
         return array(
-            array('key' => 'username', 'label' => 'Username', 'type' => 'text'),
-            array('key' => 'api_key',  'label' => 'API Key',  'type' => 'password'),
+            array('key' => 'username',  'label' => 'Username',  'type' => 'text'),
+            array('key' => 'api_key',   'label' => 'API Key',   'type' => 'password'),
+            array('key' => 'sender_id', 'label' => 'Sender ID', 'type' => 'text', 'maxlength' => 11),
         );
     }
 
@@ -67,17 +69,24 @@ class SmsTextmagic extends SmsBaseProvider
 
     public function send(string $phone, string $message): array
     {
-        $username = isset($this->config['username']) ? trim((string) $this->config['username']) : '';
-        $api_key  = isset($this->config['api_key'])  ? trim((string) $this->config['api_key'])  : '';
+        $username  = isset($this->config['username'])  ? trim((string) $this->config['username'])  : '';
+        $api_key   = isset($this->config['api_key'])   ? trim((string) $this->config['api_key'])   : '';
+        $sender_id = isset($this->config['sender_id']) ? trim((string) $this->config['sender_id']) : '';
 
         if ($username === '' || $api_key === '') {
             return $this->error_result('TextMagic Username and API Key are required.');
         }
 
-        $payload  = wp_json_encode(array(
+        $payload_data = array(
             'text'   => $message,
             'phones' => $phone,
-        ));
+        );
+
+        if ($sender_id !== '') {
+            $payload_data['from'] = $sender_id;
+        }
+
+        $payload  = wp_json_encode($payload_data);
 
         $response = $this->http_post(self::API_BASE . '/messages', array(
             'X-TM-Username' => $username,
