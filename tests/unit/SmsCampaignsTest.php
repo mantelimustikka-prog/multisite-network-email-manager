@@ -306,6 +306,66 @@ class SmsCampaignsTest extends TestCase
         $this->assertFalse($result['success']);
     }
 
+    public function test_queue_recipients_inserts_only_existing_queue_columns()
+    {
+        $campaign = array(
+            'id' => 3,
+            'status' => 'scheduled',
+            'sms_list_id' => 7,
+            'message_body' => 'Available variables: {user_name}',
+            'site_id' => 12,
+            'started_at' => null,
+        );
+        $subscribers = array(
+            array(
+                'user_id' => 0,
+                'subscriber_name' => 'Test User',
+                'phone_number' => '+351911969387',
+            ),
+        );
+
+        $GLOBALS['wpdb'] = new class($campaign, $subscribers) extends wpdb {
+            private $campaign;
+            private $subscribers;
+
+            public function __construct($campaign, $subscribers)
+            {
+                $this->campaign    = $campaign;
+                $this->subscribers = $subscribers;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                return $this->campaign;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                return $this->subscribers;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $queued = SmsCampaigns::queue_recipients(3);
+        $insert_query = $GLOBALS['wpdb']->queries[0];
+
+        $this->assertSame(1, $queued);
+        $this->assertStringContainsString(
+            'INSERT INTO wp_mnem_queue (site_id, phone_number, body, status, message_type, sms_campaign_id)',
+            $insert_query
+        );
+        $this->assertStringContainsString("'+351911969387'", $insert_query);
+        $this->assertStringContainsString("'pending'", $insert_query);
+        $this->assertStringContainsString("'sms'", $insert_query);
+        $this->assertStringNotContainsString('created_at', $insert_query);
+        $this->assertStringNotContainsString('updated_at', $insert_query);
+    }
+
     public function test_pause_calls_update_status()
     {
         $campaign = array('id' => 1, 'status' => 'sending', 'started_at' => '2024-01-01 00:00:00');
