@@ -374,7 +374,7 @@ $_email_tab_param = '&tab=email';
                                     data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
                                     data-recipient="<?php echo esc_attr($item['recipient_email']); ?>"
                                     data-status="<?php echo esc_attr($item['status']); ?>"
-                                    data-force-delete="<?php echo $is_processing ? '1' : '0'; ?>"
+                                    data-force-delete="<?php echo esc_attr($is_processing ? '1' : '0'); ?>"
                                 ><?php echo esc_html($is_processing ? 'Force Delete' : 'Delete'); ?></button>
                             </td>
                         </tr>
