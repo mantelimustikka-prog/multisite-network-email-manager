@@ -277,6 +277,68 @@ class SmsCampaignsTest extends TestCase
         $this->assertFalse(SmsCampaigns::update_status(1, 'sending'));
     }
 
+    public function test_auto_update_campaign_status_marks_sending_campaign_completed()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                if (strpos($query, "FROM wp_mnem_sms_campaigns WHERE id = 11") !== false) {
+                    return array('id' => 11, 'status' => 'sending', 'total_recipients' => 3, 'started_at' => null);
+                }
+
+                if (strpos($query, "FROM wp_mnem_sms_queue WHERE sms_campaign_id = 11") !== false) {
+                    return array('total_recipients' => 3, 'sent_count' => 2, 'failed_count' => 1);
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsCampaigns::auto_update_campaign_status(11);
+
+        $this->assertTrue($result);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("UPDATE wp_mnem_sms_campaigns SET total_recipients = 3, sent_count = 2, failed_count = 1", $joined);
+        $this->assertStringContainsString("status = 'completed'", $joined);
+    }
+
+    public function test_auto_update_campaign_status_keeps_sending_when_pending_items_remain()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                if (strpos($query, "FROM wp_mnem_sms_campaigns WHERE id = 12") !== false) {
+                    return array('id' => 12, 'status' => 'sending', 'total_recipients' => 3, 'started_at' => null);
+                }
+
+                if (strpos($query, "FROM wp_mnem_sms_queue WHERE sms_campaign_id = 12") !== false) {
+                    return array('total_recipients' => 3, 'sent_count' => 1, 'failed_count' => 1);
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsCampaigns::auto_update_campaign_status(12);
+
+        $this->assertFalse($result);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("UPDATE wp_mnem_sms_campaigns SET total_recipients = 3, sent_count = 1, failed_count = 1", $joined);
+        $this->assertStringNotContainsString("status = 'completed'", $joined);
+    }
+
     // ---------------------------------------------------------------------------
     // Lifecycle
     // ---------------------------------------------------------------------------

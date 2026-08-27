@@ -305,6 +305,110 @@ class SmsCampaigns
     }
 
     /**
+     * Auto-update a sending campaign to completed when all queue items are terminal.
+     *
+     * @param int $campaign_id
+     * @return bool True when campaign status changed to completed.
+     */
+    public static function auto_update_campaign_status(int $campaign_id)
+    {
+        if ($campaign_id <= 0) {
+            return false;
+        }
+
+        global $wpdb;
+
+        $campaigns_table = $wpdb->base_prefix . 'mnem_sms_campaigns';
+        $queue_table     = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $campaign = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, status, total_recipients FROM {$campaigns_table} WHERE id = %d",
+                $campaign_id
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($campaign) || (string) $campaign['status'] !== 'sending') {
+            return false;
+        }
+
+        $counts = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT COUNT(1) AS total_recipients, SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) AS sent_count, SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) AS failed_count FROM {$queue_table} WHERE sms_campaign_id = %d",
+                'sent',
+                'failed',
+                $campaign_id
+            ),
+            ARRAY_A
+        );
+
+        if (!is_array($counts)) {
+            return false;
+        }
+
+        $total_recipients = max((int) ($campaign['total_recipients'] ?? 0), (int) ($counts['total_recipients'] ?? 0));
+        $sent_count       = (int) ($counts['sent_count'] ?? 0);
+        $failed_count     = (int) ($counts['failed_count'] ?? 0);
+
+        self::update_delivery_tracking($campaign_id, $total_recipients, $sent_count, $failed_count);
+
+        if (($sent_count + $failed_count) >= $total_recipients) {
+            $updated = self::update_status($campaign_id, 'completed');
+            if ($updated) {
+                Logger::info('SMS campaign auto-completed after queue finished.', array(
+                    'campaign_id'      => $campaign_id,
+                    'total_recipients' => $total_recipients,
+                    'sent_count'       => $sent_count,
+                    'failed_count'     => $failed_count,
+                ));
+            }
+            return $updated;
+        }
+
+        return false;
+    }
+
+    /**
+     * Auto-check sending campaigns and complete those with finished queue items.
+     *
+     * @param int $site_id Optional site filter.
+     * @return int Number of campaigns moved to completed.
+     */
+    public static function auto_update_sending_campaign_statuses(int $site_id = 0)
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_sms_campaigns';
+
+        if ($site_id > 0) {
+            $campaign_ids = (array) $wpdb->get_col(
+                $wpdb->prepare(
+                    "SELECT id FROM {$table} WHERE site_id = %d AND status = %s",
+                    $site_id,
+                    'sending'
+                )
+            );
+        } else {
+            $campaign_ids = (array) $wpdb->get_col(
+                $wpdb->prepare(
+                    "SELECT id FROM {$table} WHERE status = %s",
+                    'sending'
+                )
+            );
+        }
+
+        $updated = 0;
+        foreach ($campaign_ids as $campaign_id) {
+            if (self::auto_update_campaign_status((int) $campaign_id)) {
+                ++$updated;
+            }
+        }
+
+        return $updated;
+    }
+
+    /**
      * Check whether a status transition is valid.
      *
      * @param string $current
