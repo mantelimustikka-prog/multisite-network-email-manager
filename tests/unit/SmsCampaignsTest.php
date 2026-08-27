@@ -111,7 +111,7 @@ class SmsCampaignsTest extends TestCase
         ));
 
         $this->assertSame(9, $id);
-        $this->assertStringContainsString(', 42,', $GLOBALS['wpdb']->lastQuery);
+        $this->assertRegExp('/,\s*42,\s*/', $GLOBALS['wpdb']->lastQuery);
     }
 
     // ---------------------------------------------------------------------------

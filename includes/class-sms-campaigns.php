@@ -40,7 +40,11 @@ class SmsCampaigns
         global $wpdb;
 
         $name         = isset($data['name']) ? sanitize_text_field((string) $data['name']) : '';
-        $message_body = isset($data['message_body']) ? (string) $data['message_body'] : '';
+        $message_body = isset($data['message_body'])
+            ? (function_exists('sanitize_textarea_field')
+                ? sanitize_textarea_field((string) $data['message_body'])
+                : (string) $data['message_body'])
+            : '';
         $sms_list_id  = isset($data['sms_list_id']) ? (int) $data['sms_list_id'] : 0;
         $created_by   = isset($data['created_by'])
             ? (int) $data['created_by']
