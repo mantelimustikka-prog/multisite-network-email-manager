@@ -40,8 +40,8 @@ class AdminMenu
         add_submenu_page('mnem-dashboard', 'Suppression', 'Suppression', 'manage_network_options', 'mnem-suppression', array($this, 'render_suppression'));
         add_submenu_page('settings.php', 'Email Templates', 'Email Templates', 'manage_network_options', 'mnem-email-templates', array($this, 'render_email_templates'));
         add_submenu_page('mnem-dashboard', 'SMS Campaigns', 'SMS Campaigns', 'manage_network_options', 'mnem-sms-campaigns', array($this, 'render_sms_campaigns'));
-        add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', '', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
-        add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', '', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk Subscribers', 'Add Bulk Subscribers', 'manage_network_options', 'mnem-subscriber-lists-bulk-add', array($this, 'render_subscriber_lists_bulk_add'));
+        add_submenu_page('mnem-dashboard', 'Add Bulk SMS Subscribers', 'Add Bulk SMS Subscribers', 'manage_network_options', 'mnem-sms-subscriber-lists-bulk-add', array($this, 'render_sms_subscriber_lists_bulk_add'));
     }
 
     public function render_subscriber_lists_bulk_add()
