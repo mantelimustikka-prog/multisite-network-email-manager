@@ -33,6 +33,20 @@ class AdminMenuTest extends TestCase
         $this->assertContains('mnem-invalid-phone-numbers', $submenu_slugs);
     }
 
+    public function test_register_menus_sets_visible_titles_for_bulk_add_submenus()
+    {
+        $menu = new AdminMenu();
+        $menu->register_menus();
+
+        $submenu_titles_by_slug = array();
+        foreach ($GLOBALS['mnem_submenu_pages'] as $submenu) {
+            $submenu_titles_by_slug[$submenu[4]] = $submenu[2];
+        }
+
+        $this->assertSame('Add Bulk Subscribers', $submenu_titles_by_slug['mnem-subscriber-lists-bulk-add']);
+        $this->assertSame('Add Bulk SMS Subscribers', $submenu_titles_by_slug['mnem-sms-subscriber-lists-bulk-add']);
+    }
+
     public function test_render_queue_applies_email_and_subject_search_filters()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
