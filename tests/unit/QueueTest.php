@@ -514,4 +514,101 @@ class QueueTest extends TestCase
         $this->assertSame('soft_bounce', Queue::map_webhook_status('mailgun', 'failed', array('severity' => 'temporary')));
         $this->assertSame('complaint', Queue::map_webhook_status('postmark', 'SpamComplaint'));
     }
+
+    public function test_process_batch_queries_sms_items_from_queue()
+    {
+        $queries = array();
+
+        $GLOBALS['wpdb'] = new class($queries) extends wpdb {
+            private $queries_ref;
+
+            public function __construct(array &$queries_ref)
+            {
+                $this->queries_ref = &$queries_ref;
+            }
+
+            public function get_col($query)
+            {
+                $this->queries_ref[] = $query;
+                return array();
+            }
+
+            public function query($query)
+            {
+                $this->queries_ref[] = $query;
+                return 0;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries_ref[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+        };
+
+        Queue::process_batch(5);
+
+        $joined = implode("\n", $queries);
+        $this->assertStringContainsString("message_type = 'sms'", $joined);
+        $this->assertStringContainsString("status = 'pending'", $joined);
+    }
+
+    public function test_process_sms_item_marks_failed_when_phone_missing()
+    {
+        $queries = array();
+
+        $GLOBALS['wpdb'] = new class($queries) extends wpdb {
+            private $queries_ref;
+            private $sms_col_returned = false;
+
+            public function __construct(array &$queries_ref)
+            {
+                $this->queries_ref = &$queries_ref;
+            }
+
+            public function get_col($query)
+            {
+                $this->queries_ref[] = $query;
+                if (!$this->sms_col_returned) {
+                    $this->sms_col_returned = true;
+                    return array(77);
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries_ref[] = $query;
+                return array(
+                    'id'           => 77,
+                    'phone_number' => '',
+                    'body'         => 'Hello',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries_ref[] = $query;
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries_ref[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+        };
+
+        $processed = Queue::process_batch(1);
+
+        $this->assertSame(0, $processed);
+        $joined = implode("\n", $queries);
+        $this->assertStringContainsString("status = 'failed'", $joined);
+    }
 }
