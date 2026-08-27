@@ -213,7 +213,7 @@ class Queue
 
         $recovered = (int) $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s WHERE status = %s AND created_at < %s",
+                "UPDATE {$table} SET status = %s WHERE status = %s AND updated_at < %s",
                 'pending',
                 'processing',
                 $threshold
@@ -240,14 +240,12 @@ class Queue
         self::recover_stuck_sms_processing_rows();
 
         $table = $wpdb->base_prefix . 'mnem_sms_queue';
-        $now   = self::current_time_mysql();
         $limit = max(1, $limit);
 
         $sms_ids = (array) $wpdb->get_col(
             $wpdb->prepare(
-                "SELECT id FROM {$table} WHERE status = %s AND created_at <= %s ORDER BY id ASC LIMIT %d",
+                "SELECT id FROM {$table} WHERE status = %s ORDER BY id ASC LIMIT %d",
                 'pending',
-                $now,
                 $limit
             )
         );

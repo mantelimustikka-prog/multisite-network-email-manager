@@ -80,10 +80,10 @@ class Cron
 
         try {
             $processed = Queue::process_batch(50);
-            Queue::process_sms_batch(50);
+            $sms_processed = Queue::process_sms_batch(50);
             update_site_option(self::OPTION_LAST_RUN, gmdate('Y-m-d H:i:s'));
             update_site_option(self::OPTION_FAILED_RUNS, 0);
-            Logger::info('Queue cron batch processed.', array('processed' => (int) $processed));
+            Logger::info('Queue cron batch processed.', array('processed' => (int) $processed, 'sms_processed' => (int) $sms_processed));
             return (int) $processed;
         } catch (\Throwable $throwable) {
             $failed = (int) get_site_option(self::OPTION_FAILED_RUNS, 0) + 1;

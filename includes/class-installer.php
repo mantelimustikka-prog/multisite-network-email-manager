@@ -289,11 +289,16 @@ class Installer
         }
 
         // Migration 002: create mnem_sms_queue and move SMS rows from mnem_queue.
-        $migration_002 = __DIR__ . '/migrations/002-create-sms-queue-table.php';
-        if (file_exists($migration_002)) {
-            require_once $migration_002;
-            if (function_exists('mnem_migration_002')) {
-                mnem_migration_002();
+        // Guard: only run if mnem_sms_queue does not yet exist.
+        $sms_queue_table = $tracking_prefix . 'mnem_sms_queue';
+        $sms_queue_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $sms_queue_table));
+        if ($sms_queue_exists !== $sms_queue_table) {
+            $migration_002 = __DIR__ . '/migrations/002-create-sms-queue-table.php';
+            if (file_exists($migration_002)) {
+                require_once $migration_002;
+                if (function_exists('mnem_migration_002')) {
+                    mnem_migration_002();
+                }
             }
         }
     }
