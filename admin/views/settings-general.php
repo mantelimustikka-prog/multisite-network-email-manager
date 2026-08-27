@@ -29,7 +29,7 @@ defined('ABSPATH') || exit;
                     class="small-text"
                 />
                 <p class="description">
-                    <?php esc_html_e('Email status log records older than this number of days (with a terminal status) will be automatically deleted once per day. Minimum: 1, Maximum: 3650.', 'multisite-network-email-manager'); ?>
+                    <?php esc_html_e('Email/SMS status log records older than this number of days (with a terminal status) will be automatically deleted once per day. Minimum: 1, Maximum: 3650.', 'multisite-network-email-manager'); ?>
                 </p>
             </td>
         </tr>
