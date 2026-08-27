@@ -30,7 +30,12 @@ class SmsCampaignsTest extends TestCase
             }
         };
 
-        $id = SmsCampaigns::create(1, 'Test Campaign', 'Hello world', 3, 1);
+        $id = SmsCampaigns::create(1, array(
+            'name'         => 'Test Campaign',
+            'message_body' => 'Hello world',
+            'sms_list_id'  => 3,
+            'created_by'   => 1,
+        ));
 
         $this->assertSame(5, $id);
     }
@@ -40,15 +45,30 @@ class SmsCampaignsTest extends TestCase
         $GLOBALS['wpdb'] = new class extends wpdb {};
 
         // Empty name
-        $result = SmsCampaigns::create(1, '', 'Hello', 3, 1);
+        $result = SmsCampaigns::create(1, array(
+            'name'         => '',
+            'message_body' => 'Hello',
+            'sms_list_id'  => 3,
+            'created_by'   => 1,
+        ));
         $this->assertFalse($result);
 
         // Empty message body
-        $result = SmsCampaigns::create(1, 'Campaign', '', 3, 1);
+        $result = SmsCampaigns::create(1, array(
+            'name'         => 'Campaign',
+            'message_body' => '',
+            'sms_list_id'  => 3,
+            'created_by'   => 1,
+        ));
         $this->assertFalse($result);
 
         // Invalid sms_list_id
-        $result = SmsCampaigns::create(1, 'Campaign', 'Hello', 0, 1);
+        $result = SmsCampaigns::create(1, array(
+            'name'         => 'Campaign',
+            'message_body' => 'Hello',
+            'sms_list_id'  => 0,
+            'created_by'   => 1,
+        ));
         $this->assertFalse($result);
     }
 
@@ -62,8 +82,36 @@ class SmsCampaignsTest extends TestCase
             }
         };
 
-        $result = SmsCampaigns::create(1, 'Test', 'Message', 2, 1);
+        $result = SmsCampaigns::create(1, array(
+            'name'         => 'Test',
+            'message_body' => 'Message',
+            'sms_list_id'  => 2,
+            'created_by'   => 1,
+        ));
         $this->assertFalse($result);
+    }
+
+    public function test_create_defaults_created_by_to_current_user()
+    {
+        $GLOBALS['mnem_current_user_id'] = 42;
+        $GLOBALS['wpdb']                 = new class extends wpdb {
+            public string $lastQuery = '';
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->insert_id = 9;
+                return 1;
+            }
+        };
+
+        $id = SmsCampaigns::create(1, array(
+            'name'         => 'Default User Campaign',
+            'message_body' => 'Hello world',
+            'sms_list_id'  => 3,
+        ));
+
+        $this->assertSame(9, $id);
+        $this->assertRegExp('/,\s*42,\s*/', $GLOBALS['wpdb']->lastQuery);
     }
 
     // ---------------------------------------------------------------------------

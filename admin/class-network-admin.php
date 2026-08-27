@@ -1842,15 +1842,15 @@ class NetworkAdmin
             }
         }
 
-        $site_id     = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
-        $created_by  = function_exists('get_current_user_id') ? (int) get_current_user_id() : 0;
-        $data        = array(
+        $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
+        $data    = array(
             'name'         => isset($_POST['name']) ? wp_unslash($_POST['name']) : '',
             'description'  => isset($_POST['description']) ? wp_kses_post(wp_unslash($_POST['description'])) : '',
             'message_body' => isset($_POST['message_body']) ? sanitize_textarea_field(wp_unslash($_POST['message_body'])) : '',
             'sms_list_id'  => isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0,
             'status'       => isset($_POST['status']) ? sanitize_text_field(wp_unslash($_POST['status'])) : 'draft',
             'scheduled_at' => isset($_POST['scheduled_at']) ? sanitize_text_field(wp_unslash($_POST['scheduled_at'])) : '',
+            'created_by'   => function_exists('get_current_user_id') ? (int) get_current_user_id() : 0,
         );
 
         if ($campaign_id > 0) {
@@ -1864,14 +1864,7 @@ class NetworkAdmin
             return;
         }
 
-        $result = \MNEM\SmsCampaigns::create(
-            $site_id,
-            (string) $data['name'],
-            (string) $data['message_body'],
-            (int) $data['sms_list_id'],
-            $created_by,
-            $data
-        );
+        $result = \MNEM\SmsCampaigns::create($site_id, $data);
 
         if (!$result) {
             $this->store_error_detail('SMS campaign could not be created.');

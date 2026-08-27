@@ -30,17 +30,25 @@ class SmsCampaigns
     /**
      * Create a new SMS campaign.
      *
-     * @param int    $site_id
-     * @param string $name
-     * @param string $message_body
-     * @param int    $sms_list_id
-     * @param int    $created_by
-     * @param array  $args         Optional fields: description, status, scheduled_at.
+     * @param int   $site_id
+     * @param array $data  Array with keys: name, message_body, sms_list_id,
+     *                     and optional description, status, scheduled_at, created_by.
      * @return int|false  Insert ID on success, false on failure.
      */
-    public static function create(int $site_id, string $name, string $message_body, int $sms_list_id, int $created_by, array $args = array())
+    public static function create(int $site_id, array $data)
     {
         global $wpdb;
+
+        $name         = isset($data['name']) ? sanitize_text_field((string) $data['name']) : '';
+        $message_body = isset($data['message_body'])
+            ? (function_exists('sanitize_textarea_field')
+                ? sanitize_textarea_field((string) $data['message_body'])
+                : (string) $data['message_body'])
+            : '';
+        $sms_list_id  = isset($data['sms_list_id']) ? (int) $data['sms_list_id'] : 0;
+        $created_by   = isset($data['created_by'])
+            ? (int) $data['created_by']
+            : (function_exists('get_current_user_id') ? (int) get_current_user_id() : 0);
 
         $validation = self::validate_campaign_data(array(
             'name'         => $name,
@@ -55,20 +63,20 @@ class SmsCampaigns
         $table = $wpdb->base_prefix . 'mnem_sms_campaigns';
         $now   = self::current_time_mysql();
 
-        $status = isset($args['status']) && in_array($args['status'], self::VALID_STATUSES, true)
-            ? $args['status']
+        $status = isset($data['status']) && in_array($data['status'], self::VALID_STATUSES, true)
+            ? $data['status']
             : 'draft';
 
-        $scheduled_at = isset($args['scheduled_at']) && $args['scheduled_at'] !== ''
-            ? sanitize_text_field((string) $args['scheduled_at'])
+        $scheduled_at = isset($data['scheduled_at']) && $data['scheduled_at'] !== ''
+            ? sanitize_text_field((string) $data['scheduled_at'])
             : null;
 
         $result = $wpdb->query(
             $wpdb->prepare(
                 "INSERT INTO {$table} (site_id, name, description, message_body, sms_list_id, status, scheduled_at, created_by, created_at, updated_at) VALUES (%d, %s, %s, %s, %d, %s, %s, %d, %s, %s)",
                 $site_id,
-                sanitize_text_field($name),
-                isset($args['description']) ? (string) $args['description'] : '',
+                $name,
+                isset($data['description']) ? (string) $data['description'] : '',
                 (string) $message_body,
                 $sms_list_id,
                 $status,

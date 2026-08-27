@@ -5,6 +5,13 @@ defined('ABSPATH') || exit;
 use MNEM\Admin\NetworkAdmin;
 use PHPUnit\Framework\TestCase;
 
+if (!function_exists('sanitize_textarea_field')) {
+    function sanitize_textarea_field($value)
+    {
+        return trim((string) $value);
+    }
+}
+
 class TestableNetworkAdmin extends NetworkAdmin
 {
     protected function exit_after_redirect()
@@ -182,6 +189,40 @@ class NetworkAdminTest extends TestCase
         $admin->handle_queue_item_delete_action();
 
         $this->assertStringContainsString('mnem_notice=queue_item_deleted', $GLOBALS['mnem_last_redirect']);
+    }
+
+    public function test_handle_sms_campaign_action_creates_campaign_from_posted_data()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->insert_id = 27;
+                return 1;
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'save_sms_campaign',
+            '_wpnonce' => 'test-nonce',
+            'redirect_page' => 'mnem-sms-campaigns',
+            'name' => 'Controller Campaign',
+            'description' => 'Created from controller',
+            'message_body' => 'Hello from controller',
+            'sms_list_id' => 4,
+            'status' => 'draft',
+            'scheduled_at' => '',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_campaign_created', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString("'Controller Campaign'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'Hello from controller'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString(', 4,', $GLOBALS['wpdb']->lastQuery);
     }
 
     public function test_handle_queue_item_delete_action_redirects_when_nothing_selected()
