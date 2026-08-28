@@ -192,11 +192,11 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
         </tr>
         <tr>
             <th scope="row">
-                <label for="mnem_sms_validation_country_code"><?php esc_html_e('Validation Country Code', 'multisite-network-email-manager'); ?></label>
+                <label for="mnem_sms_validation_country_code"><?php esc_html_e('Fallback Country Code', 'multisite-network-email-manager'); ?></label>
             </th>
             <td>
                 <input type="text" id="mnem_sms_validation_country_code" name="validation_country_code" value="<?php echo esc_attr($sms_validation_country_code); ?>" class="small-text" maxlength="2" />
-                <p class="description"><?php esc_html_e('Two-letter country code used for formatting local numbers. Default: US.', 'multisite-network-email-manager'); ?></p>
+                <p class="description"><?php esc_html_e('Two-letter country code, used for verifying phone number if other verifications fail.', 'multisite-network-email-manager'); ?></p>
             </td>
         </tr>
         <tr>

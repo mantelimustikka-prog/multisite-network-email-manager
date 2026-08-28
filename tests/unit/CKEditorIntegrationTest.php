@@ -79,4 +79,5 @@ class CKEditorIntegrationTest extends TestCase
         $this->assertStringNotContainsString('cdn.ckeditor.com', $contents);
         $this->assertStringNotContainsString('ckeditor5', $contents);
     }
+
 }

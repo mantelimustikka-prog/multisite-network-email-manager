@@ -194,6 +194,18 @@ class SmsSettingsTest extends TestCase
         $this->assertArrayHasKey('notify_invalid_numbers', $all);
     }
 
+    public function test_sms_settings_view_uses_fallback_country_wording()
+    {
+        $path = __DIR__ . '/../../admin/views/settings-sms.php';
+        $contents = file_get_contents($path);
+
+        $this->assertNotFalse($contents);
+        $this->assertStringContainsString("'Fallback Country Code'", $contents);
+        $this->assertStringContainsString("'Two-letter country code, used for verifying phone number if other verifications fail.'", $contents);
+        $this->assertStringNotContainsString("'Validation Country Code'", $contents);
+        $this->assertStringNotContainsString("'Two-letter country code used for formatting local numbers. Default: US.'", $contents);
+    }
+
     public function test_save_and_get_phone_validation_settings()
     {
         SmsSettings::save(array(
