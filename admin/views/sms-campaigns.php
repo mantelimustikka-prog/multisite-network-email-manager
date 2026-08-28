@@ -79,6 +79,7 @@ $is_locked          = $editing && in_array($campaign_status, array('cancelled', 
                                 </td>
                                 <td><?php echo esc_html($camp['scheduled_at'] ?? '—'); ?></td>
                                 <td>
+                                    <?php $is_completed_or_cancelled = in_array($camp['status'], array('cancelled', 'completed'), true); ?>
                                     <?php if (in_array($camp['status'], array('draft', 'scheduled'), true)) : ?>
                                         <form method="post" class="mnem-inline-form">
                                             <?php wp_nonce_field('mnem_sms_campaign'); ?>
@@ -115,7 +116,18 @@ $is_locked          = $editing && in_array($campaign_status, array('cancelled', 
                                             <?php submit_button('Cancel', 'delete', 'submit', false); ?>
                                         </form>
                                     <?php endif; ?>
-                                    <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-sms-campaigns&mnem_campaign=' . (int) $camp['id'])); ?>">Edit</a>
+                                    <?php if ($is_completed_or_cancelled) : ?>
+                                        <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-sms-campaigns&mnem_campaign=' . (int) $camp['id'])); ?>">View</a>
+                                        <form method="post" class="mnem-inline-form" onsubmit="return confirm('Duplicate this campaign as a new draft?')">
+                                            <?php wp_nonce_field('mnem_sms_campaign'); ?>
+                                            <input type="hidden" name="mnem_action" value="copy_sms_campaign" />
+                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $camp['id']); ?>" />
+                                            <input type="hidden" name="redirect_page" value="mnem-sms-campaigns" />
+                                            <?php submit_button('Copy', 'secondary', 'submit', false); ?>
+                                        </form>
+                                    <?php else : ?>
+                                        <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-sms-campaigns&mnem_campaign=' . (int) $camp['id'])); ?>">Edit</a>
+                                    <?php endif; ?>
                                     <form method="post" class="mnem-inline-form" onsubmit="return confirm('Delete this SMS campaign?')">
                                         <?php wp_nonce_field('mnem_sms_campaign'); ?>
                                         <input type="hidden" name="mnem_action" value="delete_sms_campaign" />

@@ -1810,6 +1810,7 @@ class NetworkAdmin
             'cancel_sms_campaign',
             'pause_sms_campaign',
             'resume_sms_campaign',
+            'copy_sms_campaign',
         );
 
         if (!isset($_POST['mnem_action']) || !in_array($_POST['mnem_action'], $sms_campaign_actions, true)) {
@@ -1885,6 +1886,11 @@ class NetworkAdmin
             return;
         }
 
+        if ($action === 'copy_sms_campaign') {
+            $this->handle_copy_sms_campaign($campaign_id, $page);
+            return;
+        }
+
         // save_sms_campaign (create or update)
         if ($campaign_id > 0) {
             $campaign = \MNEM\SmsCampaigns::get($campaign_id);
@@ -1924,6 +1930,45 @@ class NetworkAdmin
         } else {
             $this->redirect_with_notice($page, 'sms_campaign_created');
         }
+    }
+
+    /**
+     * Handle SMS campaign duplication for cancelled/completed campaigns.
+     *
+     * @param int    $campaign_id
+     * @param string $page
+     * @return void
+     */
+    public function handle_copy_sms_campaign($campaign_id, $page)
+    {
+        $campaign = \MNEM\SmsCampaigns::get((int) $campaign_id);
+        if (!is_array($campaign)) {
+            $this->store_error_detail('SMS campaign not found.');
+            $this->redirect_with_notice($page, 'sms_campaign_action_failed');
+            return;
+        }
+
+        if (!in_array((string) $campaign['status'], array('cancelled', 'completed'), true)) {
+            $this->store_error_detail('Only cancelled or completed SMS campaigns can be duplicated.');
+            $this->redirect_with_notice($page, 'sms_campaign_action_failed');
+            return;
+        }
+
+        $new_campaign_id = \MNEM\SmsCampaigns::duplicate((int) $campaign_id);
+        if (!$new_campaign_id) {
+            $this->store_error_detail('SMS campaign could not be duplicated.');
+            $this->redirect_with_notice($page, 'sms_campaign_action_failed');
+            return;
+        }
+
+        $this->redirect_with_notice(
+            $page,
+            'sms_campaign_copied',
+            array(
+                'mnem_campaign' => (int) $new_campaign_id,
+                'mnem_new_campaign_id' => (int) $new_campaign_id,
+            )
+        );
     }
 
     /**

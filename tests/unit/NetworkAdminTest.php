@@ -252,6 +252,102 @@ class NetworkAdminTest extends TestCase
         $this->assertStringContainsString(', 4,', $GLOBALS['wpdb']->lastQuery);
     }
 
+    public function test_handle_sms_campaign_action_copies_completed_campaign_and_redirects_to_new_draft()
+    {
+        $campaign = array(
+            'id' => 31,
+            'site_id' => 1,
+            'name' => 'Completed Campaign',
+            'description' => 'Done',
+            'message_body' => 'Message body',
+            'sms_list_id' => 4,
+            'status' => 'completed',
+            'created_by' => 7,
+        );
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+
+            public function __construct($campaign)
+            {
+                $this->campaign = $campaign;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                return $this->campaign;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                $this->insert_id = 88;
+                return 1;
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'copy_sms_campaign',
+            '_wpnonce' => 'test-nonce',
+            'redirect_page' => 'mnem-sms-campaigns',
+            'campaign_id' => 31,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_campaign_copied', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('mnem_campaign=88', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('mnem_new_campaign_id=88', $GLOBALS['mnem_last_redirect']);
+    }
+
+    public function test_handle_sms_campaign_action_rejects_copy_for_draft_campaign()
+    {
+        $campaign = array(
+            'id' => 32,
+            'site_id' => 1,
+            'name' => 'Draft Campaign',
+            'description' => '',
+            'message_body' => 'Message body',
+            'sms_list_id' => 4,
+            'status' => 'draft',
+            'created_by' => 7,
+        );
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+
+            public function __construct($campaign)
+            {
+                $this->campaign = $campaign;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                return $this->campaign;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'copy_sms_campaign',
+            '_wpnonce' => 'test-nonce',
+            'redirect_page' => 'mnem-sms-campaigns',
+            'campaign_id' => 32,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_campaign_action_failed', $GLOBALS['mnem_last_redirect']);
+        $this->assertCount(0, $GLOBALS['wpdb']->queries);
+    }
+
     public function test_handle_queue_item_delete_action_redirects_when_nothing_selected()
     {
         $_POST = array(
