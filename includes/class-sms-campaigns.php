@@ -625,13 +625,15 @@ class SmsCampaigns
         $now     = self::current_time_mysql();
 
         foreach ($subscribers as $subscriber) {
-            $phone  = (string) $subscriber['phone_number'];
-            $result = $wpdb->query(
+            $phone   = (string) $subscriber['phone_number'];
+            $context = SmsMessageTemplate::build_context($subscriber);
+            $body    = SmsMessageTemplate::replace_variables((string) $campaign['message_body'], $context);
+            $result  = $wpdb->query(
                 $wpdb->prepare(
                     "INSERT INTO {$queue_table} (site_id, phone_number, body, status, sms_campaign_id) VALUES (%d, %s, %s, %s, %d)",
                     $site_id,
                     $phone,
-                    (string) $campaign['message_body'],
+                    $body,
                     'pending',
                     $id
                 )

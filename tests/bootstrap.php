@@ -882,6 +882,7 @@ require_once __DIR__ . '/../includes/class-subscriber-lists.php';
 require_once __DIR__ . '/../includes/class-phone-validator.php';
 require_once __DIR__ . '/../includes/class-invalid-phone-numbers.php';
 require_once __DIR__ . '/../includes/class-sms-subscriber-lists.php';
+require_once __DIR__ . '/../includes/class-sms-message-template.php';
 require_once __DIR__ . '/../includes/class-sms-campaigns.php';
 require_once __DIR__ . '/../includes/class-email-templates.php';
 require_once __DIR__ . '/../includes/interfaces/class-sms-provider-interface.php';
