@@ -225,6 +225,39 @@ class SmsCampaigns
     }
 
     /**
+     * Duplicate an existing cancelled/completed campaign as a new draft.
+     *
+     * @param int $id
+     * @return int|false New campaign ID on success, false on failure.
+     */
+    public static function duplicate(int $id)
+    {
+        $campaign = self::get($id);
+        if (!$campaign) {
+            return false;
+        }
+
+        if (!in_array((string) $campaign['status'], array('cancelled', 'completed'), true)) {
+            return false;
+        }
+
+        $created_by = function_exists('get_current_user_id') ? (int) get_current_user_id() : (int) $campaign['created_by'];
+
+        return self::create(
+            (int) $campaign['site_id'],
+            array(
+                'name'         => (string) $campaign['name'] . ' [Copy]',
+                'description'  => (string) ($campaign['description'] ?? ''),
+                'message_body' => (string) $campaign['message_body'],
+                'sms_list_id'  => (int) $campaign['sms_list_id'],
+                'status'       => 'draft',
+                'scheduled_at' => '',
+                'created_by'   => $created_by,
+            )
+        );
+    }
+
+    /**
      * Delete an SMS campaign.
      *
      * @param int $id

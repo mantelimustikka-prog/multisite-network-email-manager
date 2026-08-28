@@ -1098,6 +1098,7 @@ class AdminMenu
         $count = isset($_GET['count']) ? (int) $_GET['count'] : 0;
         $status = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
         $deleted_total = isset($_GET['deleted_total']) ? (int) sanitize_text_field(wp_unslash($_GET['deleted_total'])) : 0;
+        $new_campaign_id = isset($_GET['mnem_new_campaign_id']) ? (int) sanitize_text_field(wp_unslash($_GET['mnem_new_campaign_id'])) : 0;
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
@@ -1185,6 +1186,9 @@ class AdminMenu
             'sms_campaign_paused' => 'SMS campaign sending is now paused.',
             'sms_campaign_resumed' => 'SMS campaign sending has resumed.',
             'sms_campaign_cancelled' => 'SMS campaign cancelled successfully.',
+            'sms_campaign_copied' => $new_campaign_id > 0
+                ? sprintf('SMS campaign copied successfully. New draft campaign ID: %d.', $new_campaign_id)
+                : 'SMS campaign copied successfully.',
             'sms_campaign_nonce_failed' => 'SMS campaign security check failed.',
             'sms_campaign_save_failed' => 'SMS campaign could not be saved' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
             'sms_campaign_action_failed' => 'SMS campaign action failed' . ($error_detail !== '' ? ': ' . $error_detail : '.'),

@@ -221,6 +221,88 @@ class SmsCampaignsTest extends TestCase
         $this->assertFalse(SmsCampaigns::update(5, array('name' => 'X')));
     }
 
+    public function test_duplicate_returns_insert_id_for_completed_campaign()
+    {
+        $campaign = array(
+            'id' => 9,
+            'site_id' => 1,
+            'name' => 'Q4 Promotion',
+            'description' => 'Seasonal campaign',
+            'message_body' => 'Promo text',
+            'sms_list_id' => 3,
+            'status' => 'completed',
+            'created_by' => 11,
+        );
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public string $lastQuery = '';
+
+            public function __construct($campaign)
+            {
+                $this->campaign = $campaign;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                return $this->campaign;
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->insert_id = 44;
+                return 1;
+            }
+        };
+
+        $id = SmsCampaigns::duplicate(9);
+
+        $this->assertSame(44, $id);
+        $this->assertStringContainsString("'Q4 Promotion [Copy]'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'Seasonal campaign'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'Promo text'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'draft'", $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_duplicate_returns_false_for_non_terminal_campaign()
+    {
+        $campaign = array(
+            'id' => 10,
+            'site_id' => 1,
+            'name' => 'Active',
+            'description' => '',
+            'message_body' => 'Body',
+            'sms_list_id' => 2,
+            'status' => 'draft',
+            'created_by' => 1,
+        );
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public string $lastQuery = '';
+
+            public function __construct($campaign)
+            {
+                $this->campaign = $campaign;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                return $this->campaign;
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                return 1;
+            }
+        };
+
+        $this->assertFalse(SmsCampaigns::duplicate(10));
+        $this->assertSame('', $GLOBALS['wpdb']->lastQuery);
+    }
+
     // ---------------------------------------------------------------------------
     // CRUD - delete
     // ---------------------------------------------------------------------------
