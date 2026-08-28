@@ -291,51 +291,60 @@ class Queue
         );
 
         // 3. Get configured inter-message delay in milliseconds.
-        $delay_ms  = SmsSettings::get_sms_delay();
-        $total_ids = count($sms_ids);
-        $processed = 0;
+        $delay_ms        = SmsSettings::get_sms_delay();
+        $total_ids       = count($sms_ids);
+        $processed       = 0;
+        $send_index      = 0; // sequential counter used for delay logic
+        $quota_remaining = $remaining_quota; // local decrement; re-validated periodically
 
-        foreach ($sms_ids as $index => $sms_id) {
+        foreach ($sms_ids as $sms_id) {
             // Re-check no-SMS hours before each send to handle window crossings mid-batch.
             if (SmsSettings::is_in_no_sms_hours()) {
                 Logger::info(
                     'SMS batch processing paused mid-batch: entered no-SMS hours window.',
                     array(
-                        'current_time'     => function_exists('wp_date') ? (string) wp_date('H:i:s') : gmdate('H:i:s'),
-                        'no_sms_window'    => SmsSettings::get_no_sms_hours(),
-                        'remaining_in_batch' => $total_ids - (int) $index,
+                        'current_time'       => function_exists('wp_date') ? (string) wp_date('H:i:s') : gmdate('H:i:s'),
+                        'no_sms_window'      => SmsSettings::get_no_sms_hours(),
+                        'remaining_in_batch' => $total_ids - $send_index,
                     )
                 );
                 break;
             }
 
-            // Re-check daily quota before each send to guard against concurrent processes.
-            $current_sent_today = (int) $wpdb->get_var(
-                $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$table} WHERE status = %s AND sent_at >= %s",
-                    'sent',
-                    $today_date . ' 00:00:00'
-                )
-            );
-            if ($current_sent_today >= $max_per_day) {
-                Logger::warning(
-                    'SMS batch processing stopped mid-batch: daily send limit reached.',
-                    array(
-                        'sent_today'  => $current_sent_today,
-                        'max_per_day' => $max_per_day,
+            // Guard against concurrent processes: re-query the DB every 10 sends instead of
+            // every single send to avoid excessive DB load while still catching quota overruns.
+            if ($quota_remaining <= 0 || ($send_index % 10 === 0 && $send_index > 0)) {
+                $current_sent_today = (int) $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$table} WHERE status = %s AND sent_at >= %s",
+                        'sent',
+                        $today_date . ' 00:00:00'
                     )
                 );
-                break;
+                $quota_remaining = $max_per_day - $current_sent_today;
+                if ($quota_remaining <= 0) {
+                    Logger::warning(
+                        'SMS batch processing stopped mid-batch: daily send limit reached.',
+                        array(
+                            'sent_today'  => $current_sent_today,
+                            'max_per_day' => $max_per_day,
+                        )
+                    );
+                    break;
+                }
             }
 
             if (self::process_sms_item((int) $sms_id)) {
                 ++$processed;
+                --$quota_remaining;
             }
 
             // Apply inter-message delay after every send except the last one.
-            if ($delay_ms > 0 && (int) $index < ($total_ids - 1)) {
+            if ($delay_ms > 0 && $send_index < ($total_ids - 1)) {
                 usleep($delay_ms * 1000);
             }
+
+            ++$send_index;
         }
 
         if ($processed === 0) {
