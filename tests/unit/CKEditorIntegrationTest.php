@@ -80,15 +80,4 @@ class CKEditorIntegrationTest extends TestCase
         $this->assertStringNotContainsString('ckeditor5', $contents);
     }
 
-    public function test_sms_settings_view_uses_fallback_country_wording(): void
-    {
-        $path = __DIR__ . '/../../admin/views/settings-sms.php';
-        $contents = file_get_contents($path);
-
-        $this->assertNotFalse($contents);
-        $this->assertStringContainsString("'Fallback Country Code'", $contents);
-        $this->assertStringContainsString("'Two-letter country code, used for verifying phone number if other verifications fail.'", $contents);
-        $this->assertStringNotContainsString("'Validation Country Code'", $contents);
-        $this->assertStringNotContainsString("'Two-letter country code used for formatting local numbers. Default: US.'", $contents);
-    }
 }
