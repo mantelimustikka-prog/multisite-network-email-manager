@@ -309,7 +309,12 @@ class SmsCampaignsTest extends TestCase
 
     public function test_delete_returns_true_on_success()
     {
-        $GLOBALS['wpdb'] = new class extends wpdb {
+        $campaign = array('id' => 3, 'status' => 'completed', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
             public function query($query) { $this->queries[] = $query; return 1; }
         };
 
@@ -318,11 +323,78 @@ class SmsCampaignsTest extends TestCase
 
     public function test_delete_returns_false_on_db_error()
     {
-        $GLOBALS['wpdb'] = new class extends wpdb {
+        $campaign = array('id' => 3, 'status' => 'completed', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
             public function query($query) { return false; }
         };
 
         $this->assertFalse(SmsCampaigns::delete(3));
+    }
+
+    public function test_delete_rejects_draft_campaign()
+    {
+        $campaign = array('id' => 3, 'status' => 'draft', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public array $allQueries = array();
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->allQueries[] = $query; return 1; }
+        };
+
+        $this->assertFalse(SmsCampaigns::delete(3));
+
+        $delete_queries = array_filter($GLOBALS['wpdb']->allQueries, function ($q) {
+            return strpos($q, 'DELETE FROM') !== false;
+        });
+        $this->assertEmpty($delete_queries);
+    }
+
+    public function test_delete_rejects_sending_campaign()
+    {
+        $campaign = array('id' => 3, 'status' => 'sending', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->queries[] = $query; return 1; }
+        };
+
+        $this->assertFalse(SmsCampaigns::delete(3));
+    }
+
+    public function test_delete_rejects_paused_campaign()
+    {
+        $campaign = array('id' => 3, 'status' => 'paused', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->queries[] = $query; return 1; }
+        };
+
+        $this->assertFalse(SmsCampaigns::delete(3));
+    }
+
+    public function test_delete_allows_cancelled_campaign()
+    {
+        $campaign = array('id' => 3, 'status' => 'cancelled', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->queries[] = $query; return 1; }
+        };
+
+        $this->assertTrue(SmsCampaigns::delete(3));
     }
 
     // ---------------------------------------------------------------------------
@@ -895,7 +967,38 @@ class SmsCampaignsTest extends TestCase
         $this->assertStringContainsString('mnem_sms_queue', $GLOBALS['wpdb']->lastQuery);
     }
 
-    public function test_pause_cancels_queued_items()
+    public function test_pause_queued_items_marks_pending_items_paused()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+            public function query($query) { $this->lastQuery = $query; return 2; }
+        };
+
+        $affected = SmsCampaigns::pause_queued_items(5);
+
+        $this->assertSame(2, $affected);
+        $this->assertStringContainsString('mnem_sms_queue', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'paused'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'pending'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringNotContainsString('DELETE FROM', $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_resume_queued_items_marks_paused_items_pending()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+            public function query($query) { $this->lastQuery = $query; return 2; }
+        };
+
+        $affected = SmsCampaigns::resume_queued_items(5);
+
+        $this->assertSame(2, $affected);
+        $this->assertStringContainsString('mnem_sms_queue', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'pending'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'paused'", $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_pause_marks_queued_items_paused_not_deleted()
     {
         $campaign = array('id' => 1, 'status' => 'sending', 'started_at' => '2024-01-01 00:00:00');
 
@@ -913,6 +1016,36 @@ class SmsCampaignsTest extends TestCase
             return strpos($q, 'mnem_sms_queue') !== false;
         });
         $this->assertNotEmpty($queue_queries);
+
+        foreach ($queue_queries as $q) {
+            $this->assertStringContainsString("'paused'", $q);
+            $this->assertStringNotContainsString('DELETE FROM', $q);
+        }
+    }
+
+    public function test_resume_moves_paused_queue_items_back_to_pending()
+    {
+        $campaign = array('id' => 1, 'status' => 'paused', 'started_at' => '2024-01-01 00:00:00');
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public array $allQueries = array();
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->allQueries[] = $query; return 1; }
+        };
+
+        $this->assertTrue(SmsCampaigns::resume(1));
+
+        $queue_queries = array_filter($GLOBALS['wpdb']->allQueries, function ($q) {
+            return strpos($q, 'mnem_sms_queue') !== false;
+        });
+        $this->assertNotEmpty($queue_queries);
+
+        foreach ($queue_queries as $q) {
+            $this->assertStringContainsString("'pending'", $q);
+            $this->assertStringContainsString("'paused'", $q);
+        }
     }
 
     public function test_cancel_cancels_queued_items()
@@ -937,8 +1070,13 @@ class SmsCampaignsTest extends TestCase
 
     public function test_delete_removes_queued_items()
     {
-        $GLOBALS['wpdb'] = new class extends wpdb {
+        $campaign = array('id' => 3, 'status' => 'completed', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
             public array $allQueries = array();
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
             public function query($query) { $this->allQueries[] = $query; return 1; }
         };
 
