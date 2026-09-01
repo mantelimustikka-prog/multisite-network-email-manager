@@ -848,4 +848,105 @@ class SmsCampaignsTest extends TestCase
         $result = SmsCampaigns::update_delivery_tracking(1, 10, 5, 1);
         $this->assertTrue($result);
     }
+
+    // ---------------------------------------------------------------------------
+    // Queue cleanup on pause/cancel/delete
+    // ---------------------------------------------------------------------------
+
+    public function test_update_returns_false_for_sending_campaign()
+    {
+        $campaign = array('id' => 8, 'name' => 'C', 'description' => '', 'message_body' => 'B', 'sms_list_id' => 1, 'status' => 'sending', 'scheduled_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+        };
+
+        $this->assertFalse(SmsCampaigns::update(8, array('name' => 'New Name')));
+    }
+
+    public function test_cancel_queued_items_marks_pending_items_cancelled()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+            public function query($query) { $this->lastQuery = $query; return 3; }
+        };
+
+        $affected = SmsCampaigns::cancel_queued_items(5);
+
+        $this->assertSame(3, $affected);
+        $this->assertStringContainsString('mnem_sms_queue', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'cancelled'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString("'pending'", $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_delete_queued_items_deletes_all_items()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+            public function query($query) { $this->lastQuery = $query; return 4; }
+        };
+
+        $deleted = SmsCampaigns::delete_queued_items(5);
+
+        $this->assertSame(4, $deleted);
+        $this->assertStringContainsString('DELETE FROM', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString('mnem_sms_queue', $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_pause_cancels_queued_items()
+    {
+        $campaign = array('id' => 1, 'status' => 'sending', 'started_at' => '2024-01-01 00:00:00');
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public array $allQueries = array();
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->allQueries[] = $query; return 1; }
+        };
+
+        $this->assertTrue(SmsCampaigns::pause(1));
+
+        $queue_queries = array_filter($GLOBALS['wpdb']->allQueries, function ($q) {
+            return strpos($q, 'mnem_sms_queue') !== false;
+        });
+        $this->assertNotEmpty($queue_queries);
+    }
+
+    public function test_cancel_cancels_queued_items()
+    {
+        $campaign = array('id' => 3, 'status' => 'sending', 'started_at' => null);
+
+        $GLOBALS['wpdb'] = new class($campaign) extends wpdb {
+            private $campaign;
+            public array $allQueries = array();
+            public function __construct($campaign) { $this->campaign = $campaign; }
+            public function get_row($query, $output = OBJECT) { return $this->campaign; }
+            public function query($query) { $this->allQueries[] = $query; return 1; }
+        };
+
+        $this->assertTrue(SmsCampaigns::cancel(3));
+
+        $queue_queries = array_filter($GLOBALS['wpdb']->allQueries, function ($q) {
+            return strpos($q, 'mnem_sms_queue') !== false;
+        });
+        $this->assertNotEmpty($queue_queries);
+    }
+
+    public function test_delete_removes_queued_items()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public array $allQueries = array();
+            public function query($query) { $this->allQueries[] = $query; return 1; }
+        };
+
+        $this->assertTrue(SmsCampaigns::delete(3));
+
+        $queue_queries = array_filter($GLOBALS['wpdb']->allQueries, function ($q) {
+            return strpos($q, 'mnem_sms_queue') !== false;
+        });
+        $this->assertNotEmpty($queue_queries);
+    }
 }

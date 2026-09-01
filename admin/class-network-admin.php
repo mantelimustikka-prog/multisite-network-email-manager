@@ -1894,6 +1894,11 @@ class NetworkAdmin
         // save_sms_campaign (create or update)
         if ($campaign_id > 0) {
             $campaign = \MNEM\SmsCampaigns::get($campaign_id);
+            if (is_array($campaign) && (string) $campaign['status'] === 'sending') {
+                $this->store_error_detail('Cannot edit campaign while SMS is being sent.');
+                $this->redirect_with_notice($page, 'sms_campaign_save_failed');
+                return;
+            }
             if (is_array($campaign) && in_array((string) $campaign['status'], array('cancelled', 'completed'), true)) {
                 $this->store_error_detail('Cancelled or completed SMS campaigns cannot be edited.');
                 $this->redirect_with_notice($page, 'sms_campaign_save_failed');
