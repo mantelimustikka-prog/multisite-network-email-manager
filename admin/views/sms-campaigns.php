@@ -198,7 +198,10 @@ $is_locked          = $editing && in_array($campaign_status, array('cancelled', 
                                     <span id="mnem-sms-segments">1</span> segment(s)
                                     (160 chars / segment for standard SMS)
                                 </div>
-                                <p class="description">Available variables: {user_name}, {phone_number}, {site_name}, {date} &mdash; each recipient receives a personalized message (e.g. Jane Doe will receive: "Hello Jane Doe, your phone +15550001234 is confirmed").</p>
+                                <p class="description">
+                                    <strong>Available variables:</strong> {user_name}, {display_name}, {phone_number}, {site_name}, {date} &mdash; 
+                                    Each recipient receives a personalized message. Example: "Hi {display_name}, please verify {phone_number}" becomes "Hi John Smith, please verify +1234567890"
+                                </p>
                             </td>
                         </tr>
                         <tr>
