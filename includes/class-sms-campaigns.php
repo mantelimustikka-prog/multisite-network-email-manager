@@ -179,7 +179,11 @@ class SmsCampaigns
             return false;
         }
 
-        if (in_array((string) $campaign['status'], array('cancelled', 'completed'), true)) {
+        if (in_array((string) $campaign['status'], array('cancelled', 'completed', 'sending'), true)) {
+            Logger::info('SMS campaign update rejected: campaign is not editable.', array(
+                'campaign_id' => $id,
+                'status'      => (string) $campaign['status'],
+            ));
             return false;
         }
 
@@ -268,6 +272,8 @@ class SmsCampaigns
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_sms_campaigns';
+
+        self::delete_queued_items($id);
 
         Logger::info('SMS campaign deleted.', array('campaign_id' => $id));
 
@@ -543,6 +549,7 @@ class SmsCampaigns
     {
         $result = self::update_status($id, 'paused');
         if ($result) {
+            self::cancel_queued_items($id);
             Logger::info('SMS campaign paused.', array('campaign_id' => $id));
         }
         return $result;
@@ -573,6 +580,7 @@ class SmsCampaigns
     {
         $result = self::update_status($id, 'cancelled');
         if ($result) {
+            self::cancel_queued_items($id);
             Logger::info('SMS campaign cancelled.', array('campaign_id' => $id));
         }
         return $result;
@@ -591,6 +599,68 @@ class SmsCampaigns
             return false;
         }
         return self::is_valid_transition((string) $campaign['status'], 'cancelled');
+    }
+
+    /**
+     * Cancel all pending queue items for a campaign, stopping further sends.
+     *
+     * Queue items are kept (not deleted) for auditing/recovery purposes.
+     *
+     * @param int $campaign_id
+     * @return int Number of queue items cancelled.
+     */
+    public static function cancel_queued_items(int $campaign_id)
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$queue_table} SET status = %s WHERE sms_campaign_id = %d AND status = %s",
+                'cancelled',
+                $campaign_id,
+                'pending'
+            )
+        );
+
+        $affected = $result !== false ? (int) $result : 0;
+
+        Logger::info('SMS campaign queue items cancelled.', array(
+            'campaign_id' => $campaign_id,
+            'cancelled'   => $affected,
+        ));
+
+        return $affected;
+    }
+
+    /**
+     * Delete all queue items for a campaign.
+     *
+     * @param int $campaign_id
+     * @return int Number of queue items deleted.
+     */
+    public static function delete_queued_items(int $campaign_id)
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "DELETE FROM {$queue_table} WHERE sms_campaign_id = %d",
+                $campaign_id
+            )
+        );
+
+        $deleted = $result !== false ? (int) $result : 0;
+
+        Logger::info('SMS campaign queue items deleted.', array(
+            'campaign_id' => $campaign_id,
+            'deleted'     => $deleted,
+        ));
+
+        return $deleted;
     }
 
     // ---------------------------------------------------------------------------

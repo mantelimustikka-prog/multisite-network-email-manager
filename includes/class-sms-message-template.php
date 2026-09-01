@@ -17,7 +17,7 @@ class SmsMessageTemplate
      *
      * @param string $template The raw message body containing placeholders.
      * @param array  $context  Associative array with keys:
-     *                          - user_name     (string) Recipient login name.
+     *                          - user_name     (string) Recipient name.
      *                          - display_name  (string) Recipient display name from wp_users.
      *                          - phone_number  (string) Recipient phone number.
      *                          - site_name     (string) Site/network name.
@@ -58,9 +58,17 @@ class SmsMessageTemplate
             }
         }
 
-        // For standalone subscribers or if user data not found, use subscriber_name as display_name
-        if ($display_name === '' && isset($subscriber['subscriber_name'])) {
-            $display_name = (string) $subscriber['subscriber_name'];
+        // For standalone subscribers or if user data not found, use the subscriber name.
+        if ($display_name === '') {
+            if (isset($subscriber['subscriber_name'])) {
+                $display_name = (string) $subscriber['subscriber_name'];
+            } elseif (isset($subscriber['display_name'])) {
+                $display_name = (string) $subscriber['display_name'];
+            }
+        }
+
+        if ($user_name === '') {
+            $user_name = $display_name;
         }
 
         return array(
