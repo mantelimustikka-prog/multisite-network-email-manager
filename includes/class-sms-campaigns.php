@@ -264,12 +264,28 @@ class SmsCampaigns
     /**
      * Delete an SMS campaign.
      *
+     * Only campaigns in 'completed' or 'cancelled' status may be deleted, to avoid
+     * accidentally deleting an active campaign that is still draft/scheduled/sending/paused.
+     *
      * @param int $id
      * @return bool
      */
     public static function delete(int $id)
     {
         global $wpdb;
+
+        $campaign = self::get($id);
+        if (!$campaign) {
+            return false;
+        }
+
+        if (!in_array((string) $campaign['status'], array('completed', 'cancelled'), true)) {
+            Logger::info('SMS campaign delete rejected: campaign is not completed or cancelled.', array(
+                'campaign_id' => $id,
+                'status'      => (string) $campaign['status'],
+            ));
+            return false;
+        }
 
         $table = $wpdb->base_prefix . 'mnem_sms_campaigns';
 
@@ -549,7 +565,7 @@ class SmsCampaigns
     {
         $result = self::update_status($id, 'paused');
         if ($result) {
-            self::cancel_queued_items($id);
+            self::pause_queued_items($id);
             Logger::info('SMS campaign paused.', array('campaign_id' => $id));
         }
         return $result;
@@ -565,6 +581,7 @@ class SmsCampaigns
     {
         $result = self::update_status($id, 'sending');
         if ($result) {
+            self::resume_queued_items($id);
             Logger::info('SMS campaign resumed.', array('campaign_id' => $id));
         }
         return $result;
@@ -629,6 +646,70 @@ class SmsCampaigns
         Logger::info('SMS campaign queue items cancelled.', array(
             'campaign_id' => $campaign_id,
             'cancelled'   => $affected,
+        ));
+
+        return $affected;
+    }
+
+    /**
+     * Pause all pending queue items for a campaign, so the queue processor skips them
+     * while keeping the items intact so the campaign can be resumed later.
+     *
+     * @param int $campaign_id
+     * @return int Number of queue items paused.
+     */
+    public static function pause_queued_items(int $campaign_id)
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$queue_table} SET status = %s WHERE sms_campaign_id = %d AND status = %s",
+                'paused',
+                $campaign_id,
+                'pending'
+            )
+        );
+
+        $affected = $result !== false ? (int) $result : 0;
+
+        Logger::info('SMS campaign queue items paused.', array(
+            'campaign_id' => $campaign_id,
+            'paused'      => $affected,
+        ));
+
+        return $affected;
+    }
+
+    /**
+     * Resume all paused queue items for a campaign, restoring them to 'pending' so the
+     * queue processor can continue sending from where it stopped.
+     *
+     * @param int $campaign_id
+     * @return int Number of queue items resumed.
+     */
+    public static function resume_queued_items(int $campaign_id)
+    {
+        global $wpdb;
+
+        $queue_table = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$queue_table} SET status = %s WHERE sms_campaign_id = %d AND status = %s",
+                'pending',
+                $campaign_id,
+                'paused'
+            )
+        );
+
+        $affected = $result !== false ? (int) $result : 0;
+
+        Logger::info('SMS campaign queue items resumed.', array(
+            'campaign_id' => $campaign_id,
+            'resumed'     => $affected,
         ));
 
         return $affected;

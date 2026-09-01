@@ -282,10 +282,17 @@ class Queue
         $remaining_quota = $max_per_day - $sent_today;
         $limit           = min($limit, $remaining_quota);
 
+        $campaigns_table = $wpdb->base_prefix . 'mnem_sms_campaigns';
+
         $sms_ids = (array) $wpdb->get_col(
             $wpdb->prepare(
-                "SELECT id FROM {$table} WHERE status = %s ORDER BY id ASC LIMIT %d",
+                "SELECT id FROM {$table} WHERE status = %s"
+                    . " AND (sms_campaign_id = 0 OR sms_campaign_id NOT IN ("
+                    . "SELECT id FROM {$campaigns_table} WHERE status = %s"
+                    . "))"
+                    . " ORDER BY id ASC LIMIT %d",
                 'pending',
+                'paused',
                 $limit
             )
         );

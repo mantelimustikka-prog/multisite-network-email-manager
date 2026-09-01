@@ -80,8 +80,9 @@ $is_locked          = $editing && in_array($campaign_status, array('cancelled', 
                                 <td><?php echo esc_html($camp['scheduled_at'] ?? '—'); ?></td>
                                 <td>
                                     <?php $is_completed_or_cancelled = in_array($camp['status'], array('cancelled', 'completed'), true); ?>
-                                    <?php $is_read_only = in_array($camp['status'], array('cancelled', 'completed', 'sending'), true); ?>
-                                    <?php if (in_array($camp['status'], array('draft', 'scheduled'), true)) : ?>
+                                    <?php $is_editable = in_array($camp['status'], array('draft', 'scheduled'), true); ?>
+                                    <?php $can_delete = $is_completed_or_cancelled; ?>
+                                    <?php if ($is_editable) : ?>
                                         <form method="post" class="mnem-inline-form">
                                             <?php wp_nonce_field('mnem_sms_campaign'); ?>
                                             <input type="hidden" name="mnem_action" value="send_sms_campaign" />
@@ -126,18 +127,20 @@ $is_locked          = $editing && in_array($campaign_status, array('cancelled', 
                                             <input type="hidden" name="redirect_page" value="mnem-sms-campaigns" />
                                             <?php submit_button('Copy', 'secondary', 'submit', false); ?>
                                         </form>
-                                    <?php elseif ($is_read_only) : ?>
+                                    <?php elseif (!$is_editable) : ?>
                                         <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-sms-campaigns&mnem_campaign=' . (int) $camp['id'])); ?>">View</a>
                                     <?php else : ?>
                                         <a class="button button-secondary" href="<?php echo esc_attr(network_admin_url('admin.php?page=mnem-sms-campaigns&mnem_campaign=' . (int) $camp['id'])); ?>">Edit</a>
                                     <?php endif; ?>
-                                    <form method="post" class="mnem-inline-form" onsubmit="return confirm('Delete this SMS campaign?')">
-                                        <?php wp_nonce_field('mnem_sms_campaign'); ?>
-                                        <input type="hidden" name="mnem_action" value="delete_sms_campaign" />
-                                        <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $camp['id']); ?>" />
-                                        <input type="hidden" name="redirect_page" value="mnem-sms-campaigns" />
-                                        <?php submit_button('Delete', 'delete', 'submit', false); ?>
-                                    </form>
+                                    <?php if ($can_delete) : ?>
+                                        <form method="post" class="mnem-inline-form" onsubmit="return confirm('Delete this SMS campaign?')">
+                                            <?php wp_nonce_field('mnem_sms_campaign'); ?>
+                                            <input type="hidden" name="mnem_action" value="delete_sms_campaign" />
+                                            <input type="hidden" name="campaign_id" value="<?php echo esc_attr((string) $camp['id']); ?>" />
+                                            <input type="hidden" name="redirect_page" value="mnem-sms-campaigns" />
+                                            <?php submit_button('Delete', 'delete', 'submit', false); ?>
+                                        </form>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
