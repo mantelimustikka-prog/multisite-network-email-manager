@@ -101,6 +101,59 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
         </tr>
     </table>
 
+    <h3><?php esc_html_e('Webhook Configuration', 'multisite-network-email-manager'); ?></h3>
+    <p class="description">
+        <?php esc_html_e('Configure your SMS provider to send delivery-status callbacks (Delivered, Failed, Rejected, etc.) to the webhook URL below. This allows the plugin to automatically update SMS statuses in real time without manual refreshing.', 'multisite-network-email-manager'); ?>
+    </p>
+    <table class="form-table" role="presentation">
+        <?php
+        $sms_webhook_instructions = array(
+            'textmagic'     => __('TextMagic Account → API Settings → Callback URL.', 'multisite-network-email-manager'),
+            'simpletexting' => __('SimpleTexting Account → API → Webhooks → Delivery Reports.', 'multisite-network-email-manager'),
+            'messagedesk'   => __('MessageDesk Settings → Integrations → Webhooks.', 'multisite-network-email-manager'),
+            'eztexting'     => __('EZ Texting Account → API Settings → Callback URL.', 'multisite-network-email-manager'),
+            'salesmsg'      => __('Salesmsg Settings → Integrations → Webhooks.', 'multisite-network-email-manager'),
+            'textline'      => __('Textline Settings → Integrations → Webhooks.', 'multisite-network-email-manager'),
+            'slicktext'     => __('SlickText Account → API → Webhook URL.', 'multisite-network-email-manager'),
+            'textedly'      => __('Textedly Account → API Settings → Webhook URL.', 'multisite-network-email-manager'),
+            'textus'        => __('TextUS Settings → Integrations → Webhooks.', 'multisite-network-email-manager'),
+            'twilio'        => __('Twilio Console → Phone Numbers → Messaging → "A message comes in" webhook, or Messaging Service → Integration.', 'multisite-network-email-manager'),
+            'clicksend'     => __('ClickSend Dashboard → SMS → Settings → Delivery Reports Webhook.', 'multisite-network-email-manager'),
+            'vonage'        => __('Vonage API Dashboard → Your Application → Messages → Status URL.', 'multisite-network-email-manager'),
+        );
+        ?>
+        <?php foreach ($sms_providers as $key => $label) :
+            $provider_class = \MNEM\SmsProviderManager::get_provider_class($key);
+            $webhook_url    = ($provider_class !== null && method_exists($provider_class, 'get_webhook_url'))
+                ? $provider_class::get_webhook_url()
+                : '';
+            if ($webhook_url === '') {
+                continue;
+            }
+            $instructions = isset($sms_webhook_instructions[$key]) ? $sms_webhook_instructions[$key] : '';
+        ?>
+        <tr>
+            <th scope="row"><?php echo esc_html($label); ?></th>
+            <td>
+                <input
+                    type="text"
+                    readonly="readonly"
+                    class="regular-text mnem-webhook-url"
+                    id="mnem_webhook_url_<?php echo esc_attr($key); ?>"
+                    value="<?php echo esc_attr($webhook_url); ?>"
+                    onclick="this.select();"
+                />
+                <button type="button" class="button" data-mnem-action="copy-webhook-url" data-target="#mnem_webhook_url_<?php echo esc_attr($key); ?>">
+                    <?php esc_html_e('Copy', 'multisite-network-email-manager'); ?>
+                </button>
+                <?php if ($instructions !== '') : ?>
+                    <p class="description"><?php echo esc_html($instructions); ?></p>
+                <?php endif; ?>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+    </table>
+
     <h3><?php esc_html_e('SMS Sending Settings', 'multisite-network-email-manager'); ?></h3>
     <table class="form-table" role="presentation">
         <tr>
