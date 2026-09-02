@@ -180,10 +180,67 @@ defined('ABSPATH') || exit;
             </div>
             <?php endif; ?>
 
+            <!-- Bulk actions toolbar -->
+            <div class="mnem-sms-bulk-toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;background:#fff;border:1px solid #c3c4c7;border-radius:4px;">
+                <label style="display:flex;align-items:center;gap:4px;">
+                    <input type="checkbox" id="mnem-sms-select-all-toolbar" />
+                    <?php esc_html_e('Select All', 'multisite-network-email-manager'); ?>
+                </label>
+                <a href="#" id="mnem-sms-clear-selection"><?php esc_html_e('Clear Selection', 'multisite-network-email-manager'); ?></a>
+                <span id="mnem-sms-selected-count" style="font-weight:600;">
+                    <?php esc_html_e('0 items selected', 'multisite-network-email-manager'); ?>
+                </span>
+
+                <span style="border-left:1px solid #dcdcde;height:24px;"></span>
+
+                <select id="mnem-sms-bulk-action-select" disabled>
+                    <option value=""><?php esc_html_e('Bulk Actions', 'multisite-network-email-manager'); ?></option>
+                    <option value="unsubscribe"
+                        data-label-template="<?php echo esc_attr__('Unsubscribe Selected (%d available)', 'multisite-network-email-manager'); ?>">
+                        <?php echo esc_html(sprintf(__('Unsubscribe Selected (%d available)', 'multisite-network-email-manager'), 0)); ?>
+                    </option>
+                    <option value="delete_users"
+                        data-label-template="<?php echo esc_attr__('Delete Selected Users (%d available)', 'multisite-network-email-manager'); ?>"
+                        data-affects-users="1">
+                        <?php echo esc_html(sprintf(__('Delete Selected Users (%d available)', 'multisite-network-email-manager'), 0)); ?>
+                    </option>
+                    <option value="both"
+                        data-label-template="<?php echo esc_attr__('Unsubscribe & Delete Selected (%d available)', 'multisite-network-email-manager'); ?>"
+                        data-affects-users="1">
+                        <?php echo esc_html(sprintf(__('Unsubscribe & Delete Selected (%d available)', 'multisite-network-email-manager'), 0)); ?>
+                    </option>
+                    <option value="refresh_status"
+                        data-label-template="<?php echo esc_attr__('Refresh Status for Selected (%d available)', 'multisite-network-email-manager'); ?>">
+                        <?php echo esc_html(sprintf(__('Refresh Status for Selected (%d available)', 'multisite-network-email-manager'), 0)); ?>
+                    </option>
+                </select>
+
+                <label style="display:flex;align-items:center;gap:4px;">
+                    <input type="checkbox" id="mnem-sms-bulk-dry-run" />
+                    <?php esc_html_e('Dry run (preview only)', 'multisite-network-email-manager'); ?>
+                </label>
+
+                <button type="button" class="button button-primary" id="mnem-sms-bulk-apply" disabled>
+                    <?php esc_html_e('Apply', 'multisite-network-email-manager'); ?>
+                </button>
+
+                <span id="mnem-sms-bulk-warning" style="display:none;color:#996800;">
+                    <span class="dashicons dashicons-warning"></span>
+                    <?php esc_html_e('Warning: this action will delete WordPress user accounts.', 'multisite-network-email-manager'); ?>
+                </span>
+
+                <span id="mnem-sms-bulk-progress" style="display:none;color:#2271b1;"></span>
+            </div>
+            <div id="mnem-sms-bulk-result" style="display:none;margin-bottom:12px;padding:10px 12px;border-radius:4px;"></div>
+
             <!-- SMS Queue Table -->
             <table class="widefat striped">
                 <thead>
                     <tr>
+                        <th class="check-column" style="width:2.2em;">
+                            <input type="checkbox" id="mnem-sms-select-all-header"
+                                   aria-label="<?php echo esc_attr__('Select all SMS entries', 'multisite-network-email-manager'); ?>" />
+                        </th>
                         <th><?php esc_html_e('Campaign ID', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Campaign Name', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Phone Number', 'multisite-network-email-manager'); ?></th>
@@ -199,13 +256,42 @@ defined('ABSPATH') || exit;
                 <tbody>
                     <?php if (empty($sms_items)) : ?>
                         <tr>
-                            <td colspan="10"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
+                            <td colspan="11"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
                         </tr>
                     <?php else : ?>
                         <?php $sms_log_campaign_cache = array(); ?>
                         <?php foreach ($sms_items as $sms_item) : ?>
                             <?php $sms_status_slug = isset($sms_item['status']) ? strtolower((string) $sms_item['status']) : 'pending'; ?>
+                            <?php
+                            $sms_row_campaign_id_for_cb = (int) $sms_item['sms_campaign_id'];
+                            if (!array_key_exists($sms_row_campaign_id_for_cb, $sms_log_campaign_cache)) {
+                                $sms_log_campaign_cache[$sms_row_campaign_id_for_cb] = $sms_row_campaign_id_for_cb > 0
+                                    ? \MNEM\SmsCampaigns::get($sms_row_campaign_id_for_cb)
+                                    : null;
+                            }
+                            $sms_log_campaign = $sms_log_campaign_cache[$sms_row_campaign_id_for_cb];
+                            $sms_log_list_id  = is_array($sms_log_campaign) ? (int) $sms_log_campaign['sms_list_id'] : 0;
+                            $sms_log_phone    = (string) $sms_item['phone_number'];
+
+                            $sms_log_subscriber       = $sms_log_list_id > 0
+                                ? \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($sms_log_list_id, $sms_log_phone)
+                                : null;
+                            $sms_log_is_unsubscribed  = is_array($sms_log_subscriber) && $sms_log_subscriber['subscription_status'] === 'unsubscribed';
+                            $sms_log_has_wp_user      = is_array($sms_log_subscriber) && (int) $sms_log_subscriber['user_id'] > 0 && function_exists('get_user_by');
+                            if ($sms_log_has_wp_user) {
+                                $sms_log_wp_user = get_user_by('ID', (int) $sms_log_subscriber['user_id']);
+                                $sms_log_has_wp_user = !empty($sms_log_wp_user);
+                            }
+                            ?>
                             <tr>
+                                <td class="check-column">
+                                    <input type="checkbox"
+                                           class="mnem-sms-row-checkbox"
+                                           value="<?php echo esc_attr((string) $sms_item['id']); ?>"
+                                           data-unsubscribed="<?php echo $sms_log_is_unsubscribed ? '1' : '0'; ?>"
+                                           data-has-user="<?php echo $sms_log_has_wp_user ? '1' : '0'; ?>"
+                                           aria-label="<?php echo esc_attr__('Select this SMS entry', 'multisite-network-email-manager'); ?>" />
+                                </td>
                                 <td><?php echo esc_html((string) $sms_item['sms_campaign_id']); ?></td>
                                 <td><?php echo esc_html(!empty($sms_item['campaign_name']) ? $sms_item['campaign_name'] : '—'); ?></td>
                                 <td><?php echo esc_html((string) $sms_item['phone_number']); ?></td>
@@ -240,26 +326,6 @@ defined('ABSPATH') || exit;
                                 <td><?php echo esc_html((string) (int) $sms_item['attempts']); ?></td>
                                 <td>
                                     <?php
-                                    $sms_log_campaign_id = (int) $sms_item['sms_campaign_id'];
-                                    if (!array_key_exists($sms_log_campaign_id, $sms_log_campaign_cache)) {
-                                        $sms_log_campaign_cache[$sms_log_campaign_id] = $sms_log_campaign_id > 0
-                                            ? \MNEM\SmsCampaigns::get($sms_log_campaign_id)
-                                            : null;
-                                    }
-                                    $sms_log_campaign = $sms_log_campaign_cache[$sms_log_campaign_id];
-                                    $sms_log_list_id  = is_array($sms_log_campaign) ? (int) $sms_log_campaign['sms_list_id'] : 0;
-                                    $sms_log_phone    = (string) $sms_item['phone_number'];
-
-                                    $sms_log_subscriber       = $sms_log_list_id > 0
-                                        ? \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($sms_log_list_id, $sms_log_phone)
-                                        : null;
-                                    $sms_log_is_unsubscribed  = is_array($sms_log_subscriber) && $sms_log_subscriber['subscription_status'] === 'unsubscribed';
-                                    $sms_log_has_wp_user      = is_array($sms_log_subscriber) && (int) $sms_log_subscriber['user_id'] > 0 && function_exists('get_user_by');
-                                    if ($sms_log_has_wp_user) {
-                                        $sms_log_wp_user = get_user_by('ID', (int) $sms_log_subscriber['user_id']);
-                                        $sms_log_has_wp_user = !empty($sms_log_wp_user);
-                                    }
-
                                     $sms_log_unsubscribe_disabled = !is_array($sms_log_subscriber) || $sms_log_is_unsubscribed;
                                     $sms_log_delete_user_disabled = !$sms_log_has_wp_user;
                                     $sms_log_both_disabled        = $sms_log_unsubscribe_disabled || $sms_log_delete_user_disabled;

@@ -1759,4 +1759,302 @@ class NetworkAdminTest extends TestCase
         $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
         $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
     }
+
+    /**
+     * Build a wpdb stub whose get_row() response depends on which table the
+     * query targets, so bulk-action processing can look up queue rows,
+     * campaigns and subscribers independently.
+     */
+    private function make_sms_bulk_wpdb(array $queue_rows, array $campaign_rows, array $subscriber_rows)
+    {
+        return new class($queue_rows, $campaign_rows, $subscriber_rows) extends wpdb {
+            private $queue_rows;
+            private $campaign_rows;
+            private $subscriber_rows;
+
+            public function __construct($queue_rows, $campaign_rows, $subscriber_rows)
+            {
+                $this->queue_rows = $queue_rows;
+                $this->campaign_rows = $campaign_rows;
+                $this->subscriber_rows = $subscriber_rows;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+
+                if (strpos($query, 'mnem_sms_queue') !== false) {
+                    foreach ($this->queue_rows as $row) {
+                        if (strpos($query, 'id = ' . $row['id']) !== false) {
+                            return $row;
+                        }
+                    }
+                    return null;
+                }
+
+                if (strpos($query, 'mnem_sms_campaigns') !== false) {
+                    foreach ($this->campaign_rows as $row) {
+                        if (strpos($query, 'id = ' . $row['id']) !== false) {
+                            return $row;
+                        }
+                    }
+                    return null;
+                }
+
+                if (strpos($query, 'mnem_sms_list_subscribers') !== false) {
+                    foreach ($this->subscriber_rows as $row) {
+                        if (strpos($query, "phone_number = '" . $row['phone_number'] . "'") !== false) {
+                            return $row;
+                        }
+                    }
+                    return null;
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+    }
+
+    public function test_ajax_sms_bulk_action_requires_permission()
+    {
+        $GLOBALS['mnem_current_user_can'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(array(), array(), array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'unsubscribe',
+            'queue_ids' => array(42),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(403, $GLOBALS['mnem_last_json_response']['status_code']);
+    }
+
+    public function test_ajax_sms_bulk_action_rejects_invalid_nonce()
+    {
+        $GLOBALS['mnem_verify_nonce'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(array(), array(), array());
+
+        $_POST = array(
+            'nonce' => 'bad-nonce',
+            'action_type' => 'unsubscribe',
+            'queue_ids' => array(42),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(403, $GLOBALS['mnem_last_json_response']['status_code']);
+    }
+
+    public function test_ajax_sms_bulk_action_rejects_invalid_action_type()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(array(), array(), array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'not_a_real_action',
+            'queue_ids' => array(42),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+    }
+
+    public function test_ajax_sms_bulk_action_requires_queue_ids()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(array(), array(), array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'unsubscribe',
+            'queue_ids' => array(),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
+    }
+
+    public function test_ajax_sms_bulk_action_unsubscribe_processes_batch()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(
+            array(
+                array('id' => 42, 'sms_campaign_id' => 7, 'phone_number' => '+1111111111'),
+                array('id' => 43, 'sms_campaign_id' => 7, 'phone_number' => '+2222222222'),
+            ),
+            array(
+                array('id' => 7, 'sms_list_id' => 2),
+            ),
+            array(
+                array(
+                    'id' => 1,
+                    'list_id' => 2,
+                    'user_id' => 9,
+                    'subscriber_name' => 'Jane',
+                    'phone_number' => '+1111111111',
+                    'subscription_status' => 'subscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => null,
+                    'unsubscribed_reason' => '',
+                ),
+                array(
+                    'id' => 2,
+                    'list_id' => 2,
+                    'user_id' => 10,
+                    'subscriber_name' => 'Joe',
+                    'phone_number' => '+2222222222',
+                    'subscription_status' => 'unsubscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => '2024-02-01 00:00:00',
+                    'unsubscribed_reason' => 'prior',
+                ),
+            )
+        );
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'unsubscribe',
+            'queue_ids' => array(42, 43),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $data = $GLOBALS['mnem_last_json_response']['data'];
+        $this->assertSame('unsubscribe', $data['action']);
+        $this->assertSame(2, $data['total']);
+        $this->assertSame(1, $data['successful']);
+        $this->assertSame(1, $data['failed']);
+        $this->assertCount(1, $data['errors']);
+        $this->assertStringContainsString('SMS #43', $data['errors'][0]);
+    }
+
+    public function test_ajax_sms_bulk_action_delete_users_processes_batch()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(
+            array(
+                array('id' => 42, 'sms_campaign_id' => 7, 'phone_number' => '+1111111111'),
+            ),
+            array(
+                array('id' => 7, 'sms_list_id' => 2),
+            ),
+            array(
+                array(
+                    'id' => 1,
+                    'list_id' => 2,
+                    'user_id' => 9,
+                    'subscriber_name' => 'Jane',
+                    'phone_number' => '+1111111111',
+                    'subscription_status' => 'subscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => null,
+                    'unsubscribed_reason' => '',
+                ),
+            )
+        );
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'delete_users',
+            'queue_ids' => array(42),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $data = $GLOBALS['mnem_last_json_response']['data'];
+        $this->assertSame(1, $data['successful']);
+        $this->assertSame(0, $data['failed']);
+        $this->assertContains(9, $GLOBALS['mnem_deleted_users']);
+    }
+
+    public function test_ajax_sms_bulk_action_dry_run_does_not_modify()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $wpdb = $this->make_sms_bulk_wpdb(
+            array(
+                array('id' => 42, 'sms_campaign_id' => 7, 'phone_number' => '+1111111111'),
+            ),
+            array(
+                array('id' => 7, 'sms_list_id' => 2),
+            ),
+            array(
+                array(
+                    'id' => 1,
+                    'list_id' => 2,
+                    'user_id' => 9,
+                    'subscriber_name' => 'Jane',
+                    'phone_number' => '+1111111111',
+                    'subscription_status' => 'subscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => null,
+                    'unsubscribed_reason' => '',
+                ),
+            )
+        );
+        $GLOBALS['wpdb'] = $wpdb;
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'both',
+            'queue_ids' => array(42),
+            'dry_run' => '1',
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $data = $GLOBALS['mnem_last_json_response']['data'];
+        $this->assertTrue($data['dry_run']);
+        $this->assertSame(1, $data['successful']);
+        $this->assertEmpty(isset($GLOBALS['mnem_deleted_users']) ? $GLOBALS['mnem_deleted_users'] : array());
+        $update_queries = array_filter($wpdb->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        });
+        $this->assertEmpty($update_queries);
+    }
+
+    public function test_ajax_sms_bulk_action_reports_missing_queue_row()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_bulk_wpdb(array(), array(), array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'action_type' => 'refresh_status',
+            'queue_ids' => array(999),
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_bulk_action();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $data = $GLOBALS['mnem_last_json_response']['data'];
+        $this->assertSame(0, $data['successful']);
+        $this->assertSame(1, $data['failed']);
+        $this->assertStringContainsString('not found', $data['errors'][0]);
+    }
 }
