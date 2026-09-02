@@ -613,13 +613,19 @@ class AdminMenu
             $webhook_provider = 'brevo';
         }
         $webhook_url = \MNEM\WebhookLog::get_webhook_url($webhook_provider);
-        $webhook_recent = \MNEM\WebhookLog::get_recent(10);
+        $webhook_recent = \MNEM\WebhookLog::get_recent(50);
         $webhook_stats = \MNEM\WebhookLog::get_stats();
+        $webhook_provider_stats = \MNEM\WebhookLog::get_provider_stats();
+        $webhook_errors = \MNEM\WebhookLog::get_recent_errors(10);
+        $webhook_endpoints = array();
+        foreach (\MNEM\Admin\NetworkAdmin::WEBHOOK_PROVIDERS as $available_provider) {
+            $webhook_endpoints[$available_provider] = \MNEM\WebhookLog::get_webhook_url($available_provider);
+        }
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'webhook_provider', 'webhook_url', 'webhook_recent', 'webhook_stats', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'webhook_provider', 'webhook_url', 'webhook_recent', 'webhook_stats', 'webhook_provider_stats', 'webhook_errors', 'webhook_endpoints', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()

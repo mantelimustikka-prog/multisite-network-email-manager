@@ -776,6 +776,45 @@
         refreshQueueStatuses(getVisibleQueueIds(), $('.mnem-refresh-all-statuses'), true);
     });
 
+    // ── Webhook health: copy webhook URL to clipboard ───────────────────────
+    $(document).on('click', '.mnem-copy-webhook-url', function () {
+        var $button = $(this);
+        var $field = $('#' + String($button.data('target') || ''));
+
+        if (!$field.length) {
+            return;
+        }
+
+        var value = String($field.val() || '');
+        if (!value) {
+            return;
+        }
+
+        var originalText = $button.text();
+        var confirmCopied = function () {
+            $button.text('Copied!');
+            window.setTimeout(function () {
+                $button.text(originalText);
+            }, 2000);
+        };
+
+        if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
+            window.navigator.clipboard.writeText(value).then(confirmCopied, function () {
+                $field.trigger('select');
+            });
+            return;
+        }
+
+        $field.trigger('select');
+        try {
+            if (document.execCommand('copy')) {
+                confirmCopied();
+            }
+        } catch (e) {
+            // Selection remains so the URL can be copied manually.
+        }
+    });
+
     // ── Webhook health: endpoint reachability test ──────────────────────────
     $(document).on('click', '#mnem-test-webhook-endpoint', function () {
         var $button = $(this);
