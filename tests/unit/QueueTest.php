@@ -541,8 +541,29 @@ class QueueTest extends TestCase
     public function test_map_webhook_status_maps_provider_events()
     {
         $this->assertSame('bounce', Queue::map_webhook_status('sendgrid', 'bounce'));
+        $this->assertSame('clicked', Queue::map_webhook_status('sendgrid', 'group_click'));
         $this->assertSame('soft_bounce', Queue::map_webhook_status('mailgun', 'failed', array('severity' => 'temporary')));
+        $this->assertSame('rejected', Queue::map_webhook_status('mailgun', 'rejected'));
+        $this->assertSame('sent', Queue::map_webhook_status('brevo', 'request'));
+        $this->assertSame('opened', Queue::map_webhook_status('brevo', 'unique_proxy_open'));
         $this->assertSame('complaint', Queue::map_webhook_status('postmark', 'SpamComplaint'));
+        $this->assertSame('soft_bounce', Queue::map_webhook_status('postmark', 'Bounce', array('Type' => 'SoftBounce')));
+        $this->assertSame('invalid_email', Queue::map_webhook_status('postmark', 'Bounce', array('Type' => 'BadEmailAddress')));
+        $this->assertSame('rejected', Queue::map_webhook_status('smtp2go', 'reject'));
+    }
+
+    public function test_provider_lookup_status_maps_provider_event_variants()
+    {
+        $method = new \ReflectionMethod(Queue::class, 'map_provider_lookup_status');
+        $method->setAccessible(true);
+
+        $this->assertSame('clicked', $method->invoke(null, 'sendgrid', 'group_click'));
+        $this->assertSame('rejected', $method->invoke(null, 'mailgun', 'rejected'));
+        $this->assertSame('sent', $method->invoke(null, 'brevo', 'request'));
+        $this->assertSame('opened', $method->invoke(null, 'brevo', 'unique_proxy_open'));
+        $this->assertSame('soft_bounce', $method->invoke(null, 'postmark', 'SoftBounce'));
+        $this->assertSame('invalid_email', $method->invoke(null, 'postmark', 'BadEmailAddress'));
+        $this->assertSame('rejected', $method->invoke(null, 'smtp2go', 'reject'));
     }
 
     public function test_process_sms_batch_queries_sms_items_from_sms_queue()
