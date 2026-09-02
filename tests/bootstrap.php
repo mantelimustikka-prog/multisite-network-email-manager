@@ -257,6 +257,40 @@ if (!function_exists('get_userdata')) {
     }
 }
 
+if (!function_exists('get_user_by')) {
+    function get_user_by($field, $value)
+    {
+        $candidates = array();
+        if (isset($GLOBALS['mnem_user_data']) && is_array($GLOBALS['mnem_user_data'])) {
+            $candidates = array_merge($candidates, array_values($GLOBALS['mnem_user_data']));
+        }
+        if (isset($GLOBALS['mnem_users']) && is_array($GLOBALS['mnem_users'])) {
+            $candidates = array_merge($candidates, $GLOBALS['mnem_users']);
+        }
+
+        foreach ($candidates as $user) {
+            if (!is_object($user)) {
+                continue;
+            }
+            if (($field === 'ID' || $field === 'id') && isset($user->ID) && (int) $user->ID === (int) $value) {
+                return $user;
+            }
+            if ($field === 'email' && isset($user->user_email) && strtolower((string) $user->user_email) === strtolower((string) $value)) {
+                return $user;
+            }
+            if ($field === 'login' && isset($user->user_login) && (string) $user->user_login === (string) $value) {
+                return $user;
+            }
+        }
+
+        if (($field === 'ID' || $field === 'id') && isset($GLOBALS['mnem_user_data'][$value])) {
+            return $GLOBALS['mnem_user_data'][$value];
+        }
+
+        return false;
+    }
+}
+
 if (!function_exists('get_user_meta')) {
     function get_user_meta($user_id, $key = '', $single = false)
     {

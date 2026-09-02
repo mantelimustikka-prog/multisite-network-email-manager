@@ -773,6 +773,78 @@ class SmsSubscriberLists
         return $result !== false;
     }
 
+    /**
+     * Find a subscriber record by phone number within a given list, regardless
+     * of whether they are a WordPress user or a standalone subscriber.
+     *
+     * @param int    $list_id
+     * @param string $phone
+     * @return array<string,mixed>|null
+     */
+    public static function get_subscriber_by_phone_and_list(int $list_id, string $phone): ?array
+    {
+        global $wpdb;
+
+        $phone = trim($phone);
+        if ($list_id <= 0 || $phone === '') {
+            return null;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $row   = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id, list_id, user_id, subscriber_name, phone_number, subscription_status, subscribed_at, unsubscribed_at, unsubscribed_reason"
+                    . " FROM {$table} WHERE list_id = %d AND phone_number = %s ORDER BY id DESC LIMIT 1",
+                $list_id,
+                $phone
+            ),
+            ARRAY_A
+        );
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Unsubscribe a subscriber identified by phone number within a given list.
+     *
+     * @param int    $list_id
+     * @param string $phone
+     * @param string $reason
+     * @return bool True on success, false if not found or on error.
+     */
+    public static function unsubscribe_by_phone_and_list(int $list_id, string $phone, string $reason = ''): bool
+    {
+        global $wpdb;
+
+        $subscriber = self::get_subscriber_by_phone_and_list($list_id, $phone);
+        if (!$subscriber) {
+            return false;
+        }
+
+        $table  = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $reason = function_exists('sanitize_text_field') ? sanitize_text_field($reason) : $reason;
+
+        $result = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table} SET subscription_status = %s, unsubscribed_at = %s, unsubscribed_reason = %s WHERE id = %d",
+                'unsubscribed',
+                self::current_time_mysql(),
+                $reason,
+                (int) $subscriber['id']
+            )
+        );
+
+        if ($result !== false) {
+            Logger::info('SMS subscriber unsubscribed via phone/list lookup.', array(
+                'list_id'      => $list_id,
+                'phone_number' => $phone,
+                'reason'       => $reason,
+            ));
+        }
+
+        return $result !== false;
+    }
+
     public static function import_from_csv(int $list_id, string $csv_content)
     {
         $lines = preg_split('/\r\n|\r|\n/', $csv_content);

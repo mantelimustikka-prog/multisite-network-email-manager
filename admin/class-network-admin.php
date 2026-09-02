@@ -1803,6 +1803,26 @@ class NetworkAdmin
 
     public function handle_sms_campaign_action()
     {
+        $sms_log_actions = array(
+            'sms_log_unsubscribe',
+            'sms_log_delete_user',
+            'sms_log_unsubscribe_delete',
+        );
+
+        if (isset($_POST['mnem_action']) && in_array($_POST['mnem_action'], $sms_log_actions, true)) {
+            $action = sanitize_text_field(wp_unslash($_POST['mnem_action']));
+
+            if ($action === 'sms_log_unsubscribe') {
+                $this->handle_sms_log_unsubscribe();
+            } elseif ($action === 'sms_log_delete_user') {
+                $this->handle_sms_log_delete_user();
+            } elseif ($action === 'sms_log_unsubscribe_delete') {
+                $this->handle_sms_log_unsubscribe_delete();
+            }
+
+            return;
+        }
+
         $sms_campaign_actions = array(
             'save_sms_campaign',
             'send_sms_campaign',
@@ -1974,6 +1994,244 @@ class NetworkAdmin
                 'mnem_new_campaign_id' => (int) $new_campaign_id,
             )
         );
+    }
+
+    /**
+     * @return array{sms_queue_id:int,phone:string,list_id:int}|null
+     */
+    private function get_sms_log_action_request_data()
+    {
+        $sms_queue_id = isset($_POST['sms_queue_id']) ? (int) $_POST['sms_queue_id'] : 0;
+        $phone        = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+        $list_id      = isset($_POST['sms_list_id']) ? (int) $_POST['sms_list_id'] : 0;
+
+        if ($sms_queue_id <= 0 || $phone === '' || $list_id <= 0) {
+            return null;
+        }
+
+        return array(
+            'sms_queue_id' => $sms_queue_id,
+            'phone'        => $phone,
+            'list_id'      => $list_id,
+        );
+    }
+
+    /**
+     * Unsubscribe the phone number associated with a failed/bounced SMS log
+     * entry from its SMS subscriber list.
+     *
+     * @return void
+     */
+    public function handle_sms_log_unsubscribe()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_die('Unauthorized');
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_sms_logs')) {
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $request = $this->get_sms_log_action_request_data();
+        if ($request === null) {
+            $this->store_error_detail('Missing required data for SMS log action.');
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+
+        try {
+            $subscriber = \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($request['list_id'], $request['phone']);
+            if (!$subscriber) {
+                throw new \Exception('Subscriber not found.');
+            }
+
+            if ($subscriber['subscription_status'] === 'unsubscribed') {
+                throw new \Exception('Subscriber already unsubscribed.');
+            }
+
+            $result = \MNEM\SmsSubscriberLists::unsubscribe_by_phone_and_list(
+                $request['list_id'],
+                $request['phone'],
+                'Unsubscribed from SMS logs by admin'
+            );
+
+            if (!$result) {
+                throw new \Exception('Failed to unsubscribe subscriber.');
+            }
+
+            \MNEM\Logger::info('SMS subscriber unsubscribed from logs.', array(
+                'phone'        => $request['phone'],
+                'list_id'      => $request['list_id'],
+                'sms_queue_id' => $request['sms_queue_id'],
+                'admin_id'     => $admin_id,
+            ));
+
+            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            \MNEM\Logger::error('SMS log unsubscribe failed.', array(
+                'phone'    => $request['phone'],
+                'list_id'  => $request['list_id'],
+                'error'    => $e->getMessage(),
+                'admin_id' => $admin_id,
+            ));
+
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    /**
+     * Delete the WordPress user (if any) associated with the phone number of
+     * a failed/bounced SMS log entry, while keeping the SMS subscription record.
+     *
+     * @return void
+     */
+    public function handle_sms_log_delete_user()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_die('Unauthorized');
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_sms_logs')) {
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $request = $this->get_sms_log_action_request_data();
+        if ($request === null) {
+            $this->store_error_detail('Missing required data for SMS log action.');
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+
+        try {
+            $subscriber = \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($request['list_id'], $request['phone']);
+            if (!$subscriber) {
+                throw new \Exception('Subscriber not found.');
+            }
+
+            $user_id = (int) $subscriber['user_id'];
+            if ($user_id <= 0 || !$this->wp_user_exists($user_id)) {
+                throw new \Exception('No WordPress user associated with this subscriber.');
+            }
+
+            $result = $this->delete_network_user($user_id);
+            if (!$result) {
+                throw new \Exception('Failed to delete WordPress user.');
+            }
+
+            \MNEM\Logger::info('WordPress user deleted from SMS logs.', array(
+                'phone'           => $request['phone'],
+                'list_id'         => $request['list_id'],
+                'sms_queue_id'    => $request['sms_queue_id'],
+                'deleted_user_id' => $user_id,
+                'admin_id'        => $admin_id,
+            ));
+
+            $this->redirect_with_notice('mnem-logs', 'sms_log_user_deleted', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            \MNEM\Logger::error('SMS log delete user failed.', array(
+                'phone'    => $request['phone'],
+                'list_id'  => $request['list_id'],
+                'error'    => $e->getMessage(),
+                'admin_id' => $admin_id,
+            ));
+
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    /**
+     * Unsubscribe the phone number from its SMS list and delete the associated
+     * WordPress user in a single action.
+     *
+     * @return void
+     */
+    public function handle_sms_log_unsubscribe_delete()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_die('Unauthorized');
+        }
+
+        if (!$this->verify_nonce(isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '', 'mnem_sms_logs')) {
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $request = $this->get_sms_log_action_request_data();
+        if ($request === null) {
+            $this->store_error_detail('Missing required data for SMS log action.');
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+
+        try {
+            $subscriber = \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($request['list_id'], $request['phone']);
+            if (!$subscriber) {
+                throw new \Exception('Subscriber not found.');
+            }
+
+            if ($subscriber['subscription_status'] === 'unsubscribed') {
+                throw new \Exception('Subscriber already unsubscribed.');
+            }
+
+            $user_id = (int) $subscriber['user_id'];
+            if ($user_id <= 0 || !$this->wp_user_exists($user_id)) {
+                throw new \Exception('No WordPress user associated with this subscriber.');
+            }
+
+            $unsubscribed = \MNEM\SmsSubscriberLists::unsubscribe_by_phone_and_list(
+                $request['list_id'],
+                $request['phone'],
+                'Unsubscribed & user deleted from SMS logs by admin'
+            );
+
+            if (!$unsubscribed) {
+                throw new \Exception('Failed to unsubscribe subscriber.');
+            }
+
+            $deleted = $this->delete_network_user($user_id);
+            if (!$deleted) {
+                throw new \Exception('Subscriber unsubscribed, but failed to delete WordPress user.');
+            }
+
+            \MNEM\Logger::info('SMS subscriber unsubscribed and WordPress user deleted from logs.', array(
+                'phone'           => $request['phone'],
+                'list_id'         => $request['list_id'],
+                'sms_queue_id'    => $request['sms_queue_id'],
+                'deleted_user_id' => $user_id,
+                'admin_id'        => $admin_id,
+            ));
+
+            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed_and_deleted', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            \MNEM\Logger::error('SMS log unsubscribe & delete failed.', array(
+                'phone'    => $request['phone'],
+                'list_id'  => $request['list_id'],
+                'error'    => $e->getMessage(),
+                'admin_id' => $admin_id,
+            ));
+
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    private function wp_user_exists(int $user_id): bool
+    {
+        if (!function_exists('get_user_by')) {
+            return false;
+        }
+
+        return (bool) get_user_by('ID', $user_id);
     }
 
     /**

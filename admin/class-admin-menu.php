@@ -1102,7 +1102,7 @@ class AdminMenu
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
-        $error_detail_notices = array('campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed');
+        $error_detail_notices = array('campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed', 'sms_log_action_failed');
         $error_detail = in_array($notice, $error_detail_notices, true)
             ? \MNEM\Admin\NetworkAdmin::get_and_clear_error_detail()
             : '';
@@ -1192,6 +1192,10 @@ class AdminMenu
             'sms_campaign_nonce_failed' => 'SMS campaign security check failed.',
             'sms_campaign_save_failed' => 'SMS campaign could not be saved' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
             'sms_campaign_action_failed' => 'SMS campaign action failed' . ($error_detail !== '' ? ': ' . $error_detail : '.'),
+            'sms_log_unsubscribed' => 'Subscriber unsubscribed successfully.',
+            'sms_log_user_deleted' => 'WordPress user deleted successfully.',
+            'sms_log_unsubscribed_and_deleted' => 'Subscriber unsubscribed and WordPress user deleted.',
+            'sms_log_action_failed' => 'Action failed. Please check logs.' . ($error_detail !== '' ? ' ' . $error_detail : ''),
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -1207,7 +1211,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed', 'sms_campaign_nonce_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed', 'sms_campaign_nonce_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed', 'sms_log_action_failed'), true)) {
             return 'notice notice-error';
         }
 
