@@ -438,6 +438,34 @@ class QueueTest extends TestCase
         $this->assertSame('Processing', Queue::get_display_status(array('status' => 'processing')));
     }
 
+    public function test_resolve_status_update_allows_terminal_issue_to_override_success_status()
+    {
+        $this->assertSame('suppressed', Queue::resolve_status_update('sent', 'suppressed'));
+        $this->assertSame('unsubscribed', Queue::resolve_status_update('clicked', 'unsubscribed'));
+        $this->assertSame('bounce', Queue::resolve_status_update('delivered', 'bounce'));
+        $this->assertSame('complaint', Queue::resolve_status_update('opened', 'complaint'));
+    }
+
+    public function test_resolve_status_update_blocks_backward_transitions_within_success_lifecycle()
+    {
+        $this->assertSame('delivered', Queue::resolve_status_update('delivered', 'sent'));
+        $this->assertSame('opened', Queue::resolve_status_update('opened', 'delivered'));
+        $this->assertSame('clicked', Queue::resolve_status_update('clicked', 'opened'));
+    }
+
+    public function test_resolve_status_update_allows_forward_transitions_within_success_lifecycle()
+    {
+        $this->assertSame('delivered', Queue::resolve_status_update('sent', 'delivered'));
+        $this->assertSame('opened', Queue::resolve_status_update('delivered', 'opened'));
+        $this->assertSame('clicked', Queue::resolve_status_update('opened', 'clicked'));
+    }
+
+    public function test_resolve_status_update_prevents_success_status_from_downgrading_terminal_issue_status()
+    {
+        $this->assertSame('bounce', Queue::resolve_status_update('bounce', 'sent'));
+        $this->assertSame('unsubscribed', Queue::resolve_status_update('unsubscribed', 'clicked'));
+    }
+
     public function test_update_status_from_webhook_updates_queue_timestamps_and_status()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {

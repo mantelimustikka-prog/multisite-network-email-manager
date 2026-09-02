@@ -1969,19 +1969,26 @@ class Queue
             return $current_status;
         }
 
+        // Terminal issue statuses (bounce, unsubscribed, complaint, suppressed, etc.)
+        // are authoritative, final states reported by the provider. Always allow the
+        // transition to one of these, even from a previously recorded success status
+        // (sent/delivered/opened/clicked), since the provider may only learn of a
+        // bounce, unsubscribe, or block after an earlier success event was recorded.
+        if (in_array($new_status, self::TERMINAL_ISSUE_STATUSES, true)) {
+            return $new_status;
+        }
+
+        // Once a terminal issue status has been recorded it is final; don't let a
+        // later success status downgrade it back into the success lifecycle.
         if (in_array($current_status, self::TERMINAL_ISSUE_STATUSES, true) && in_array($new_status, self::SUCCESS_STATUSES, true)) {
             return $current_status;
         }
 
-        if ($new_status === 'sent' && !in_array($current_status, array('pending', 'processing', 'failed'), true)) {
-            return $current_status;
-        }
-
-        if ($new_status === 'delivered' && in_array($current_status, array('opened', 'clicked'), true)) {
-            return $current_status;
-        }
-
-        if ($new_status === 'opened' && $current_status === 'clicked') {
+        // Within the success lifecycle (sent -> delivered -> opened -> clicked), only
+        // allow forward movement; block nonsensical backward transitions such as
+        // delivered -> sent or clicked -> opened.
+        $success_order = array('sent' => 1, 'delivered' => 2, 'opened' => 3, 'clicked' => 4);
+        if (isset($success_order[$new_status], $success_order[$current_status]) && $success_order[$new_status] < $success_order[$current_status]) {
             return $current_status;
         }
 
