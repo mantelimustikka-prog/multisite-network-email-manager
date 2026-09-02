@@ -95,6 +95,13 @@ function mnem_migration_002()
         return array('success' => $success, 'messages' => $messages);
     }
 
+    $provider_metadata_exists = (int) $wpdb->get_var($wpdb->prepare(
+        'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+        $queue_table,
+        'provider_metadata'
+    ));
+    $provider_metadata_select = $provider_metadata_exists > 0 ? 'provider_metadata' : 'NULL';
+
     // Count how many SMS rows exist so we can report accurately.
     $sms_count = (int) $wpdb->get_var(
         $wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE message_type = %s", 'sms')
@@ -107,7 +114,7 @@ function mnem_migration_002()
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $inserted = $wpdb->query(
             "INSERT IGNORE INTO {$sms_table}
-                (id, site_id, sms_campaign_id, phone_number, body, status, message_type, provider_type, provider_message_id, sent_at, attempts, created_at)
+                (id, site_id, sms_campaign_id, phone_number, body, status, message_type, provider_type, provider_message_id, provider_metadata, sent_at, attempts, created_at)
              SELECT
                 id,
                 COALESCE(site_id, 0),
@@ -118,6 +125,7 @@ function mnem_migration_002()
                 'sms',
                 COALESCE(provider_type, ''),
                 COALESCE(provider_message_id, ''),
+                {$provider_metadata_select},
                 sent_at,
                 COALESCE(attempts, 0),
                 COALESCE(created_at, NOW())
