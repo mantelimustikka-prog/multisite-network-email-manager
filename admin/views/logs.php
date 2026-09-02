@@ -180,12 +180,13 @@ defined('ABSPATH') || exit;
                         <th><?php esc_html_e('Status', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Sent At', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Attempts', 'multisite-network-email-manager'); ?></th>
+                        <th><?php esc_html_e('Actions', 'multisite-network-email-manager'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($sms_items)) : ?>
                         <tr>
-                            <td colspan="7"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
+                            <td colspan="8"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
                         </tr>
                     <?php else : ?>
                         <?php foreach ($sms_items as $sms_item) : ?>
@@ -200,11 +201,106 @@ defined('ABSPATH') || exit;
                                 <td><span class="mnem-badge mnem-status-<?php echo esc_attr($sms_status_slug); ?>"><?php echo esc_html(ucfirst($sms_status_slug)); ?></span></td>
                                 <td><?php echo esc_html(!empty($sms_item['sent_at']) ? $sms_item['sent_at'] : '—'); ?></td>
                                 <td><?php echo esc_html((string) (int) $sms_item['attempts']); ?></td>
+                                <td>
+                                    <?php if (in_array($sms_status_slug, array('failed', 'bounced'), true)) : ?>
+                                        <?php
+                                        $sms_log_campaign = \MNEM\SmsCampaigns::get((int) $sms_item['sms_campaign_id']);
+                                        $sms_log_list_id  = is_array($sms_log_campaign) ? (int) $sms_log_campaign['sms_list_id'] : 0;
+                                        $sms_log_phone    = (string) $sms_item['phone_number'];
+
+                                        $sms_log_subscriber       = $sms_log_list_id > 0
+                                            ? \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($sms_log_list_id, $sms_log_phone)
+                                            : null;
+                                        $sms_log_is_unsubscribed  = is_array($sms_log_subscriber) && $sms_log_subscriber['subscription_status'] === 'unsubscribed';
+                                        $sms_log_has_wp_user      = is_array($sms_log_subscriber) && (int) $sms_log_subscriber['user_id'] > 0 && function_exists('get_user_by');
+                                        if ($sms_log_has_wp_user) {
+                                            $sms_log_wp_user = get_user_by('ID', (int) $sms_log_subscriber['user_id']);
+                                            $sms_log_has_wp_user = !empty($sms_log_wp_user);
+                                        }
+
+                                        $sms_log_unsubscribe_disabled = !is_array($sms_log_subscriber) || $sms_log_is_unsubscribed;
+                                        $sms_log_delete_user_disabled = !$sms_log_has_wp_user;
+                                        $sms_log_both_disabled        = $sms_log_unsubscribe_disabled || $sms_log_delete_user_disabled;
+
+                                        if (!is_array($sms_log_subscriber)) {
+                                            $sms_log_message = __('Subscriber not found for this phone number.', 'multisite-network-email-manager');
+                                        } elseif ($sms_log_is_unsubscribed && !$sms_log_has_wp_user) {
+                                            $sms_log_message = __('All actions completed for this subscriber.', 'multisite-network-email-manager');
+                                        } elseif ($sms_log_is_unsubscribed) {
+                                            $sms_log_message = __('Already unsubscribed from list.', 'multisite-network-email-manager');
+                                        } elseif (!$sms_log_has_wp_user) {
+                                            $sms_log_message = __('No WordPress user associated with this subscriber.', 'multisite-network-email-manager');
+                                        } else {
+                                            $sms_log_message = '';
+                                        }
+                                        ?>
+                                        <div class="mnem-sms-log-actions" style="display:flex;flex-direction:column;gap:4px;">
+                                            <form method="post" class="mnem-inline-form" onsubmit="return confirm('<?php echo esc_js(__('Unsubscribe this phone number from the SMS list?', 'multisite-network-email-manager')); ?>')">
+                                                <?php wp_nonce_field('mnem_sms_logs'); ?>
+                                                <input type="hidden" name="mnem_action" value="sms_log_unsubscribe" />
+                                                <input type="hidden" name="sms_queue_id" value="<?php echo esc_attr((string) $sms_item['id']); ?>" />
+                                                <input type="hidden" name="phone_number" value="<?php echo esc_attr($sms_log_phone); ?>" />
+                                                <input type="hidden" name="sms_list_id" value="<?php echo esc_attr((string) $sms_log_list_id); ?>" />
+                                                <input type="hidden" name="sms_campaign_id" value="<?php echo esc_attr((string) $sms_item['sms_campaign_id']); ?>" />
+                                                <?php submit_button(
+                                                    __('Unsubscribe', 'multisite-network-email-manager'),
+                                                    'primary',
+                                                    'submit',
+                                                    false,
+                                                    $sms_log_unsubscribe_disabled ? array(
+                                                        'disabled' => 'disabled',
+                                                        'title' => __('Already unsubscribed from this list.', 'multisite-network-email-manager'),
+                                                    ) : array()
+                                                ); ?>
+                                            </form>
+                                            <form method="post" class="mnem-inline-form" onsubmit="return confirm('<?php echo esc_js(__('Delete the WordPress user associated with this phone number?', 'multisite-network-email-manager')); ?>')">
+                                                <?php wp_nonce_field('mnem_sms_logs'); ?>
+                                                <input type="hidden" name="mnem_action" value="sms_log_delete_user" />
+                                                <input type="hidden" name="sms_queue_id" value="<?php echo esc_attr((string) $sms_item['id']); ?>" />
+                                                <input type="hidden" name="phone_number" value="<?php echo esc_attr($sms_log_phone); ?>" />
+                                                <input type="hidden" name="sms_list_id" value="<?php echo esc_attr((string) $sms_log_list_id); ?>" />
+                                                <input type="hidden" name="sms_campaign_id" value="<?php echo esc_attr((string) $sms_item['sms_campaign_id']); ?>" />
+                                                <?php submit_button(
+                                                    __('Delete User', 'multisite-network-email-manager'),
+                                                    'secondary',
+                                                    'submit',
+                                                    false,
+                                                    $sms_log_delete_user_disabled ? array(
+                                                        'disabled' => 'disabled',
+                                                        'title' => __('No WordPress user associated with this subscriber.', 'multisite-network-email-manager'),
+                                                    ) : array()
+                                                ); ?>
+                                            </form>
+                                            <form method="post" class="mnem-inline-form" onsubmit="return confirm('<?php echo esc_js(__('Unsubscribe from the SMS list AND delete the WordPress user?', 'multisite-network-email-manager')); ?>')">
+                                                <?php wp_nonce_field('mnem_sms_logs'); ?>
+                                                <input type="hidden" name="mnem_action" value="sms_log_unsubscribe_delete" />
+                                                <input type="hidden" name="sms_queue_id" value="<?php echo esc_attr((string) $sms_item['id']); ?>" />
+                                                <input type="hidden" name="phone_number" value="<?php echo esc_attr($sms_log_phone); ?>" />
+                                                <input type="hidden" name="sms_list_id" value="<?php echo esc_attr((string) $sms_log_list_id); ?>" />
+                                                <input type="hidden" name="sms_campaign_id" value="<?php echo esc_attr((string) $sms_item['sms_campaign_id']); ?>" />
+                                                <?php submit_button(
+                                                    __('Unsubscribe & Delete', 'multisite-network-email-manager'),
+                                                    'delete',
+                                                    'submit',
+                                                    false,
+                                                    $sms_log_both_disabled ? array(
+                                                        'disabled' => 'disabled',
+                                                        'title' => __('Already unsubscribed or no WordPress user to delete.', 'multisite-network-email-manager'),
+                                                    ) : array()
+                                                ); ?>
+                                            </form>
+                                            <?php if ($sms_log_message !== '') : ?>
+                                                <span class="description" style="color:#787c82;"><?php echo esc_html($sms_log_message); ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>
             </table>
+
 
             <!-- Pagination bottom -->
             <?php if ($sms_total_pages > 1) : ?>

@@ -1284,4 +1284,256 @@ class NetworkAdminTest extends TestCase
 
         $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
     }
+
+    private function make_sms_log_wpdb(array $subscriber_row)
+    {
+        return new class($subscriber_row) extends wpdb {
+            private $subscriber_row;
+
+            public function __construct($subscriber_row)
+            {
+                $this->subscriber_row = $subscriber_row;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return $this->subscriber_row;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+    }
+
+    public function test_handle_sms_log_unsubscribe_marks_subscriber_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_unsubscribe',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_unsubscribed', $GLOBALS['mnem_last_redirect']);
+        $update_queries = array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        });
+        $this->assertNotEmpty($update_queries);
+        $this->assertStringContainsString("'unsubscribed'", end($update_queries));
+    }
+
+    public function test_handle_sms_log_unsubscribe_rejects_already_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'unsubscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => '2024-02-01 00:00:00',
+            'unsubscribed_reason' => 'prior',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_unsubscribe',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_action_failed', $GLOBALS['mnem_last_redirect']);
+        $this->assertCount(0, $GLOBALS['wpdb']->queries === null ? array() : array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        }));
+    }
+
+    public function test_handle_sms_log_delete_user_deletes_wp_user()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_delete_user',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_user_deleted', $GLOBALS['mnem_last_redirect']);
+        $this->assertContains(9, $GLOBALS['mnem_deleted_users']);
+    }
+
+    public function test_handle_sms_log_delete_user_fails_when_no_wp_user()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 0,
+            'subscriber_name' => 'Standalone',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_delete_user',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_action_failed', $GLOBALS['mnem_last_redirect']);
+        $this->assertArrayNotHasKey('mnem_deleted_users', $GLOBALS);
+    }
+
+    public function test_handle_sms_log_unsubscribe_delete_executes_both_actions()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_unsubscribe_delete',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_unsubscribed_and_deleted', $GLOBALS['mnem_last_redirect']);
+        $this->assertContains(9, $GLOBALS['mnem_deleted_users']);
+        $update_queries = array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        });
+        $this->assertNotEmpty($update_queries);
+        $this->assertStringContainsString("'unsubscribed'", end($update_queries));
+    }
+
+    public function test_handle_sms_log_action_requires_permission()
+    {
+        $GLOBALS['mnem_current_user_can'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_unsubscribe',
+            '_wpnonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+
+        $this->expectException(Exception::class);
+        $admin->handle_sms_campaign_action();
+    }
+
+    public function test_handle_sms_log_action_rejects_invalid_nonce()
+    {
+        $GLOBALS['mnem_verify_nonce'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'mnem_action' => 'sms_log_unsubscribe',
+            '_wpnonce' => 'bad-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+            'sms_campaign_id' => 7,
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_campaign_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_log_action_failed', $GLOBALS['mnem_last_redirect']);
+        $this->assertCount(0, $GLOBALS['wpdb']->queries);
+    }
 }

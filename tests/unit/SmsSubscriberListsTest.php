@@ -805,4 +805,110 @@ class SmsSubscriberListsTest extends TestCase
         // The stored number should start with +358 (Finnish dial code).
         $this->assertStringContainsString('+358', $GLOBALS['wpdb']->last_query);
     }
+
+    public function test_get_subscriber_by_phone_and_list_returns_matching_row()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'list_id' => 2,
+                    'user_id' => 9,
+                    'subscriber_name' => 'Jane',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => null,
+                    'unsubscribed_reason' => '',
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::get_subscriber_by_phone_and_list(2, '+1234567890');
+
+        $this->assertIsArray($result);
+        $this->assertSame(5, $result['id']);
+        $this->assertSame(9, $result['user_id']);
+        $this->assertSame('subscribed', $result['subscription_status']);
+    }
+
+    public function test_get_subscriber_by_phone_and_list_returns_null_when_not_found()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+        };
+
+        $result = SmsSubscriberLists::get_subscriber_by_phone_and_list(2, '+1234567890');
+
+        $this->assertNull($result);
+    }
+
+    public function test_get_subscriber_by_phone_and_list_returns_null_for_invalid_input()
+    {
+        $this->assertNull(SmsSubscriberLists::get_subscriber_by_phone_and_list(0, '+1234567890'));
+        $this->assertNull(SmsSubscriberLists::get_subscriber_by_phone_and_list(2, ''));
+    }
+
+    public function test_unsubscribe_by_phone_and_list_marks_subscriber_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'list_id' => 2,
+                    'user_id' => 9,
+                    'subscriber_name' => 'Jane',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                    'subscribed_at' => '2024-01-01 00:00:00',
+                    'unsubscribed_at' => null,
+                    'unsubscribed_reason' => '',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::unsubscribe_by_phone_and_list(2, '+1234567890', 'Admin action');
+
+        $this->assertTrue($result);
+        $this->assertStringContainsString("'unsubscribed'", $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString('5', $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_unsubscribe_by_phone_and_list_returns_false_when_subscriber_missing()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::unsubscribe_by_phone_and_list(2, '+1234567890');
+
+        $this->assertFalse($result);
+    }
 }
