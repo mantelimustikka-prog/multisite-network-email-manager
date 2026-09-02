@@ -78,26 +78,6 @@ class RestApi
 
         register_rest_route(
             self::NAMESPACE,
-            '/track-open',
-            array(
-                'methods' => 'GET',
-                'callback' => array($this, 'track_open'),
-                'permission_callback' => '__return_true',
-            )
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
-            '/track-click',
-            array(
-                'methods' => 'GET',
-                'callback' => array($this, 'track_click'),
-                'permission_callback' => '__return_true',
-            )
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
             '/campaigns',
             array(
                 array(
@@ -317,44 +297,6 @@ class RestApi
         $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;
 
         return array('retried' => Queue::retry_failed($site_id));
-    }
-
-    public function track_open($request)
-    {
-        $token = method_exists($request, 'get_param') ? (string) $request->get_param('token') : '';
-        $gif = EmailTracker::handle_pixel_request($token);
-        if (function_exists('nocache_headers')) {
-            nocache_headers();
-        }
-        if (!headers_sent()) {
-            header('Content-Type: image/gif');
-            header('Cache-Control: no-cache, no-store, must-revalidate');
-        }
-        echo $gif;
-        exit;
-    }
-
-    public function track_click($request)
-    {
-        $token = method_exists($request, 'get_param') ? (string) $request->get_param('token') : '';
-        $url = method_exists($request, 'get_param') ? (string) $request->get_param('url') : '';
-        $redirect = EmailTracker::handle_link_click($token, $url);
-        if ($redirect === '') {
-            $redirect = function_exists('home_url') ? home_url('/') : '/';
-        }
-        if (function_exists('wp_sanitize_redirect')) {
-            $redirect = wp_sanitize_redirect($redirect);
-        }
-
-        if (function_exists('nocache_headers')) {
-            nocache_headers();
-        }
-        if (function_exists('wp_redirect')) {
-            wp_redirect($redirect, 302);
-        } else {
-            header('Location: ' . $redirect, true, 302);
-        }
-        exit;
     }
 
     public function get_campaigns()
@@ -593,6 +535,7 @@ class RestApi
                 'status'     => $status,
                 'recipient'  => $recipient,
                 'message_id' => $message_id,
+                'timestamp'  => $timestamp,
             ));
 
             if ($status === '') {
@@ -646,12 +589,31 @@ class RestApi
                 }
                 break;
             case 'brevo':
+                $raw_ts = null;
+                if (isset($data['timestamp']) && is_numeric($data['timestamp'])) {
+                    $raw_ts = (int) $data['timestamp'];
+                } elseif (isset($data['ts']) && is_numeric($data['ts'])) {
+                    $raw_ts = (int) $data['ts'];
+                } elseif (isset($data['ts_event']) && is_numeric($data['ts_event'])) {
+                    $raw_ts = (int) $data['ts_event'];
+                }
+
+                $parsed_timestamp = $raw_ts !== null && $raw_ts > 0 ? gmdate('Y-m-d H:i:s', $raw_ts) : '';
+
+                Logger::info('Extracted Brevo webhook event timestamp.', array(
+                    'provider'         => 'brevo',
+                    'raw_timestamp'    => isset($data['timestamp']) ? $data['timestamp'] : null,
+                    'raw_ts'           => isset($data['ts']) ? $data['ts'] : null,
+                    'raw_ts_event'     => isset($data['ts_event']) ? $data['ts_event'] : null,
+                    'parsed_timestamp' => $parsed_timestamp,
+                ));
+
                 $events[] = array(
                     'event_type' => isset($data['event']) ? (string) $data['event'] : '',
-                    'recipient' => isset($data['email']) ? (string) $data['email'] : '',
+                    'recipient'  => isset($data['email']) ? (string) $data['email'] : '',
                     'message_id' => isset($data['message-id']) ? (string) $data['message-id'] : '',
-                    'timestamp' => isset($data['ts_event']) ? gmdate('Y-m-d H:i:s', (int) $data['ts_event']) : '',
-                    'payload' => $data,
+                    'timestamp'  => $parsed_timestamp,
+                    'payload'    => $data,
                 );
                 break;
             case 'postmark':
