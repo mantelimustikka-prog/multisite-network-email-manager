@@ -58,6 +58,9 @@ class NetworkAdminTest extends TestCase
         $this->assertArrayHasKey('wp_ajax_mnem_load_batch_users', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_bulk_add_sms_subscribers', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_list', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_sms_log_unsubscribe', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_sms_log_delete_user', $GLOBALS['mnem_hooks']);
+        $this->assertArrayHasKey('wp_ajax_mnem_sms_log_unsubscribe_delete', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_action', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_invalid_phone_delete_user', $GLOBALS['mnem_hooks']);
         $this->assertArrayHasKey('wp_ajax_mnem_send_sms_test', $GLOBALS['mnem_hooks']);
@@ -1535,5 +1538,225 @@ class NetworkAdminTest extends TestCase
 
         $this->assertStringContainsString('mnem_notice=sms_log_action_failed', $GLOBALS['mnem_last_redirect']);
         $this->assertCount(0, $GLOBALS['wpdb']->queries);
+    }
+
+    public function test_ajax_sms_log_unsubscribe_marks_subscriber_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame('unsubscribe', $GLOBALS['mnem_last_json_response']['data']['action']);
+        $this->assertSame(array('unsubscribe', 'both'), $GLOBALS['mnem_last_json_response']['data']['buttons_to_disable']);
+        $update_queries = array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        });
+        $this->assertNotEmpty($update_queries);
+        $this->assertStringContainsString("'unsubscribed'", end($update_queries));
+    }
+
+    public function test_ajax_sms_log_unsubscribe_rejects_already_unsubscribed()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'unsubscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => '2024-02-01 00:00:00',
+            'unsubscribed_reason' => 'prior',
+        ));
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertCount(0, array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        }));
+    }
+
+    public function test_ajax_sms_log_delete_user_deletes_wp_user()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_delete_user();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertContains(9, $GLOBALS['mnem_deleted_users']);
+        $this->assertSame(array('delete_user', 'both'), $GLOBALS['mnem_last_json_response']['data']['buttons_to_disable']);
+    }
+
+    public function test_ajax_sms_log_delete_user_fails_when_no_wp_user()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 0,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_delete_user();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertEmpty(isset($GLOBALS['mnem_deleted_users']) ? $GLOBALS['mnem_deleted_users'] : array());
+    }
+
+    public function test_ajax_sms_log_unsubscribe_delete_executes_both_actions()
+    {
+        $GLOBALS['mnem_user_data'] = array(
+            9 => (object) array('ID' => 9, 'user_login' => 'jane', 'user_email' => 'jane@example.com'),
+        );
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array(
+            'id' => 5,
+            'list_id' => 2,
+            'user_id' => 9,
+            'subscriber_name' => 'Jane',
+            'phone_number' => '+1234567890',
+            'subscription_status' => 'subscribed',
+            'subscribed_at' => '2024-01-01 00:00:00',
+            'unsubscribed_at' => null,
+            'unsubscribed_reason' => '',
+        ));
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe_delete();
+
+        $this->assertTrue($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertContains(9, $GLOBALS['mnem_deleted_users']);
+        $this->assertSame(
+            array('unsubscribe', 'delete_user', 'both'),
+            $GLOBALS['mnem_last_json_response']['data']['buttons_to_disable']
+        );
+        $update_queries = array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return strpos($q, 'UPDATE') !== false;
+        });
+        $this->assertNotEmpty($update_queries);
+    }
+
+    public function test_ajax_sms_log_action_requires_permission()
+    {
+        $GLOBALS['mnem_current_user_can'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(403, $GLOBALS['mnem_last_json_response']['status_code']);
+        $this->assertCount(0, $GLOBALS['wpdb']->queries);
+    }
+
+    public function test_ajax_sms_log_action_rejects_invalid_nonce()
+    {
+        $GLOBALS['mnem_verify_nonce'] = false;
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array());
+
+        $_POST = array(
+            'nonce' => 'bad-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '+1234567890',
+            'sms_list_id' => 2,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertCount(0, $GLOBALS['wpdb']->queries);
+    }
+
+    public function test_ajax_sms_log_action_requires_request_data()
+    {
+        $GLOBALS['wpdb'] = $this->make_sms_log_wpdb(array());
+
+        $_POST = array(
+            'nonce' => 'test-nonce',
+            'sms_queue_id' => 42,
+            'phone_number' => '',
+            'sms_list_id' => 0,
+        );
+
+        $admin = new NetworkAdmin();
+        $admin->ajax_sms_log_unsubscribe();
+
+        $this->assertFalse($GLOBALS['mnem_last_json_response']['success']);
+        $this->assertSame(400, $GLOBALS['mnem_last_json_response']['status_code']);
     }
 }
