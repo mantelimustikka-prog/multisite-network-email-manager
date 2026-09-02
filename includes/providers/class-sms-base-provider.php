@@ -42,6 +42,11 @@ abstract class SmsBaseProvider implements \MNEM\Interfaces\SmsProviderInterface
         );
     }
 
+    public function supports_message_status_lookup(): bool
+    {
+        return false;
+    }
+
     /**
      * Return the provider key (slug) used in webhook URLs and status maps.
      * Override in each concrete provider.

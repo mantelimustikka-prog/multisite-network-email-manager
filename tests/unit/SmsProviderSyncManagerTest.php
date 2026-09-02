@@ -84,4 +84,32 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertSame(1, $result['updated']);
         $this->assertStringNotContainsString('UPDATE ', implode("\n", $GLOBALS['wpdb']->queries));
     }
+
+    public function test_sync_does_not_overwrite_a_concurrent_webhook_update(): void
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 44,
+                    'status' => 'sent',
+                    'provider_status' => '',
+                    'provider_message_id' => 'tm-44',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame(0, $result['updated']);
+        $this->assertNotEmpty($result['warnings']);
+        $this->assertStringContainsString("WHERE id = 44 AND status = 'sent'", implode("\n", $GLOBALS['wpdb']->queries));
+    }
 }

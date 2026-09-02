@@ -139,6 +139,11 @@ class SmsTextmagic extends SmsBaseProvider
         return array('success' => true, 'provider_status' => $status, 'message' => 'TextMagic status retrieved.');
     }
 
+    public function supports_message_status_lookup(): bool
+    {
+        return true;
+    }
+
     public static function get_webhook_signature_key(): string
     {
         return '';

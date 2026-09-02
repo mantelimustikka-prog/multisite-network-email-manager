@@ -40,6 +40,7 @@ class SmsProviderStatusMap
             'f'            => 'failed',
             'r'            => 'rejected',
             'b'            => 'bounce',
+            'a'            => 'bounce',
             'submitted'    => 'sent',
             'sent'         => 'sent',
             'delivered'    => 'delivered',

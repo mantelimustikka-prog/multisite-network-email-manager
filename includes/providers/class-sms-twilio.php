@@ -136,6 +136,11 @@ class SmsTwilio extends SmsBaseProvider
         return array('success' => true, 'provider_status' => $status, 'message' => 'Twilio status retrieved.');
     }
 
+    public function supports_message_status_lookup(): bool
+    {
+        return true;
+    }
+
     public static function get_webhook_signature_key(): string
     {
         $config = \MNEM\SmsSettings::get_provider_config('twilio');

@@ -32,7 +32,11 @@ class SmsProviderSyncManager
         );
 
         $provider_instance = SmsProviderManager::get_provider($provider);
-        if ($provider_instance === null || !method_exists($provider_instance, 'get_message_status')) {
+        if (
+            $provider_instance === null
+            || !method_exists($provider_instance, 'supports_message_status_lookup')
+            || !$provider_instance->supports_message_status_lookup()
+        ) {
             $summary['errors'][] = __('The selected SMS provider does not support status lookup.', 'multisite-network-email-manager');
             return $summary;
         }
@@ -92,32 +96,22 @@ class SmsProviderSyncManager
             }
 
             $changed = $canonical !== (string) $row['status'] || $raw_status !== (string) $row['provider_status'];
-            if ($changed) {
-                ++$summary['updated'];
-                if (isset($summary[$canonical])) {
-                    ++$summary[$canonical];
-                } elseif ($canonical === 'bounce') {
-                    ++$summary['bounced'];
+            if ($dry_run) {
+                if ($changed) {
+                    $this->add_change_to_summary($summary, $row, $canonical, $raw_status);
                 }
-                $summary['changes'][] = array(
-                    'id' => (int) $row['id'],
-                    'old_status' => (string) $row['status'],
-                    'new_status' => $canonical,
-                    'provider_status' => $raw_status,
-                );
-            }
-
-            if (!$dry_run) {
+            } else {
                 $checked_at = $this->current_time_mysql();
                 $updated = $wpdb->query($wpdb->prepare(
                     "UPDATE {$table}
                     SET status = %s, provider_status = %s, provider_status_checked_at = %s,
                         last_sync_error = NULL, sync_attempts = 0
-                    WHERE id = %d",
+                    WHERE id = %d AND status = %s",
                     $canonical,
                     $raw_status,
                     $checked_at,
-                    (int) $row['id']
+                    (int) $row['id'],
+                    (string) $row['status']
                 ));
 
                 if ($updated === false) {
@@ -125,6 +119,16 @@ class SmsProviderSyncManager
                     $summary['errors'][] = sprintf('SMS #%d: %s', (int) $row['id'], $error);
                     $this->record_failure((int) $row['id'], (int) $row['sync_attempts'], $error);
                     continue;
+                }
+                if ($updated === 0 && $changed) {
+                    $summary['warnings'][] = sprintf(
+                        __('SMS #%d changed while its provider status was being checked; it was not overwritten.', 'multisite-network-email-manager'),
+                        (int) $row['id']
+                    );
+                    continue;
+                }
+                if ($changed) {
+                    $this->add_change_to_summary($summary, $row, $canonical, $raw_status);
                 }
 
                 Logger::info('SMS provider status synchronized.', array(
@@ -140,6 +144,26 @@ class SmsProviderSyncManager
         }
 
         return $summary;
+    }
+
+    /**
+     * @param array<string,mixed> $summary
+     * @param array<string,mixed> $row
+     */
+    private function add_change_to_summary(array &$summary, array $row, string $canonical, string $raw_status): void
+    {
+        ++$summary['updated'];
+        if (isset($summary[$canonical])) {
+            ++$summary[$canonical];
+        } elseif ($canonical === 'bounce') {
+            ++$summary['bounced'];
+        }
+        $summary['changes'][] = array(
+            'id' => (int) $row['id'],
+            'old_status' => (string) $row['status'],
+            'new_status' => $canonical,
+            'provider_status' => $raw_status,
+        );
     }
 
     /** @return array<string,mixed> */
