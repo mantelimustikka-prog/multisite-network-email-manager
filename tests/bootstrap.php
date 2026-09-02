@@ -506,6 +506,33 @@ if (!function_exists('network_admin_url')) {
     }
 }
 
+if (!function_exists('add_query_arg')) {
+    function add_query_arg($args, $url = '')
+    {
+        $fragment = '';
+        if (strpos($url, '#') !== false) {
+            list($url, $fragment) = explode('#', $url, 2);
+            $fragment = '#' . $fragment;
+        }
+
+        $query = array();
+        if (strpos($url, '?') !== false) {
+            list($url, $query_string) = explode('?', $url, 2);
+            parse_str($query_string, $query);
+        }
+
+        foreach ($args as $key => $value) {
+            if ($value === false) {
+                unset($query[$key]);
+            } else {
+                $query[$key] = $value;
+            }
+        }
+
+        return $url . ($query ? '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986) : '') . $fragment;
+    }
+}
+
 if (!function_exists('wp_schedule_event')) {
     function wp_schedule_event($timestamp, $recurrence, $hook)
     {

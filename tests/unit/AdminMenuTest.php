@@ -515,5 +515,6 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('Bounced', $output);
         $this->assertStringContainsString('Delivered', $output);
         $this->assertStringContainsString('Failed', $output);
+        $this->assertStringContainsString('sms_status=pending', $output);
     }
 }

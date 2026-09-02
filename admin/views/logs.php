@@ -40,13 +40,33 @@ defined('ABSPATH') || exit;
                     'sent'    => array('label' => __('Sent', 'multisite-network-email-manager'), 'color' => '#00a32a'),
                     'failed'  => array('label' => __('Failed', 'multisite-network-email-manager'), 'color' => '#d63638'),
                 );
-                foreach ($sms_stat_items as $key => $meta) : ?>
-                    <div style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:12px 20px;min-width:100px;text-align:center;">
-                        <div style="font-size:24px;font-weight:700;color:<?php echo esc_attr($meta['color']); ?>;">
-                            <?php echo esc_html(number_format((int) $sms_stats[$key])); ?>
+                foreach ($sms_stat_items as $key => $meta) :
+                    $sms_stat_status = $key === 'total' ? '' : $key;
+                    $sms_stat_url    = add_query_arg(
+                        array(
+                            'page'                => 'mnem-logs',
+                            'tab'                 => 'sms',
+                            'sms_status'          => $sms_stat_status,
+                            'sms_provider_status' => $sms_provider_status_filter,
+                            'sms_campaign'        => $sms_campaign_filter,
+                            'sms_date_from'       => $sms_date_from,
+                            'sms_date_to'         => $sms_date_to,
+                            'sms_phone'           => $sms_phone_search,
+                            'sms_per_page'        => $sms_per_page,
+                        ),
+                        network_admin_url('admin.php')
+                    );
+                    ?>
+                    <a href="<?php echo esc_url($sms_stat_url); ?>" style="text-decoration:none;color:inherit;display:block;">
+                        <div class="mnem-sms-stat-card" style="background:#fff;border:1px solid #c3c4c7;border-radius:4px;padding:12px 20px;min-width:100px;text-align:center;cursor:pointer;transition:box-shadow 0.15s ease,border-color 0.15s ease;<?php echo $sms_status_filter === $sms_stat_status ? 'border-color:' . esc_attr($meta['color']) . ';box-shadow:0 0 0 1px ' . esc_attr($meta['color']) . ';' : ''; ?>"
+                             onmouseover="this.style.boxShadow='0 1px 4px rgba(0,0,0,0.15)';"
+                             onmouseout="this.style.boxShadow='<?php echo $sms_status_filter === $sms_stat_status ? '0 0 0 1px ' . esc_attr($meta['color']) : 'none'; ?>';">
+                            <div style="font-size:24px;font-weight:700;color:<?php echo esc_attr($meta['color']); ?>;">
+                                <?php echo esc_html(number_format((int) $sms_stats[$key])); ?>
+                            </div>
+                            <div style="color:#50575e;font-size:13px;"><?php echo esc_html($meta['label']); ?></div>
                         </div>
-                        <div style="color:#50575e;font-size:13px;"><?php echo esc_html($meta['label']); ?></div>
-                    </div>
+                    </a>
                 <?php endforeach; ?>
             </div>
 
