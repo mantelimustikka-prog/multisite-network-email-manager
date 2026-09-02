@@ -590,7 +590,7 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'general';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'webhook-health', 'general', 'sms');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'webhook-health', 'general', 'sms');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'general';
         }
