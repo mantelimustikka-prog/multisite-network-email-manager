@@ -108,6 +108,34 @@ class SmsTwilio extends SmsBaseProvider
         return $this->error_result('Twilio send failed (HTTP ' . $response['code'] . '): ' . $detail);
     }
 
+    public function get_message_status(string $message_id): array
+    {
+        $sid = isset($this->config['account_sid']) ? trim((string) $this->config['account_sid']) : '';
+        $token = isset($this->config['auth_token']) ? trim((string) $this->config['auth_token']) : '';
+        $message_id = trim($message_id);
+
+        if ($sid === '' || $token === '' || $message_id === '') {
+            return array('success' => false, 'provider_status' => '', 'message' => 'Twilio credentials and message SID are required.');
+        }
+
+        $url = self::API_BASE . '/Accounts/' . rawurlencode($sid) . '/Messages/' . rawurlencode($message_id) . '.json';
+        $response = $this->http_get($url, array(
+            'Authorization' => 'Basic ' . base64_encode($sid . ':' . $token),
+            'Accept' => 'application/json',
+        ));
+        if (is_wp_error($response)) {
+            return array('success' => false, 'provider_status' => '', 'message' => 'Connection error: ' . $response->get_error_message());
+        }
+
+        $data = json_decode($response['body'], true);
+        $status = is_array($data) && isset($data['status']) ? (string) $data['status'] : '';
+        if ($response['code'] !== 200 || $status === '') {
+            return array('success' => false, 'provider_status' => '', 'message' => 'Twilio status lookup failed (HTTP ' . $response['code'] . ').');
+        }
+
+        return array('success' => true, 'provider_status' => $status, 'message' => 'Twilio status retrieved.');
+    }
+
     public static function get_webhook_signature_key(): string
     {
         $config = \MNEM\SmsSettings::get_provider_config('twilio');

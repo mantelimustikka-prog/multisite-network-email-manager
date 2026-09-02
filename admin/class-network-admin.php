@@ -16,6 +16,7 @@ class NetworkAdmin
         add_action('admin_init', array($this, 'handle_save_status_interval_settings'));
         add_action('admin_init', array($this, 'handle_save_general_settings'));
         add_action('admin_init', array($this, 'handle_sms_settings_save'));
+        add_action('admin_init', array($this, 'handle_sms_provider_status_sync'));
         add_action('admin_init', array($this, 'handle_sms_data_integrity_action'));
         add_action('admin_init', array($this, 'handle_suppression_action'));
         add_action('admin_init', array($this, 'handle_campaign_action'));
@@ -60,6 +61,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_sms_log_unsubscribe', array($this, 'ajax_sms_log_unsubscribe'));
         add_action('wp_ajax_mnem_sms_log_delete_user', array($this, 'ajax_sms_log_delete_user'));
         add_action('wp_ajax_mnem_sms_log_unsubscribe_delete', array($this, 'ajax_sms_log_unsubscribe_delete'));
+        add_action('wp_ajax_mnem_sms_log_refresh_status', array($this, 'ajax_sms_log_refresh_status'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -121,6 +123,48 @@ class NetworkAdmin
 
         $saved = \MNEM\SmtpSettings::save($data);
         $this->redirect_with_notice('mnem-settings', $saved ? 'smtp_saved' : 'smtp_failed', array('tab' => 'smtp'));
+    }
+
+    public function handle_sms_provider_status_sync(): void
+    {
+        if (!isset($_POST['mnem_action']) || $_POST['mnem_action'] !== 'sync_sms_provider_statuses') {
+            return;
+        }
+        if (!$this->current_user_can_manage_network()) {
+            return;
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? sanitize_text_field(wp_unslash($_POST['_wpnonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_provider_status_sync')) {
+            $this->redirect_with_notice('mnem-settings', 'sms_status_sync_failed', array('tab' => 'sms'));
+            return;
+        }
+
+        $provider = isset($_POST['sync_provider']) ? sanitize_key(wp_unslash($_POST['sync_provider'])) : '';
+        $limit = isset($_POST['sync_limit']) ? (int) $_POST['sync_limit'] : 100;
+        if (!in_array($limit, array(100, 500, 1000), true)) {
+            $limit = 100;
+        }
+
+        $range = isset($_POST['sync_date_range']) ? sanitize_key(wp_unslash($_POST['sync_date_range'])) : '7';
+        $options = array(
+            'dry_run' => !empty($_POST['sync_dry_run']),
+            'source' => 'manual',
+        );
+        if ($range === 'custom') {
+            $options['date_from'] = isset($_POST['sync_date_from']) ? sanitize_text_field(wp_unslash($_POST['sync_date_from'])) : '';
+            $options['date_to'] = isset($_POST['sync_date_to']) ? sanitize_text_field(wp_unslash($_POST['sync_date_to'])) : '';
+        } else {
+            $days = $range === '30' ? 30 : 7;
+            $day_in_seconds = defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400;
+            $options['date_from'] = gmdate('Y-m-d', time() - ($days * $day_in_seconds));
+        }
+
+        $manager = new \MNEM\SmsProviderSyncManager();
+        $result = $manager->sync_statuses_from_provider($provider, $limit, $options);
+        $this->store_sms_status_sync_result($result);
+        $notice = empty($result['errors']) ? 'sms_status_sync_complete' : 'sms_status_sync_failed';
+        $this->redirect_with_notice('mnem-settings', $notice, array('tab' => 'sms'));
     }
 
     public function handle_save_sender_settings()
@@ -1006,6 +1050,7 @@ class NetworkAdmin
                             'confirmDeleteUser'        => __('Delete the WordPress user associated with this phone number?', 'multisite-network-email-manager'),
                             'confirmUnsubscribeDelete' => __('Unsubscribe from the SMS list AND delete the WordPress user?', 'multisite-network-email-manager'),
                             'working'                  => __('Working…', 'multisite-network-email-manager'),
+                            'refreshing'               => __('Refreshing…', 'multisite-network-email-manager'),
                             'requestFailed'            => __('The request failed. Please try again.', 'multisite-network-email-manager'),
                         ),
                     )
@@ -1781,6 +1826,24 @@ class NetworkAdmin
         return array();
     }
 
+    /** @return array<string,mixed> */
+    public static function get_and_clear_sms_status_sync_result(): array
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id === 0) {
+            return array();
+        }
+
+        $key = 'mnem_sms_status_sync_result_' . $user_id;
+        $result = get_transient($key);
+        if (is_array($result)) {
+            delete_transient($key);
+            return $result;
+        }
+
+        return array();
+    }
+
     private function maybe_wrap_with_global_header_footer(string $body): string
     {
         return \MNEM\EmailFormatter::apply_global_header_footer($body);
@@ -1797,6 +1860,15 @@ class NetworkAdmin
         }
 
         set_transient('mnem_sms_integrity_result_' . $user_id, $payload, 60);
+    }
+
+    /** @param array<string,mixed> $result */
+    private function store_sms_status_sync_result(array $result): void
+    {
+        $user_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        if ($user_id > 0) {
+            set_transient('mnem_sms_status_sync_result_' . $user_id, $result, 60);
+        }
     }
 
     /**
@@ -2425,6 +2497,48 @@ class NetworkAdmin
                 'delete_user' => __('✓ Deleted', 'multisite-network-email-manager'),
                 'both'        => __('✓ Completed', 'multisite-network-email-manager'),
             ),
+        ));
+    }
+
+    public function ajax_sms_log_refresh_status(): void
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'multisite-network-email-manager')), 403);
+            return;
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_logs_ajax')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please reload the page and try again.', 'multisite-network-email-manager')), 403);
+            return;
+        }
+
+        $queue_id = isset($_POST['sms_queue_id']) ? (int) $_POST['sms_queue_id'] : 0;
+        if ($queue_id <= 0) {
+            wp_send_json_error(array('message' => __('Invalid SMS queue row.', 'multisite-network-email-manager')), 400);
+            return;
+        }
+
+        $manager = new \MNEM\SmsProviderSyncManager();
+        $result = $manager->sync_single($queue_id);
+        if (!empty($result['errors'])) {
+            wp_send_json_error(array('message' => implode(' ', $result['errors'])));
+            return;
+        }
+        if (empty($result['changes'])) {
+            wp_send_json_success(array(
+                'message' => __('Provider status checked; the queue status is already current.', 'multisite-network-email-manager'),
+            ));
+            return;
+        }
+
+        $change = $result['changes'][0];
+        wp_send_json_success(array(
+            'message' => __('SMS provider status refreshed.', 'multisite-network-email-manager'),
+            'status' => $change['new_status'],
+            'provider_status' => $change['provider_status'],
+            'provider_status_label' => $change['new_status'] === 'bounce' ? __('Bounced', 'multisite-network-email-manager') : ucfirst($change['new_status']),
+            'checked_at' => function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s'),
         ));
     }
 

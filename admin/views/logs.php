@@ -68,6 +68,16 @@ defined('ABSPATH') || exit;
                         <?php endforeach; ?>
                     </select>
 
+                    <label for="mnem-sms-provider-status"><strong><?php esc_html_e('Provider Status:', 'multisite-network-email-manager'); ?></strong></label>
+                    <select name="sms_provider_status" id="mnem-sms-provider-status" onchange="this.form.submit();">
+                        <option value=""><?php esc_html_e('All Provider Statuses', 'multisite-network-email-manager'); ?></option>
+                        <?php foreach ($sms_provider_statuses as $provider_status) : ?>
+                            <option value="<?php echo esc_attr($provider_status); ?>"<?php selected($sms_provider_status_filter, $provider_status); ?>>
+                                <?php echo esc_html(ucfirst($provider_status)); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+
                     <!-- Campaign filter -->
                     <?php if (!empty($sms_campaigns_list)) : ?>
                         <label for="mnem-sms-campaign"><strong><?php esc_html_e('Campaign:', 'multisite-network-email-manager'); ?></strong></label>
@@ -108,7 +118,7 @@ defined('ABSPATH') || exit;
 
                     <?php submit_button(__('Filter', 'multisite-network-email-manager'), 'secondary', 'submit', false); ?>
 
-                    <?php if ($sms_status_filter !== '' || $sms_campaign_filter !== '' || $sms_phone_search !== '' || $sms_date_from !== '' || $sms_date_to !== '') : ?>
+                    <?php if ($sms_status_filter !== '' || $sms_provider_status_filter !== '' || $sms_campaign_filter !== '' || $sms_phone_search !== '' || $sms_date_from !== '' || $sms_date_to !== '') : ?>
                         <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-logs&tab=sms')); ?>" class="button">
                             <?php esc_html_e('Clear Filters', 'multisite-network-email-manager'); ?>
                         </a>
@@ -136,6 +146,7 @@ defined('ABSPATH') || exit;
                     'page'         => 'mnem-logs',
                     'tab'          => 'sms',
                     'sms_status'   => $sms_status_filter !== '' ? $sms_status_filter : null,
+                    'sms_provider_status' => $sms_provider_status_filter !== '' ? $sms_provider_status_filter : null,
                     'sms_campaign' => $sms_campaign_filter !== '' ? $sms_campaign_filter : null,
                     'sms_phone'    => $sms_phone_search !== '' ? $sms_phone_search : null,
                     'sms_date_from'=> $sms_date_from !== '' ? $sms_date_from : null,
@@ -178,6 +189,8 @@ defined('ABSPATH') || exit;
                         <th><?php esc_html_e('Phone Number', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Message', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Status', 'multisite-network-email-manager'); ?></th>
+                        <th><?php esc_html_e('Provider Status', 'multisite-network-email-manager'); ?></th>
+                        <th><?php esc_html_e('Status Last Checked', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Sent At', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Attempts', 'multisite-network-email-manager'); ?></th>
                         <th><?php esc_html_e('Actions', 'multisite-network-email-manager'); ?></th>
@@ -186,7 +199,7 @@ defined('ABSPATH') || exit;
                 <tbody>
                     <?php if (empty($sms_items)) : ?>
                         <tr>
-                            <td colspan="8"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
+                            <td colspan="10"><?php esc_html_e('No SMS log entries found.', 'multisite-network-email-manager'); ?></td>
                         </tr>
                     <?php else : ?>
                         <?php $sms_log_campaign_cache = array(); ?>
@@ -199,7 +212,30 @@ defined('ABSPATH') || exit;
                                 <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo esc_attr((string) $sms_item['body']); ?>">
                                     <?php echo esc_html((string) $sms_item['body']); ?>
                                 </td>
-                                <td><span class="mnem-badge mnem-status-<?php echo esc_attr($sms_status_slug); ?>"><?php echo esc_html(ucfirst($sms_status_slug)); ?></span></td>
+                                <td class="mnem-sms-queue-status"><span class="mnem-badge mnem-status-<?php echo esc_attr($sms_status_slug); ?>"><?php echo esc_html(ucfirst($sms_status_slug)); ?></span></td>
+                                <?php
+                                $sms_provider_status = isset($sms_item['provider_status']) ? (string) $sms_item['provider_status'] : '';
+                                $sms_mapped_provider_status = $sms_provider_status !== ''
+                                    ? \MNEM\SmsProviderStatusMap::map((string) $sms_item['provider_type'], $sms_provider_status)
+                                    : '';
+                                $sms_status_out_of_sync = $sms_mapped_provider_status !== '' && $sms_mapped_provider_status !== $sms_status_slug;
+                                $sms_sync_error = isset($sms_item['last_sync_error']) ? (string) $sms_item['last_sync_error'] : '';
+                                $sms_provider_status_label = $sms_mapped_provider_status === 'bounce'
+                                    ? __('Bounced', 'multisite-network-email-manager')
+                                    : ucfirst($sms_mapped_provider_status !== '' ? $sms_mapped_provider_status : $sms_provider_status);
+                                ?>
+                                <td class="mnem-sms-provider-status" title="<?php echo esc_attr($sms_sync_error !== '' ? $sms_sync_error : $sms_provider_status); ?>">
+                                    <?php echo esc_html($sms_provider_status !== '' ? $sms_provider_status_label : '—'); ?>
+                                    <?php if ($sms_status_out_of_sync) : ?>
+                                        <span class="dashicons dashicons-warning" style="color:#d63638;" title="<?php echo esc_attr__('Queue and provider statuses differ.', 'multisite-network-email-manager'); ?>"></span>
+                                    <?php elseif ($sms_provider_status !== '') : ?>
+                                        <span aria-label="<?php echo esc_attr__('Synced', 'multisite-network-email-manager'); ?>">✓</span>
+                                    <?php endif; ?>
+                                    <?php if ($sms_sync_error !== '') : ?>
+                                        <span class="dashicons dashicons-info-outline" style="color:#d63638;"></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="mnem-sms-provider-checked"><?php echo esc_html(!empty($sms_item['provider_status_checked_at']) ? $sms_item['provider_status_checked_at'] : '—'); ?></td>
                                 <td><?php echo esc_html(!empty($sms_item['sent_at']) ? $sms_item['sent_at'] : '—'); ?></td>
                                 <td><?php echo esc_html((string) (int) $sms_item['attempts']); ?></td>
                                 <td>
@@ -245,6 +281,11 @@ defined('ABSPATH') || exit;
                                          data-queue-id="<?php echo esc_attr((string) $sms_item['id']); ?>"
                                          data-phone="<?php echo esc_attr($sms_log_phone); ?>"
                                          data-list-id="<?php echo esc_attr((string) $sms_log_list_id); ?>">
+                                        <?php if ($sms_provider_status === '') : ?>
+                                            <button type="button" class="button mnem-sms-refresh-status">
+                                                <?php esc_html_e('Refresh Status', 'multisite-network-email-manager'); ?>
+                                            </button>
+                                        <?php endif; ?>
                                         <button type="button"
                                                 class="button button-primary mnem-sms-log-action"
                                                 data-mnem-action="unsubscribe"

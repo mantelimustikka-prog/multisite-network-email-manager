@@ -29,6 +29,20 @@ abstract class SmsBaseProvider implements \MNEM\Interfaces\SmsProviderInterface
     }
 
     /**
+     * Look up a provider-issued message's current delivery status.
+     *
+     * @return array{success: bool, provider_status: string, message: string}
+     */
+    public function get_message_status(string $message_id): array
+    {
+        return array(
+            'success'         => false,
+            'provider_status' => '',
+            'message'         => 'Message status lookup is not supported by this provider.',
+        );
+    }
+
+    /**
      * Return the provider key (slug) used in webhook URLs and status maps.
      * Override in each concrete provider.
      */

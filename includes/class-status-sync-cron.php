@@ -15,6 +15,7 @@ class StatusSyncCron
     {
         add_filter('cron_schedules', array(__CLASS__, 'register_intervals'));
         add_action(self::HOOK, array(__CLASS__, 'sync_last_100_emails'));
+        add_action(self::HOOK, array(__CLASS__, 'retry_sms_status_syncs'));
         add_action(Queue::STATUS_REFRESH_HOOK, array(Queue::class, 'refresh_single_item_status'));
         add_action('mnem_status_update_interval_changed', array(__CLASS__, 'reschedule'));
 
@@ -147,6 +148,12 @@ class StatusSyncCron
         ));
 
         return $updated;
+    }
+
+    public static function retry_sms_status_syncs(): int
+    {
+        $manager = new SmsProviderSyncManager();
+        return $manager->retry_failed_syncs(self::SYNC_LIMIT);
     }
 
     public static function deactivate(): void

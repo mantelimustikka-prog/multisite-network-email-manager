@@ -936,6 +936,7 @@ require_once __DIR__ . '/../includes/providers/class-sms-vonage.php';
 require_once __DIR__ . '/../includes/class-sms-provider-status-map.php';
 require_once __DIR__ . '/../includes/class-sms-provider-manager.php';
 require_once __DIR__ . '/../includes/class-sms-settings.php';
+require_once __DIR__ . '/../includes/class-sms-provider-sync-manager.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-table-diagnostics.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';

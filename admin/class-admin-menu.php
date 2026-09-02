@@ -164,12 +164,14 @@ class AdminMenu
         // ── SMS tab data ────────────────────────────────────────────────────────
         $sms_items            = array();
         $sms_campaigns_list   = array();
+        $sms_provider_statuses = array();
         $sms_total_all        = 0;
         $sms_total_filtered   = 0;
         $sms_total_pages      = 1;
         $sms_current_page     = 1;
         $sms_per_page         = 50;
         $sms_status_filter    = '';
+        $sms_provider_status_filter = '';
         $sms_campaign_filter  = '';
         $sms_phone_search     = '';
         $sms_date_from        = '';
@@ -181,6 +183,7 @@ class AdminMenu
             $sms_campaigns_table = $wpdb->base_prefix . 'mnem_sms_campaigns';
 
             $sms_status_filter   = isset($_GET['sms_status']) ? sanitize_text_field(wp_unslash($_GET['sms_status'])) : '';
+            $sms_provider_status_filter = isset($_GET['sms_provider_status']) ? sanitize_text_field(wp_unslash($_GET['sms_provider_status'])) : '';
             $sms_campaign_filter = isset($_GET['sms_campaign']) ? sanitize_text_field(wp_unslash($_GET['sms_campaign'])) : '';
             $sms_phone_search    = isset($_GET['sms_phone']) ? sanitize_text_field(wp_unslash($_GET['sms_phone'])) : '';
             $sms_date_from       = isset($_GET['sms_date_from']) ? sanitize_text_field(wp_unslash($_GET['sms_date_from'])) : '';
@@ -203,6 +206,10 @@ class AdminMenu
             if ($sms_status_filter !== '') {
                 $sms_where_extra[] = 'q.status = %s';
                 $sms_where_args[]  = $sms_status_filter;
+            }
+            if ($sms_provider_status_filter !== '') {
+                $sms_where_extra[] = 'q.provider_status = %s';
+                $sms_where_args[] = $sms_provider_status_filter;
             }
             if ($sms_campaign_filter !== '') {
                 $sms_where_extra[] = 'q.sms_campaign_id = %d';
@@ -252,7 +259,7 @@ class AdminMenu
                 $sms_total_filtered = $sms_total_all;
             }
 
-            $sms_select = 'q.id, q.sms_campaign_id, q.phone_number, q.body, q.status, q.sent_at, q.attempts, q.created_at, sc.name AS campaign_name';
+            $sms_select = 'q.id, q.sms_campaign_id, q.phone_number, q.body, q.status, q.provider_type, q.provider_message_id, q.provider_status, q.provider_status_checked_at, q.last_sync_error, q.sent_at, q.attempts, q.created_at, sc.name AS campaign_name';
             if (!empty($sms_where_args)) {
                 $sms_data_query = call_user_func_array(
                     array($wpdb, 'prepare'),
@@ -279,6 +286,7 @@ class AdminMenu
             // Campaign list for the filter dropdown.
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $sms_campaigns_list = (array) $wpdb->get_results("SELECT id, name FROM {$sms_campaigns_table} ORDER BY name ASC", ARRAY_A);
+            $sms_provider_statuses = (array) $wpdb->get_col("SELECT DISTINCT provider_status FROM {$queue_table} WHERE provider_status IS NOT NULL AND provider_status <> '' ORDER BY provider_status ASC");
         }
 
         $this->render_view('logs.php', compact(
@@ -293,7 +301,7 @@ class AdminMenu
             'sms_items', 'sms_campaigns_list',
             'sms_total_all', 'sms_total_filtered', 'sms_total_pages',
             'sms_current_page', 'sms_per_page',
-            'sms_status_filter', 'sms_campaign_filter', 'sms_phone_search',
+            'sms_status_filter', 'sms_provider_status_filter', 'sms_provider_statuses', 'sms_campaign_filter', 'sms_phone_search',
             'sms_date_from', 'sms_date_to', 'sms_stats'
         ));
     }
@@ -597,11 +605,12 @@ class AdminMenu
         $sms_providers = \MNEM\SmsProviderManager::get_available_providers();
         $sms_integrity_stats = \MNEM\SmsSubscriberLists::get_data_integrity_overview();
         $sms_integrity_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_integrity_result();
+        $sms_status_sync_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_status_sync_result();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
@@ -1196,6 +1205,8 @@ class AdminMenu
             'sms_log_user_deleted' => 'WordPress user deleted successfully.',
             'sms_log_unsubscribed_and_deleted' => 'Subscriber unsubscribed and WordPress user deleted.',
             'sms_log_action_failed' => 'Action failed. Please check logs.' . ($error_detail !== '' ? ' ' . $error_detail : ''),
+            'sms_status_sync_complete' => 'SMS provider status sync completed.',
+            'sms_status_sync_failed' => 'SMS provider status sync completed with errors.',
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
@@ -1211,7 +1222,7 @@ class AdminMenu
             return 'notice notice-warning';
         }
 
-        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed', 'sms_campaign_nonce_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed', 'sms_log_action_failed'), true)) {
+        if (in_array($notice, array('campaign_nonce_failed', 'queue_nonce_failed', 'queue_delete_failed', 'queue_send_failed', 'campaign_send_failed', 'campaign_save_failed', 'campaign_delete_failed', 'diagnostics_nonce_failed', 'rule_save_failed', 'rule_nonce_failed', 'smtp_test_failed', 'sender_settings_failed', 'header_footer_failed', 'subscriber_operation_failed', 'sms_subscriber_operation_failed', 'email_template_failed', 'status_interval_failed', 'general_settings_failed', 'sms_settings_failed', 'sms_no_hours_invalid', 'invalid_phone_failed', 'sms_integrity_failed', 'sms_campaign_nonce_failed', 'sms_campaign_save_failed', 'sms_campaign_action_failed', 'sms_log_action_failed', 'sms_status_sync_failed'), true)) {
             return 'notice notice-error';
         }
 

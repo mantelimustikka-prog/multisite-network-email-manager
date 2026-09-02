@@ -47,6 +47,11 @@ function mnem_migration_002()
         message_type VARCHAR(20) NOT NULL DEFAULT 'sms',
         provider_type VARCHAR(50) NOT NULL DEFAULT '',
         provider_message_id VARCHAR(255) NOT NULL DEFAULT '',
+        provider_status VARCHAR(50) NULL,
+        provider_status_checked_at DATETIME NULL,
+        last_sync_error TEXT NULL,
+        sync_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        provider_metadata LONGTEXT NULL,
         sent_at DATETIME NULL,
         attempts INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -54,7 +59,9 @@ function mnem_migration_002()
         KEY idx_status (status),
         KEY idx_site_id (site_id),
         KEY idx_sms_campaign_id (sms_campaign_id),
-        KEY idx_created_at (created_at)
+        KEY idx_created_at (created_at),
+        KEY idx_provider_status (provider_status),
+        KEY idx_provider_checked (provider_status_checked_at)
     ) {$charset_collate};";
 
     dbDelta($sql_sms_queue);

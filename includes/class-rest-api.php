@@ -732,7 +732,12 @@ class RestApi
         ));
 
         if ($queue_status !== '' && $message_id !== '') {
-            Queue::update_sms_status_from_provider($message_id, $provider, $queue_status, $data);
+            $updated = Queue::update_sms_status_from_provider($message_id, $provider, $queue_status, $provider_status, $data);
+            if (!$updated) {
+                Queue::record_sms_sync_failure($message_id, $provider, 'Webhook queue update failed.');
+            }
+        } elseif ($message_id !== '') {
+            Queue::record_sms_sync_failure($message_id, $provider, 'Unknown provider status: ' . $provider_status);
         }
 
         return array('success' => true, 'provider' => $provider, 'status' => $queue_status);

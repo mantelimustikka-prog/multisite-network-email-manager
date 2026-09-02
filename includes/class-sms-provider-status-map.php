@@ -37,11 +37,16 @@ class SmsProviderStatusMap
             's'            => 'sent',
             'd'            => 'delivered',
             'e'            => 'failed',
-            'r'            => 'failed',
-            // Textedly also uses text values.
+            'f'            => 'failed',
+            'r'            => 'rejected',
+            'b'            => 'bounce',
+            'submitted'    => 'sent',
             'sent'         => 'sent',
             'delivered'    => 'delivered',
             'failed'       => 'failed',
+            'rejected'     => 'rejected',
+            'bounced'      => 'bounce',
+            'undelivered'  => 'bounce',
         ),
         'simpletexting' => array(
             'SENT'         => 'sent',
@@ -108,8 +113,21 @@ class SmsProviderStatusMap
      */
     public static function map(string $provider, string $provider_status): string
     {
+        $provider = strtolower(trim($provider));
+        $provider_status = trim($provider_status);
         $map = self::get_status_map($provider);
-        return isset($map[$provider_status]) ? $map[$provider_status] : '';
+
+        if (isset($map[$provider_status])) {
+            return $map[$provider_status];
+        }
+
+        $normalised = strtolower($provider_status);
+        return isset($map[$normalised]) ? $map[$normalised] : '';
+    }
+
+    public static function map_textmagic_status(string $provider_status): string
+    {
+        return self::map('textmagic', $provider_status);
     }
 
     /**

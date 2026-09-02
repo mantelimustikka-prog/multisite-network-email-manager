@@ -2057,12 +2057,14 @@ class Queue
      * @param string               $message_id      Provider-issued message ID.
      * @param string               $provider        Provider key (e.g. 'twilio').
      * @param string               $queue_status    Already-mapped canonical queue status.
+     * @param string               $provider_status Raw provider status.
      * @param array<string,mixed>  $metadata        Raw webhook payload for logging.
      */
     public static function update_sms_status_from_provider(
         string $message_id,
         string $provider,
         string $queue_status,
+        string $provider_status,
         array $metadata = array()
     ): bool {
         global $wpdb;
@@ -2078,8 +2080,9 @@ class Queue
         $table = $wpdb->base_prefix . 'mnem_sms_queue';
         $row   = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT id, status, provider_metadata FROM {$table} WHERE provider_message_id = %s ORDER BY id DESC LIMIT %d",
+                "SELECT id, status, provider_metadata FROM {$table} WHERE provider_message_id = %s AND provider_type = %s ORDER BY id DESC LIMIT %d",
                 $message_id,
+                $provider,
                 1
             ),
             ARRAY_A
@@ -2099,7 +2102,15 @@ class Queue
         $current_order = isset($status_order[$row['status']]) ? $status_order[$row['status']] : -1;
         $new_order     = isset($status_order[$queue_status])  ? $status_order[$queue_status]  : -1;
         if ($new_order < $current_order && $new_order !== -1) {
-            return true; // Already at a later state; ignore.
+            return $wpdb->query($wpdb->prepare(
+                "UPDATE {$table}
+                SET provider_status = %s, provider_status_checked_at = %s,
+                    last_sync_error = NULL, sync_attempts = 0
+                WHERE id = %d",
+                $provider_status,
+                self::current_time_mysql(),
+                (int) $row['id']
+            )) !== false;
         }
 
         $merged_meta = self::merge_provider_metadata(
@@ -2107,7 +2118,7 @@ class Queue
             array(
                 'sms_webhook' => array(
                     'provider'        => $provider,
-                    'provider_status' => $queue_status,
+                    'provider_status' => $provider_status,
                     'received_at'     => self::current_time_mysql(),
                     'payload'         => $metadata,
                 ),
@@ -2117,8 +2128,14 @@ class Queue
         $timestamp = self::current_time_mysql();
         $updated   = $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, sent_at = COALESCE(sent_at, %s), provider_metadata = %s WHERE id = %d",
+                "UPDATE {$table}
+                SET status = %s, provider_status = %s, provider_status_checked_at = %s,
+                    last_sync_error = NULL, sync_attempts = 0,
+                    sent_at = COALESCE(sent_at, %s), provider_metadata = %s
+                WHERE id = %d",
                 $queue_status,
+                $provider_status,
+                $timestamp,
                 $timestamp,
                 $merged_meta,
                 (int) $row['id']
@@ -2137,5 +2154,51 @@ class Queue
         }
 
         return false;
+    }
+
+    public static function record_sms_sync_failure(string $message_id, string $provider, string $error): bool
+    {
+        global $wpdb;
+
+        if ($message_id === '') {
+            return false;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, sync_attempts FROM {$table}
+            WHERE provider_message_id = %s AND provider_type = %s
+            ORDER BY id DESC LIMIT %d",
+            $message_id,
+            $provider,
+            1
+        ), ARRAY_A);
+        if (!is_array($row) || empty($row['id'])) {
+            return false;
+        }
+
+        $attempts = (int) $row['sync_attempts'] + 1;
+        if ($attempts >= 3) {
+            $query = $wpdb->prepare(
+                "UPDATE {$table}
+                SET sync_attempts = %d, provider_status_checked_at = %s, last_sync_error = %s
+                WHERE id = %d",
+                $attempts,
+                self::current_time_mysql(),
+                $error,
+                (int) $row['id']
+            );
+        } else {
+            $query = $wpdb->prepare(
+                "UPDATE {$table}
+                SET sync_attempts = %d, provider_status_checked_at = %s, last_sync_error = NULL
+                WHERE id = %d",
+                $attempts,
+                self::current_time_mysql(),
+                (int) $row['id']
+            );
+        }
+
+        return $wpdb->query($query) !== false;
     }
 }
