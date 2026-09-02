@@ -365,6 +365,29 @@
         }
     });
 
+    $(document).on('click', '[data-mnem-action="copy-webhook-url"]', function(){
+        var $button = $(this);
+        var $target = $($button.data('target'));
+        var text = $target.val();
+        if (!text) {
+            return;
+        }
+        var originalText = $button.text();
+        var onCopied = function(){
+            $button.text('Copied!');
+            setTimeout(function(){
+                $button.text(originalText);
+            }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onCopied);
+        } else {
+            $target.trigger('select');
+            document.execCommand('copy');
+            onCopied();
+        }
+    });
+
     function ensurePreviewModal() {
         var $existing = $('#mnem-email-preview-modal');
         if ($existing.length) {

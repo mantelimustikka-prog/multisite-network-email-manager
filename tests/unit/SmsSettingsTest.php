@@ -206,6 +206,20 @@ class SmsSettingsTest extends TestCase
         $this->assertStringNotContainsString("'Two-letter country code used for formatting local numbers. Default: US.'", $contents);
     }
 
+    public function test_sms_settings_view_displays_webhook_urls_for_all_providers()
+    {
+        $path = __DIR__ . '/../../admin/views/settings-sms.php';
+        $contents = file_get_contents($path);
+
+        $this->assertNotFalse($contents);
+        $this->assertStringContainsString('Webhook Configuration', $contents);
+        $this->assertStringContainsString('get_webhook_url()', $contents);
+        $this->assertStringContainsString('copy-webhook-url', $contents);
+
+        $this->assertStringContainsString('mnem_webhook_url_', $contents);
+        $this->assertStringContainsString('$sms_providers as $key => $label', $contents);
+    }
+
     public function test_save_and_get_phone_validation_settings()
     {
         SmsSettings::save(array(
