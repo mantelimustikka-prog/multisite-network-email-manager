@@ -1300,6 +1300,7 @@ class Queue
                     'delivered' => 'delivered',
                     'open' => 'opened',
                     'click' => 'clicked',
+                    'group_click' => 'clicked',
                     'deferred' => 'deferred',
                     'bounce' => 'bounce',
                     'spamreport' => 'complaint',
@@ -1312,21 +1313,31 @@ class Queue
                 $severity = strtolower((string) ($payload['severity'] ?? ($payload['delivery-status']['severity'] ?? '')));
                 $map = array(
                     'accepted' => 'sent',
+                    'rejected' => 'rejected',
                     'delivered' => 'delivered',
                     'opened' => 'opened',
                     'clicked' => 'clicked',
                     'complained' => 'complaint',
                     'unsubscribed' => 'unsubscribed',
+                    'bounced' => 'bounce',
+                    'dropped' => 'failed',
                     'failed' => $severity === 'temporary' ? 'soft_bounce' : 'bounce',
+                    'temporary_failed' => 'soft_bounce',
+                    'temporary_fail' => 'soft_bounce',
+                    'permanent_failed' => 'bounce',
+                    'permanent_fail' => 'bounce',
                 );
                 break;
             case 'brevo':
                 $map = array(
+                    'request' => 'sent',
                     'sent' => 'sent',
                     'delivered' => 'delivered',
                     'opened' => 'opened',
                     'unique_opened' => 'opened',
+                    'unique_proxy_open' => 'opened',
                     'click' => 'clicked',
+                    'clicked' => 'clicked',
                     'hard_bounce' => 'bounce',
                     'soft_bounce' => 'soft_bounce',
                     'invalid_email' => 'invalid_email',
@@ -1340,13 +1351,28 @@ class Queue
                 break;
             case 'postmark':
                 $bounce_type = strtolower((string) ($payload['Type'] ?? ''));
+                $bounce_status = 'bounce';
+                if (in_array($bounce_type, array('transient', 'softbounce', 'dnserror'), true)) {
+                    $bounce_status = 'soft_bounce';
+                } elseif ($bounce_type === 'bademailaddress') {
+                    $bounce_status = 'invalid_email';
+                } elseif (in_array($bounce_type, array('spamnotification', 'spamcomplaint'), true)) {
+                    $bounce_status = 'complaint';
+                } elseif ($bounce_type === 'unsubscribe') {
+                    $bounce_status = 'unsubscribed';
+                } elseif (in_array($bounce_type, array('smtpapierror', 'templaterenderingfailed', 'inbounderror'), true)) {
+                    $bounce_status = 'failed';
+                }
+
                 $map = array(
                     'delivery' => 'delivered',
                     'open' => 'opened',
+                    'opened' => 'opened',
                     'click' => 'clicked',
+                    'clicked' => 'clicked',
                     'spamcomplaint' => 'complaint',
                     'subscriptionchange' => 'unsubscribed',
-                    'bounce' => $bounce_type === 'transient' ? 'soft_bounce' : 'bounce',
+                    'bounce' => $bounce_status,
                 );
                 break;
             case 'smtp2go':
@@ -1363,6 +1389,7 @@ class Queue
                     'spam' => 'complaint',
                     'unsubscribe' => 'unsubscribed',
                     'blocked' => 'suppressed',
+                    'reject' => 'rejected',
                     'rejected' => 'rejected',
                     'failed' => 'failed',
                 );
@@ -1864,16 +1891,21 @@ class Queue
                 'dropped'     => 'failed',
                 'spamreport'  => 'complaint',
                 'unsubscribe' => 'unsubscribed',
+                'group_unsubscribe' => 'unsubscribed',
                 'open'        => 'opened',
                 'click'       => 'clicked',
+                'group_click' => 'clicked',
             );
         } elseif ($provider === 'brevo') {
             $map = array(
+                'request'        => 'sent',
                 'sent'           => 'sent',
                 'delivered'      => 'delivered',
                 'opened'         => 'opened',
                 'unique_opened'  => 'opened',
+                'unique_proxy_open' => 'opened',
                 'click'          => 'clicked',
+                'clicked'        => 'clicked',
                 'hard_bounce'    => 'bounce',
                 'soft_bounce'    => 'soft_bounce',
                 'invalid_email'  => 'invalid_email',
@@ -1887,22 +1919,39 @@ class Queue
         } elseif ($provider === 'mailgun') {
             $map = array(
                 'accepted'         => 'sent',
+                'rejected'         => 'rejected',
                 'delivered'        => 'delivered',
                 'opened'           => 'opened',
                 'clicked'          => 'clicked',
                 'complained'       => 'complaint',
                 'unsubscribed'     => 'unsubscribed',
+                'bounced'          => 'bounce',
+                'dropped'          => 'failed',
                 'failed'           => 'bounce',
                 'temporary_failed' => 'soft_bounce',
+                'temporary_fail'   => 'soft_bounce',
+                'permanent_failed' => 'bounce',
+                'permanent_fail'   => 'bounce',
             );
         } elseif ($provider === 'postmark') {
             $map = array(
                 'delivery'           => 'delivered',
                 'open'               => 'opened',
+                'opened'             => 'opened',
                 'click'              => 'clicked',
+                'clicked'            => 'clicked',
                 'spamcomplaint'      => 'complaint',
                 'subscriptionchange' => 'unsubscribed',
                 'bounce'             => 'bounce',
+                'transient'          => 'soft_bounce',
+                'softbounce'         => 'soft_bounce',
+                'dnserror'           => 'soft_bounce',
+                'bademailaddress'    => 'invalid_email',
+                'spamnotification'   => 'complaint',
+                'unsubscribe'        => 'unsubscribed',
+                'smtpapierror'       => 'failed',
+                'templaterenderingfailed' => 'failed',
+                'inbounderror'       => 'failed',
             );
         } elseif ($provider === 'smtp2go') {
             $map = array(
@@ -1918,6 +1967,7 @@ class Queue
                 'spam'        => 'complaint',
                 'unsubscribe' => 'unsubscribed',
                 'blocked'     => 'suppressed',
+                'reject'      => 'rejected',
                 'rejected'    => 'rejected',
                 'failed'      => 'failed',
             );
