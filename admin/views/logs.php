@@ -38,6 +38,7 @@ defined('ABSPATH') || exit;
                     'total'   => array('label' => __('Total', 'multisite-network-email-manager'), 'color' => '#2271b1'),
                     'pending' => array('label' => __('Pending', 'multisite-network-email-manager'), 'color' => '#996800'),
                     'sent'    => array('label' => __('Sent', 'multisite-network-email-manager'), 'color' => '#00a32a'),
+                    'delivered' => array('label' => __('Delivered', 'multisite-network-email-manager'), 'color' => '#0073aa'),
                     'failed'  => array('label' => __('Failed', 'multisite-network-email-manager'), 'color' => '#d63638'),
                 );
                 foreach ($sms_stat_items as $key => $meta) :
