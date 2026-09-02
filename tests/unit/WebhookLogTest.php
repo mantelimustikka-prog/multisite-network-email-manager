@@ -76,4 +76,40 @@ class WebhookLogTest extends TestCase
 
         $this->assertStringContainsString('DELETE FROM wp_mnem_webhook_log WHERE received_at <', implode("\n", $GLOBALS['wpdb']->queries));
     }
+
+    public function test_get_provider_stats_groups_totals_per_provider()
+    {
+        $GLOBALS['wpdb']->results = array(
+            array('provider' => 'brevo', 'total' => 4, 'success_count' => 3, 'last_received_at' => '2026-09-01 10:00:00'),
+            array('provider' => 'sendgrid', 'total' => 2, 'success_count' => 2, 'last_received_at' => '2026-09-02 08:00:00'),
+        );
+
+        $stats = WebhookLog::get_provider_stats();
+
+        $this->assertSame(4, $stats['brevo']['total']);
+        $this->assertSame(1, $stats['brevo']['failed']);
+        $this->assertSame(0, $stats['sendgrid']['failed']);
+        $this->assertSame('2026-09-02 08:00:00', $stats['sendgrid']['last_received_at']);
+        $this->assertStringContainsString('GROUP BY provider', implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
+    public function test_get_recent_errors_only_selects_processed_failures()
+    {
+        $GLOBALS['wpdb']->results = array(
+            array('id' => 9, 'provider' => 'brevo', 'error_message' => 'No matching queue row was updated.'),
+        );
+
+        $rows = WebhookLog::get_recent_errors(5);
+
+        $this->assertCount(1, $rows);
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('WHERE success = 0 AND processed_at IS NOT NULL', $queries);
+        $this->assertStringContainsString('LIMIT 5', $queries);
+    }
+
+    public function test_calculate_success_rate_returns_percentage()
+    {
+        $this->assertSame(75.0, WebhookLog::calculate_success_rate(array('total' => 4, 'success' => 3)));
+        $this->assertSame(0.0, WebhookLog::calculate_success_rate(array('total' => 0, 'success' => 0)));
+    }
 }
