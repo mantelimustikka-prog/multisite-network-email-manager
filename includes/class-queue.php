@@ -712,8 +712,6 @@ class Queue
             $headers['__attachments'] = $attachments;
 
             $body = EmailFormatter::apply_global_header_footer((string) $row['body']);
-            $body = EmailTracker::add_tracking_pixel($body, $id);
-            $body = EmailTracker::rewrite_links_for_tracking($body, $id);
 
             $send = static function () use ($row, $headers, $body) {
                 return ProviderManager::send_email($row['recipient_email'], $row['subject'], $body, $headers);
@@ -732,7 +730,7 @@ class Queue
             $sent = !empty($result['success']);
 
             if ($sent) {
-                // Persist status and the fully-formatted body (header/footer, tracking pixel, rewritten links)
+                // Persist status and the formatted body (header/footer)
                 // in a single query so the queue preview shows the exact email that was sent.
                 $wpdb->query(
                     $wpdb->prepare(
@@ -1152,75 +1150,14 @@ class Queue
         return gmdate('Y-m-d H:i:s', time() + $delay);
     }
 
+    /**
+     * @deprecated 1.0.0 Local email tracking events are disabled in favor of provider webhooks.
+     */
     public static function record_local_event(int $queue_id, string $status, array $metadata = array()): void
     {
-        global $wpdb;
-
-        if ($queue_id <= 0) {
-            return;
-        }
-
-        $table = $wpdb->base_prefix . 'mnem_queue';
-        $timestamp = self::current_time_mysql();
-        $row = $wpdb->get_row($wpdb->prepare("SELECT status, opened, clicked, provider_metadata FROM {$table} WHERE id = %d", $queue_id), ARRAY_A);
-        if (!is_array($row)) {
-            Logger::warning('Local tracking event skipped because queue row was not found.', array(
-                'queue_id' => $queue_id,
-                'status' => $status,
-            ));
-            return;
-        }
-
-        $current_status = isset($row['status']) ? (string) $row['status'] : 'pending';
-        $opened = isset($row['opened']) ? (string) $row['opened'] : '';
-        $clicked = isset($row['clicked']) ? (string) $row['clicked'] : '';
-        $opens_increment = 0;
-        $clicks_increment = 0;
-        if ($status === 'opened') {
-            if ($opened === '') {
-                $opened = $timestamp;
-            }
-            $opens_increment = 1;
-        }
-        if ($status === 'clicked') {
-            if ($opened === '') {
-                $opened = $timestamp;
-            }
-            if ($clicked === '') {
-                $clicked = $timestamp;
-            }
-            $clicks_increment = 1;
-        }
-
-        $final_status = self::resolve_status_update($current_status, $status);
-        $provider_metadata = self::merge_provider_metadata(isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '', array(
-            'last_local_tracking_event' => array(
-                'status' => $status,
-                'metadata' => $metadata,
-                'recorded_at' => $timestamp,
-            ),
-        ));
-
-        $updated = $wpdb->query(
-            $wpdb->prepare(
-                "UPDATE {$table} SET status = %s, opened = %s, clicked = %s, opens_count = COALESCE(opens_count, 0) + %d, clicks_count = COALESCE(clicks_count, 0) + %d, provider_metadata = %s WHERE id = %d",
-                $final_status,
-                $opened !== '' ? $opened : null,
-                $clicked !== '' ? $clicked : null,
-                $opens_increment,
-                $clicks_increment,
-                $provider_metadata,
-                $queue_id
-            )
-        );
-
-        Logger::info('Local tracking event recorded.', array(
+        Logger::info('Local tracking event skipped as custom tracking is disabled.', array(
             'queue_id' => $queue_id,
-            'input_status' => $status,
-            'resolved_status' => $final_status,
-            'opens_increment' => $opens_increment,
-            'clicks_increment' => $clicks_increment,
-            'updated' => $updated !== false,
+            'status'   => $status,
         ));
     }
 

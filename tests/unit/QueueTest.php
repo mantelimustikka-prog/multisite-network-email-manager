@@ -506,7 +506,7 @@ class QueueTest extends TestCase
         $this->assertStringNotContainsString("recipient_email = 'user@example.com'", $queries);
     }
 
-    public function test_record_local_event_increments_open_count()
+    public function test_record_local_event_is_deprecated_and_does_not_query_database()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_row($query, $output = OBJECT)
@@ -529,12 +529,13 @@ class QueueTest extends TestCase
             }
         };
 
+        $GLOBALS['wpdb']->queries = array();
         Queue::record_local_event(10, 'opened');
 
-        $queries = implode("\n", $GLOBALS['wpdb']->queries);
-        $this->assertStringContainsString("status = 'opened'", $queries);
-        $this->assertStringContainsString('opens_count = COALESCE(opens_count, 0) + 1', $queries);
-        $this->assertStringContainsString('clicks_count = COALESCE(clicks_count, 0) + 0', $queries);
+        $queue_queries = array_filter($GLOBALS['wpdb']->queries, static function ($q) {
+            return strpos($q, 'mnem_queue') !== false;
+        });
+        $this->assertEmpty($queue_queries);
     }
 
     public function test_map_webhook_status_maps_provider_events()
