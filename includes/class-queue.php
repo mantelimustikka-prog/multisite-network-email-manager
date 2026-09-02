@@ -1034,6 +1034,46 @@ class Queue
         return $deleted;
     }
 
+    public static function get_recipient_emails(array $ids)
+    {
+        global $wpdb;
+
+        $queue_ids = array_values(array_unique(array_filter(array_map('intval', $ids), static function ($id) {
+            return $id > 0;
+        })));
+
+        if (empty($queue_ids)) {
+            return array();
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_queue';
+        $placeholders = implode(', ', array_fill(0, count($queue_ids), '%d'));
+        $emails = (array) $wpdb->get_col(
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    array("SELECT DISTINCT recipient_email FROM {$table} WHERE id IN ({$placeholders})"),
+                    $queue_ids
+                )
+            )
+        );
+
+        $unique = array();
+        foreach ($emails as $email) {
+            $email = trim((string) $email);
+            if ($email === '') {
+                continue;
+            }
+
+            $key = strtolower($email);
+            if (!isset($unique[$key])) {
+                $unique[$key] = $email;
+            }
+        }
+
+        return array_values($unique);
+    }
+
     public static function delete_by_status(int $site_id, string $status)
     {
         global $wpdb;

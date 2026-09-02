@@ -142,8 +142,12 @@ $_email_tab_param = '&tab=email';
                 <option value="delete_pending">Delete All Pending</option>
                 <option value="delete_failed">Delete All Failed</option>
                 <option value="delete_selected">Delete Selected Items</option>
+                <option value="unsubscribe_delete_accounts"><?php esc_html_e('Unsubscribe & Delete Account', 'multisite-network-email-manager'); ?></option>
             </select>
             <button type="submit" form="mnem-bulk-form" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
+            <span class="description" style="color: #b32d2e;">
+                <?php esc_html_e('Warning: "Unsubscribe & Delete Account" permanently deletes the network user accounts of the selected recipients.', 'multisite-network-email-manager'); ?>
+            </span>
 
             <!-- Status Filter -->
             <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>

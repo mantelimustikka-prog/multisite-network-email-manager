@@ -264,6 +264,46 @@ class SubscriberLists
         return (int) $count > 0;
     }
 
+    /**
+     * Remove an email address from every subscriber list.
+     *
+     * @return int Number of list membership rows removed.
+     */
+    public static function remove_subscriber_by_email(string $email): int
+    {
+        global $wpdb;
+
+        $email = trim($email);
+        if ($email === '') {
+            return 0;
+        }
+
+        $user = function_exists('get_user_by') ? get_user_by('email', $email) : null;
+        $user_id = is_object($user) && isset($user->ID) ? (int) $user->ID : 0;
+        if ($user_id <= 0) {
+            Logger::warning('Subscriber removal by email skipped because no user was found.', array('email' => $email));
+            return 0;
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_list_subscribers';
+        $removed = $wpdb->query(
+            $wpdb->prepare("DELETE FROM {$table} WHERE user_id = %d", $user_id)
+        );
+
+        if ($removed === false) {
+            Logger::error('Subscriber removal by email failed.', array('email' => $email, 'user_id' => $user_id));
+            return 0;
+        }
+
+        Logger::info('Subscriber removed from all lists by email.', array(
+            'email' => $email,
+            'user_id' => $user_id,
+            'removed_count' => (int) $removed,
+        ));
+
+        return (int) $removed;
+    }
+
     public static function get_user_lists(int $user_id)
     {
         global $wpdb;

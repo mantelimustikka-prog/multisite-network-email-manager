@@ -946,6 +946,8 @@ class NetworkAdmin
                 $status = 'failed';
             } elseif ($bulk_action === 'delete_selected') {
                 $action = 'delete_queue_items';
+            } elseif ($bulk_action === 'unsubscribe_delete_accounts') {
+                $action = 'unsubscribe_and_delete_accounts';
             }
         }
 
@@ -957,7 +959,7 @@ class NetworkAdmin
             $status = 'failed';
         }
 
-        if (!in_array($action, array('delete_queue_item', 'delete_queue_items', 'delete_queue_by_status'), true)) {
+        if (!in_array($action, array('delete_queue_item', 'delete_queue_items', 'delete_queue_by_status', 'unsubscribe_and_delete_accounts'), true)) {
             return;
         }
 
@@ -995,6 +997,23 @@ class NetworkAdmin
             return;
         }
 
+        if ($action === 'unsubscribe_and_delete_accounts') {
+            $queue_ids = isset($_POST['queue_ids']) ? array_map('intval', (array) wp_unslash($_POST['queue_ids'])) : array();
+            if (empty($queue_ids)) {
+                $this->redirect_with_notice($page, 'queue_nothing_selected');
+                return;
+            }
+
+            $summary = $this->unsubscribe_and_delete_accounts($queue_ids);
+
+            $this->redirect_with_notice(
+                $page,
+                $summary['deleted'] > 0 ? 'queue_accounts_unsubscribed_deleted' : 'queue_accounts_action_failed',
+                array('count' => $summary['deleted'], 'failed' => $summary['failed'])
+            );
+            return;
+        }
+
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             \MNEM\Logger::warning('Queue status delete rejected because status is invalid.', array('site_id' => $site_id, 'status' => $status));
             $this->redirect_with_notice($page, 'queue_delete_failed');
@@ -1004,6 +1023,67 @@ class NetworkAdmin
         $deleted = \MNEM\Queue::delete_by_status(0, $status);
         \MNEM\Logger::info('Queue delete by status requested.', array('site_id' => 0, 'requested_site_id' => $site_id, 'status' => $status, 'deleted_count' => $deleted));
         $this->redirect_with_notice($page, $deleted > 0 ? 'queue_deleted_by_status' : 'queue_delete_failed', array('count' => $deleted, 'status' => $status));
+    }
+
+    /**
+     * Unsubscribe the recipients of the selected queue items from every
+     * subscriber list and permanently delete their network user accounts.
+     *
+     * @param array<int,int> $queue_ids
+     * @return array{total:int,unsubscribed:int,deleted:int,failed:int}
+     */
+    private function unsubscribe_and_delete_accounts(array $queue_ids)
+    {
+        $admin_id = function_exists('get_current_user_id') ? (int) get_current_user_id() : 0;
+        $emails = \MNEM\Queue::get_recipient_emails($queue_ids);
+
+        $summary = array(
+            'total' => count($emails),
+            'unsubscribed' => 0,
+            'deleted' => 0,
+            'failed' => 0,
+        );
+
+        foreach ($emails as $email) {
+            if (\MNEM\SubscriberLists::remove_subscriber_by_email($email) > 0) {
+                ++$summary['unsubscribed'];
+            }
+
+            $user = function_exists('get_user_by') ? get_user_by('email', $email) : null;
+            $user_id = is_object($user) && isset($user->ID) ? (int) $user->ID : 0;
+
+            if ($user_id <= 0) {
+                ++$summary['failed'];
+                \MNEM\Logger::warning('Account deletion skipped because no network user was found.', array('email' => $email, 'admin_id' => $admin_id));
+                continue;
+            }
+
+            if ($user_id === $admin_id || (function_exists('is_super_admin') && is_super_admin($user_id))) {
+                ++$summary['failed'];
+                \MNEM\Logger::warning('Account deletion skipped for the current user or a network administrator.', array('email' => $email, 'user_id' => $user_id, 'admin_id' => $admin_id));
+                continue;
+            }
+
+            if ($this->delete_network_user($user_id)) {
+                ++$summary['deleted'];
+                \MNEM\Logger::info('Network user unsubscribed and deleted from queue logs.', array('email' => $email, 'deleted_user_id' => $user_id, 'admin_id' => $admin_id));
+                continue;
+            }
+
+            ++$summary['failed'];
+            \MNEM\Logger::error('Network user deletion failed from queue logs.', array('email' => $email, 'user_id' => $user_id, 'admin_id' => $admin_id));
+        }
+
+        \MNEM\Logger::info('Queue unsubscribe and delete accounts processed.', array(
+            'queue_ids' => array_values(array_unique(array_map('intval', $queue_ids))),
+            'total' => $summary['total'],
+            'unsubscribed' => $summary['unsubscribed'],
+            'deleted' => $summary['deleted'],
+            'failed' => $summary['failed'],
+            'admin_id' => $admin_id,
+        ));
+
+        return $summary;
     }
 
     public function enqueue_assets($hook_suffix)
