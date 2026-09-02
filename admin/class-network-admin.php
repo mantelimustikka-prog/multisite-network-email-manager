@@ -1063,6 +1063,10 @@ class NetworkAdmin
                             'bulkSuccess'              => __('%1$d of %2$d SMS records processed successfully.', 'multisite-network-email-manager'),
                             'bulkFailed'               => __('%d failed.', 'multisite-network-email-manager'),
                             'bulkDryRunNotice'         => __('Dry run only — no changes were made.', 'multisite-network-email-manager'),
+                            'bulkLabelUnsubscribe'     => __('Unsubscribe Selected', 'multisite-network-email-manager'),
+                            'bulkLabelDeleteUsers'     => __('Delete Selected Users', 'multisite-network-email-manager'),
+                            'bulkLabelBoth'            => __('Unsubscribe & Delete Selected', 'multisite-network-email-manager'),
+                            'bulkLabelRefresh'         => __('Refresh Status for Selected', 'multisite-network-email-manager'),
                         ),
                     )
                 );
@@ -2551,6 +2555,187 @@ class NetworkAdmin
             'provider_status_label' => $change['new_status'] === 'bounce' ? __('Bounced', 'multisite-network-email-manager') : ucfirst($change['new_status']),
             'checked_at' => function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s'),
         ));
+    }
+
+    /**
+     * AJAX: apply a bulk action (unsubscribe, delete_users, both, refresh_status)
+     * to a batch of selected SMS log entries.
+     *
+     * @return void
+     */
+    public function ajax_sms_bulk_action(): void
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'multisite-network-email-manager')), 403);
+            return;
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_logs_ajax')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please reload the page and try again.', 'multisite-network-email-manager')), 403);
+            return;
+        }
+
+        $allowed_actions = array('unsubscribe', 'delete_users', 'both', 'refresh_status');
+        $bulk_action = isset($_POST['action_type'])
+            ? sanitize_key(wp_unslash($_POST['action_type']))
+            : (isset($_POST['bulk_action']) ? sanitize_key(wp_unslash($_POST['bulk_action'])) : '');
+
+        if (!in_array($bulk_action, $allowed_actions, true)) {
+            wp_send_json_error(array('message' => __('Invalid bulk action.', 'multisite-network-email-manager')), 400);
+            return;
+        }
+
+        $queue_ids = array();
+        if (isset($_POST['queue_ids']) && is_array($_POST['queue_ids'])) {
+            $queue_ids = array_values(array_unique(array_filter(array_map('intval', wp_unslash($_POST['queue_ids'])))));
+        }
+
+        if (empty($queue_ids)) {
+            wp_send_json_error(array('message' => __('No SMS records were selected.', 'multisite-network-email-manager')), 400);
+            return;
+        }
+
+        $dry_run = !empty($_POST['dry_run']) && $_POST['dry_run'] !== 'false';
+
+        $summary = $this->process_sms_bulk_action($bulk_action, $queue_ids, $dry_run);
+
+        wp_send_json_success($summary);
+    }
+
+    /**
+     * Process a bulk action against a batch of SMS queue rows, reusing the
+     * same per-row logic used by the individual SMS log actions.
+     *
+     * @param array<int,int> $queue_ids
+     * @return array<string,mixed>
+     */
+    private function process_sms_bulk_action(string $bulk_action, array $queue_ids, bool $dry_run): array
+    {
+        global $wpdb;
+
+        $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
+        $table    = $wpdb->base_prefix . 'mnem_sms_queue';
+
+        $summary = array(
+            'action'     => $bulk_action,
+            'dry_run'    => $dry_run,
+            'total'      => count($queue_ids),
+            'successful' => 0,
+            'failed'     => 0,
+            'errors'     => array(),
+        );
+
+        $campaigns_cache = array();
+
+        foreach ($queue_ids as $queue_id) {
+            $queue_row = $wpdb->get_row($wpdb->prepare(
+                "SELECT id, sms_campaign_id, phone_number FROM {$table} WHERE id = %d",
+                $queue_id
+            ), ARRAY_A);
+
+            if (empty($queue_row)) {
+                ++$summary['failed'];
+                $summary['errors'][] = sprintf(
+                    /* translators: %d: SMS queue row ID. */
+                    __('SMS #%d: entry not found.', 'multisite-network-email-manager'),
+                    $queue_id
+                );
+                continue;
+            }
+
+            try {
+                if ($bulk_action === 'refresh_status') {
+                    if ($dry_run) {
+                        ++$summary['successful'];
+                        continue;
+                    }
+
+                    $manager = new \MNEM\SmsProviderSyncManager();
+                    $sync_result = $manager->sync_single($queue_id);
+                    if (!empty($sync_result['errors'])) {
+                        throw new \Exception(implode(' ', $sync_result['errors']));
+                    }
+
+                    ++$summary['successful'];
+                    continue;
+                }
+
+                $campaign_id = (int) $queue_row['sms_campaign_id'];
+                if (!array_key_exists($campaign_id, $campaigns_cache)) {
+                    $campaigns_cache[$campaign_id] = $campaign_id > 0 ? \MNEM\SmsCampaigns::get($campaign_id) : null;
+                }
+                $campaign = $campaigns_cache[$campaign_id];
+                $list_id  = is_array($campaign) ? (int) $campaign['sms_list_id'] : 0;
+
+                if ($list_id <= 0) {
+                    throw new \Exception(__('No SMS list associated with this campaign.', 'multisite-network-email-manager'));
+                }
+
+                $request = array(
+                    'sms_queue_id' => $queue_id,
+                    'phone'        => (string) $queue_row['phone_number'],
+                    'list_id'      => $list_id,
+                );
+
+                if ($dry_run) {
+                    $this->preview_sms_bulk_action($bulk_action, $request);
+                    ++$summary['successful'];
+                    continue;
+                }
+
+                if ($bulk_action === 'unsubscribe') {
+                    $this->do_sms_log_unsubscribe($request);
+                } elseif ($bulk_action === 'delete_users') {
+                    $this->do_sms_log_delete_user($request);
+                } elseif ($bulk_action === 'both') {
+                    $this->do_sms_log_unsubscribe_delete($request);
+                }
+
+                ++$summary['successful'];
+            } catch (\Exception $e) {
+                ++$summary['failed'];
+                $summary['errors'][] = sprintf('SMS #%d: %s', $queue_id, $e->getMessage());
+            }
+        }
+
+        \MNEM\Logger::info('SMS bulk action processed.', array(
+            'action'     => $bulk_action,
+            'dry_run'    => $dry_run,
+            'total'      => $summary['total'],
+            'successful' => $summary['successful'],
+            'failed'     => $summary['failed'],
+            'queue_ids'  => $queue_ids,
+            'admin_id'   => $admin_id,
+        ));
+
+        return $summary;
+    }
+
+    /**
+     * Preview a bulk action for a single SMS queue row without making any
+     * changes, throwing when the action would not be applicable.
+     *
+     * @param array{sms_queue_id:int,phone:string,list_id:int} $request
+     * @throws \Exception When the action cannot be applied to this subscriber.
+     */
+    private function preview_sms_bulk_action(string $bulk_action, array $request): void
+    {
+        $subscriber = \MNEM\SmsSubscriberLists::get_subscriber_by_phone_and_list($request['list_id'], $request['phone']);
+        if (!$subscriber) {
+            throw new \Exception('Subscriber not found.');
+        }
+
+        if (in_array($bulk_action, array('unsubscribe', 'both'), true) && $subscriber['subscription_status'] === 'unsubscribed') {
+            throw new \Exception('Subscriber already unsubscribed.');
+        }
+
+        if (in_array($bulk_action, array('delete_users', 'both'), true)) {
+            $user_id = (int) $subscriber['user_id'];
+            if ($user_id <= 0 || !$this->wp_user_exists($user_id)) {
+                throw new \Exception('No WordPress user associated with this subscriber.');
+            }
+        }
     }
 
     private function wp_user_exists(int $user_id): bool
