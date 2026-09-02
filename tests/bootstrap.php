@@ -864,6 +864,13 @@ if (!function_exists('esc_html__')) {
     }
 }
 
+if (!function_exists('esc_attr__')) {
+    function esc_attr__($text, $domain = '')
+    {
+        return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+    }
+}
+
 if (!function_exists('esc_js')) {
     function esc_js($text)
     {
