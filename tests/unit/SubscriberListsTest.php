@@ -90,4 +90,37 @@ class SubscriberListsTest extends TestCase
         $this->assertStringContainsString('user_id,username,email,subscribed_at', $csv);
         $this->assertStringContainsString('"alice"', $csv);
     }
+    public function test_remove_subscriber_by_email_deletes_all_list_rows()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 3;
+            }
+        };
+
+        $removed = SubscriberLists::remove_subscriber_by_email('alice@example.com');
+
+        $this->assertSame(3, $removed);
+        $this->assertStringContainsString('DELETE FROM wp_mnem_list_subscribers WHERE user_id = 7', $GLOBALS['wpdb']->queries[0]);
+    }
+
+    public function test_remove_subscriber_by_email_returns_zero_for_unknown_email()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $removed = SubscriberLists::remove_subscriber_by_email('nobody@example.com');
+
+        $this->assertSame(0, $removed);
+        $this->assertSame(array(), array_values(array_filter($GLOBALS['wpdb']->queries, static function ($query) {
+            return strpos($query, 'mnem_list_subscribers') !== false;
+        })));
+    }
 }

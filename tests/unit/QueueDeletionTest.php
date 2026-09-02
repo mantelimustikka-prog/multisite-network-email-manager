@@ -238,4 +238,33 @@ class QueueDeletionTest extends TestCase
             return strpos($query, "DELETE FROM wp_mnem_queue WHERE campaign_id = 22 AND status IN ('pending', 'failed')") !== false;
         }));
     }
+    public function test_get_recipient_emails_returns_unique_trimmed_emails()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array(' user@example.com ', 'USER@example.com', '', 'other@example.com');
+            }
+        };
+
+        $emails = Queue::get_recipient_emails(array(3, 3, 0, 4));
+
+        $this->assertSame(array('user@example.com', 'other@example.com'), $emails);
+        $this->assertStringContainsString('WHERE id IN (3, 4)', $GLOBALS['wpdb']->queries[0]);
+    }
+
+    public function test_get_recipient_emails_returns_empty_array_without_valid_ids()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array('user@example.com');
+            }
+        };
+
+        $this->assertSame(array(), Queue::get_recipient_emails(array(0, -1)));
+        $this->assertSame(array(), $GLOBALS['wpdb']->queries);
+    }
 }

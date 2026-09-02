@@ -28,7 +28,7 @@ class NetworkAdminTest extends TestCase
         $GLOBALS['mnem_site_options'] = array();
         $GLOBALS['mnem_site_options'][\MNEM\SmtpDiagnostics::OPTION_RATE_LIMIT] = array();
         $GLOBALS['mnem_transients'] = array();
-        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_current_user_id'], $GLOBALS['mnem_deleted_users']);
+        unset($GLOBALS['mnem_last_json_response'], $GLOBALS['mnem_wp_mail_return'], $GLOBALS['mnem_last_redirect'], $GLOBALS['mnem_current_user_can'], $GLOBALS['mnem_verify_nonce'], $GLOBALS['mnem_current_user_email'], $GLOBALS['mnem_current_user_id'], $GLOBALS['mnem_deleted_users'], $GLOBALS['mnem_users'], $GLOBALS['mnem_user_data']);
         $_POST = array();
         $_GET = array();
     }
@@ -395,6 +395,94 @@ class NetworkAdminTest extends TestCase
         $admin->handle_queue_item_delete_action();
 
         $this->assertArrayNotHasKey('mnem_last_redirect', $GLOBALS);
+    }
+
+    public function test_handle_queue_item_delete_action_unsubscribes_and_deletes_accounts()
+    {
+        $GLOBALS['mnem_users'] = array(
+            (object) array('ID' => 55, 'user_login' => 'carol', 'user_email' => 'carol@example.com'),
+        );
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array('carol@example.com', 'Carol@example.com', '');
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 2;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return strpos($query, 'SHOW TABLES LIKE') !== false ? 'wp_mnem_logs' : 0;
+            }
+        };
+
+        $_POST = array(
+            'bulk_action' => 'unsubscribe_delete_accounts',
+            '_wpnonce' => 'test-nonce',
+            'queue_ids' => array(4, 5),
+            'redirect_page' => 'mnem-logs',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_queue_item_delete_action();
+
+        $this->assertStringContainsString('mnem_notice=queue_accounts_unsubscribed_deleted', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('count=1', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('failed=0', $GLOBALS['mnem_last_redirect']);
+        $this->assertSame(array(55), $GLOBALS['mnem_deleted_users']);
+        $this->assertStringContainsString('DELETE FROM wp_mnem_list_subscribers WHERE user_id = 55', implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
+    public function test_handle_queue_item_delete_action_reports_failure_when_no_account_matches()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array('ghost@example.com');
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return strpos($query, 'SHOW TABLES LIKE') !== false ? 'wp_mnem_logs' : 0;
+            }
+        };
+
+        $_POST = array(
+            'bulk_action' => 'unsubscribe_delete_accounts',
+            '_wpnonce' => 'test-nonce',
+            'queue_ids' => array(9),
+            'redirect_page' => 'mnem-logs',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_queue_item_delete_action();
+
+        $this->assertStringContainsString('mnem_notice=queue_accounts_action_failed', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('failed=1', $GLOBALS['mnem_last_redirect']);
+        $this->assertArrayNotHasKey('mnem_deleted_users', $GLOBALS);
+    }
+
+    public function test_handle_queue_item_delete_action_unsubscribe_requires_selection()
+    {
+        $_POST = array(
+            'bulk_action' => 'unsubscribe_delete_accounts',
+            '_wpnonce' => 'test-nonce',
+            'redirect_page' => 'mnem-logs',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_queue_item_delete_action();
+
+        $this->assertStringContainsString('mnem_notice=queue_nothing_selected', $GLOBALS['mnem_last_redirect']);
     }
 
     public function test_handle_queue_item_delete_action_redirects_after_status_delete()

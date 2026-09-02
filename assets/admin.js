@@ -29,7 +29,11 @@
             var bulkAction = $('#mnem-bulk-action').val();
             var $actionField = $form.find('input[name="mnem_action"]');
             var $statusField = $form.find('input[name="status"]');
-            var selectedCount = $form.find('.mnem-queue-checkbox:checked').length;
+            var $selected = $form.find('.mnem-queue-checkbox:checked');
+            if (!$selected.length) {
+                $selected = $('.mnem-queue-checkbox:checked');
+            }
+            var selectedCount = $selected.length;
             var message = '';
 
             $actionField.val('');
@@ -57,6 +61,16 @@
                 $actionField.val('delete_queue_by_status');
                 $statusField.val('failed');
                 message = 'Delete all failed queued emails?';
+            } else if (bulkAction === 'unsubscribe_delete_accounts') {
+                if (selectedCount < 1) {
+                    window.alert('No items selected.');
+                    event.preventDefault();
+                    return;
+                }
+
+                $actionField.val('unsubscribe_and_delete_accounts');
+                message = 'WARNING: this will unsubscribe ' + selectedCount + ' selected recipient' + (selectedCount === 1 ? '' : 's') +
+                    ' from all lists and PERMANENTLY DELETE their network user accounts. This cannot be undone. Continue?';
             }
 
             if (!message || !window.confirm(message)) {
@@ -64,7 +78,12 @@
                 return;
             }
 
-            $form.find('button[type="submit"]').prop('disabled', true).text('Deleting...');
+            if (bulkAction === 'unsubscribe_delete_accounts' && !window.confirm('Please confirm again: the selected user accounts will be permanently deleted.')) {
+                event.preventDefault();
+                return;
+            }
+
+            $form.find('button[type="submit"]').prop('disabled', true).text(bulkAction === 'unsubscribe_delete_accounts' ? 'Processing...' : 'Deleting...');
         });
     }
 
