@@ -62,6 +62,7 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_sms_log_delete_user', array($this, 'ajax_sms_log_delete_user'));
         add_action('wp_ajax_mnem_sms_log_unsubscribe_delete', array($this, 'ajax_sms_log_unsubscribe_delete'));
         add_action('wp_ajax_mnem_sms_log_refresh_status', array($this, 'ajax_sms_log_refresh_status'));
+        add_action('wp_ajax_mnem_sms_bulk_action', array($this, 'ajax_sms_bulk_action'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -1052,6 +1053,16 @@ class NetworkAdmin
                             'working'                  => __('Working…', 'multisite-network-email-manager'),
                             'refreshing'               => __('Refreshing…', 'multisite-network-email-manager'),
                             'requestFailed'            => __('The request failed. Please try again.', 'multisite-network-email-manager'),
+                            'itemsSelected'            => __('%d items selected', 'multisite-network-email-manager'),
+                            'noItemsSelected'          => __('No SMS records were selected.', 'multisite-network-email-manager'),
+                            'noBulkAction'             => __('Please choose a bulk action.', 'multisite-network-email-manager'),
+                            'confirmBulk'              => __('Apply "%1$s" to %2$d selected SMS record(s)?', 'multisite-network-email-manager'),
+                            'confirmBulkDryRun'        => __('Preview "%1$s" for %2$d selected SMS record(s) without making changes?', 'multisite-network-email-manager'),
+                            'userWarning'              => __('Warning: this action will delete WordPress user accounts.', 'multisite-network-email-manager'),
+                            'processing'               => __('Processing %d SMS records…', 'multisite-network-email-manager'),
+                            'bulkSuccess'              => __('%1$d of %2$d SMS records processed successfully.', 'multisite-network-email-manager'),
+                            'bulkFailed'               => __('%d failed.', 'multisite-network-email-manager'),
+                            'bulkDryRunNotice'         => __('Dry run only — no changes were made.', 'multisite-network-email-manager'),
                         ),
                     )
                 );
