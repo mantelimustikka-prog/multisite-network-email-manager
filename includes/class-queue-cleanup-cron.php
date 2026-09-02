@@ -80,6 +80,8 @@ class QueueCleanupCron
         $sms_deleted = $sms_deleted === false ? 0 : (int) $sms_deleted;
         $total_deleted = $queue_deleted + $sms_deleted;
 
+        WebhookLog::prune();
+
         if ($total_deleted > 0) {
             Logger::info('Old queue records cleaned up.', array(
                 'days_before'    => $retention_days,

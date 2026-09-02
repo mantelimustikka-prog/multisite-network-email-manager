@@ -7,6 +7,8 @@ defined('ABSPATH') || exit;
 class NetworkAdmin
 {
     private const QUILL_VERSION = '2.0.3';
+    public const WEBHOOK_PROVIDERS = array('mailgun', 'sendgrid', 'brevo', 'postmark', 'smtp2go');
+    private const MAX_STATUS_REFRESH_ITEMS = 100;
 
     public function init()
     {
@@ -40,6 +42,8 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_test_sms_connection', array($this, 'ajax_test_sms_connection'));
         add_action('wp_ajax_mnem_send_test_email', array($this, 'ajax_send_test_email'));
         add_action('wp_ajax_mnem_get_queue_preview', array($this, 'ajax_get_queue_preview'));
+        add_action('wp_ajax_mnem_refresh_queue_statuses', array($this, 'ajax_refresh_queue_statuses'));
+        add_action('wp_ajax_mnem_test_webhook_endpoint', array($this, 'ajax_test_webhook_endpoint'));
         add_action('wp_ajax_mnem_send_queue_item_now', array($this, 'ajax_send_queue_item_now'));
         add_action('wp_ajax_mnem_table_diagnostics_recreate', array($this, 'ajax_table_diagnostics_recreate'));
         add_action('wp_ajax_mnem_table_diagnostics_optimize', array($this, 'ajax_table_diagnostics_optimize'));
@@ -1301,6 +1305,111 @@ class NetworkAdmin
         }
 
         wp_send_json_success($row);
+    }
+
+    /**
+     * AJAX: refresh the provider status of one or more queue rows.
+     *
+     * @return void
+     */
+    public function ajax_refresh_queue_statuses()
+    {
+        $this->ensure_ajax_permissions();
+
+        $raw_ids = isset($_POST['queue_ids']) ? (array) wp_unslash($_POST['queue_ids']) : array();
+        $queue_ids = array_values(array_unique(array_filter(array_map('intval', $raw_ids), static function ($id) {
+            return $id > 0;
+        })));
+
+        if (empty($queue_ids)) {
+            wp_send_json_error(array('message' => __('No queue items were selected for refresh.', 'multisite-network-email-manager')), 400);
+            return;
+        }
+
+        $queue_ids = array_slice($queue_ids, 0, self::MAX_STATUS_REFRESH_ITEMS);
+
+        $items = array();
+        $updated = 0;
+        foreach ($queue_ids as $queue_id) {
+            $result = \MNEM\Queue::refresh_single_item_status($queue_id);
+            if (!empty($result['changed'])) {
+                ++$updated;
+            }
+
+            $items[] = array(
+                'id' => $queue_id,
+                'status' => isset($result['status']) ? (string) $result['status'] : '',
+                'display_status' => isset($result['display_status']) ? (string) $result['display_status'] : '',
+                'changed' => !empty($result['changed']),
+            );
+        }
+
+        wp_send_json_success(array(
+            'checked' => count($queue_ids),
+            'updated' => $updated,
+            'items' => $items,
+            'refreshed_at' => function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s'),
+        ));
+    }
+
+    /**
+     * AJAX: send a test payload to the provider webhook endpoint to verify it is reachable.
+     *
+     * @return void
+     */
+    public function ajax_test_webhook_endpoint()
+    {
+        $this->ensure_ajax_permissions();
+
+        $provider = isset($_POST['provider']) ? sanitize_key(wp_unslash($_POST['provider'])) : '';
+        if (!in_array($provider, self::WEBHOOK_PROVIDERS, true)) {
+            wp_send_json_error(array('message' => __('Unknown webhook provider.', 'multisite-network-email-manager')), 400);
+            return;
+        }
+
+        $url = \MNEM\WebhookLog::get_webhook_url($provider);
+        if ($url === '') {
+            wp_send_json_error(array('message' => __('The webhook URL could not be determined.', 'multisite-network-email-manager')), 500);
+            return;
+        }
+
+        $response = wp_remote_post($url, array(
+            'timeout' => 15,
+            'headers' => array('Content-Type' => 'application/json'),
+            'body' => wp_json_encode(array('mnem_webhook_test' => true, 'provider' => $provider)),
+        ));
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(array(
+                'message' => sprintf(
+                    /* translators: %s: error message returned by the HTTP request. */
+                    __('The webhook endpoint could not be reached: %s', 'multisite-network-email-manager'),
+                    $response->get_error_message()
+                ),
+                'url' => $url,
+            ));
+            return;
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($response);
+        if ($code < 200 || $code >= 300) {
+            wp_send_json_error(array(
+                'message' => sprintf(
+                    /* translators: %d: HTTP status code. */
+                    __('The webhook endpoint responded with HTTP %d.', 'multisite-network-email-manager'),
+                    $code
+                ),
+                'url' => $url,
+                'code' => $code,
+            ));
+            return;
+        }
+
+        wp_send_json_success(array(
+            'message' => __('The webhook endpoint is reachable and logged the test request.', 'multisite-network-email-manager'),
+            'url' => $url,
+            'code' => $code,
+        ));
     }
 
     public function ajax_send_queue_item_now()

@@ -621,4 +621,191 @@
             renderTableDiagnosticsOutput({ success: false, error: data });
         });
     });
+    // ── Queue status refresh (auto on load + manual buttons) ────────────────
+    var queueRefreshInProgress = false;
+    var queueLastRefreshedAt = null;
+    var queueRefreshTimer = null;
+
+    function showQueueToast(message, isError) {
+        var $toast = $('<div class="mnem-toast"></div>').text(String(message || ''));
+        if (isError) {
+            $toast.addClass('mnem-toast-error');
+        }
+        $('body').append($toast);
+        window.setTimeout(function () {
+            $toast.addClass('mnem-toast-visible');
+        }, 10);
+        window.setTimeout(function () {
+            $toast.removeClass('mnem-toast-visible');
+            window.setTimeout(function () {
+                $toast.remove();
+            }, 400);
+        }, 4000);
+    }
+
+    function updateQueueRefreshIndicator() {
+        var $indicator = $('#mnem-refresh-indicator');
+        if (!$indicator.length || !queueLastRefreshedAt) {
+            return;
+        }
+
+        var seconds = Math.max(0, Math.round((Date.now() - queueLastRefreshedAt) / 1000));
+        var age = seconds < 60
+            ? seconds + ' second' + (seconds === 1 ? '' : 's') + ' ago'
+            : Math.round(seconds / 60) + ' minute' + (Math.round(seconds / 60) === 1 ? '' : 's') + ' ago';
+        $indicator.text('Last refreshed: ' + age);
+    }
+
+    function applyQueueStatusUpdate(item) {
+        if (!item || !item.id) {
+            return;
+        }
+
+        var $row = $('.mnem-queue-row[data-queue-id="' + String(item.id) + '"]');
+        if (!$row.length || !item.status) {
+            return;
+        }
+
+        var $badge = $row.find('.mnem-queue-status-cell .mnem-badge');
+        if (!$badge.length) {
+            return;
+        }
+
+        $badge.attr('class', 'mnem-badge mnem-status-' + String(item.status))
+            .text(item.display_status || item.status);
+
+        if (item.changed) {
+            $row.addClass('mnem-status-updated');
+            window.setTimeout(function () {
+                $row.removeClass('mnem-status-updated');
+            }, 2500);
+        }
+    }
+
+    function refreshQueueStatuses(ids, $trigger, silent) {
+        if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl || !ids || !ids.length) {
+            return;
+        }
+
+        if (queueRefreshInProgress) {
+            return;
+        }
+
+        queueRefreshInProgress = true;
+
+        var originalText = $trigger && $trigger.length ? $trigger.text() : '';
+        if ($trigger && $trigger.length) {
+            $trigger.prop('disabled', true).text('Refreshing\u2026');
+        }
+        $('#mnem-refresh-indicator').text('Refreshing statuses\u2026');
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_refresh_queue_statuses',
+            nonce: mnemAdmin.nonce,
+            queue_ids: ids
+        }).done(function (response) {
+            queueRefreshInProgress = false;
+            if ($trigger && $trigger.length) {
+                $trigger.prop('disabled', false).text(originalText);
+            }
+
+            if (!response || !response.success || !response.data) {
+                $('#mnem-refresh-indicator').text('Status refresh failed.');
+                if (!silent) {
+                    showQueueToast('Status refresh failed.', true);
+                }
+                return;
+            }
+
+            var items = response.data.items || [];
+            for (var i = 0; i < items.length; i++) {
+                applyQueueStatusUpdate(items[i]);
+            }
+
+            queueLastRefreshedAt = Date.now();
+            updateQueueRefreshIndicator();
+
+            var updated = parseInt(response.data.updated, 10) || 0;
+            if (!silent || updated > 0) {
+                showQueueToast(updated > 0
+                    ? updated + ' status' + (updated === 1 ? '' : 'es') + ' updated from the provider.'
+                    : 'Statuses are already up to date.', false);
+            }
+        }).fail(function () {
+            queueRefreshInProgress = false;
+            if ($trigger && $trigger.length) {
+                $trigger.prop('disabled', false).text(originalText);
+            }
+            $('#mnem-refresh-indicator').text('Status refresh failed.');
+            if (!silent) {
+                showQueueToast('Status refresh failed.', true);
+            }
+        });
+    }
+
+    function getVisibleQueueIds() {
+        var ids = [];
+        $('.mnem-queue-row').each(function () {
+            var id = parseInt($(this).data('queue-id'), 10);
+            if (id > 0) {
+                ids.push(id);
+            }
+        });
+
+        return ids;
+    }
+
+    $(document).on('click', '.mnem-refresh-all-statuses', function () {
+        refreshQueueStatuses(getVisibleQueueIds(), $(this), false);
+    });
+
+    $(document).on('click', '.mnem-refresh-queue-item', function () {
+        var id = parseInt($(this).data('queue-id'), 10);
+        if (id > 0) {
+            refreshQueueStatuses([id], $(this), false);
+        }
+    });
+
+    $(function () {
+        var $table = $('#mnem-queue-table[data-auto-refresh="1"]');
+        if (!$table.length) {
+            return;
+        }
+
+        queueRefreshTimer = window.setInterval(updateQueueRefreshIndicator, 5000);
+        refreshQueueStatuses(getVisibleQueueIds(), $('.mnem-refresh-all-statuses'), true);
+    });
+
+    // ── Webhook health: endpoint reachability test ──────────────────────────
+    $(document).on('click', '#mnem-test-webhook-endpoint', function () {
+        var $button = $(this);
+        var $result = $('#mnem-test-webhook-result');
+
+        if (typeof mnemAdmin === 'undefined' || !mnemAdmin.ajaxUrl) {
+            return;
+        }
+
+        var originalText = $button.text();
+        $button.prop('disabled', true).text('Testing\u2026');
+        $result.text('').css('color', '');
+
+        $.post(mnemAdmin.ajaxUrl, {
+            action: 'mnem_test_webhook_endpoint',
+            nonce: mnemAdmin.nonce,
+            provider: String($button.data('provider') || '')
+        }).done(function (response) {
+            $button.prop('disabled', false).text(originalText);
+            var data = response && response.data ? response.data : {};
+            if (response && response.success) {
+                $result.text('\u2714 ' + (data.message || 'Webhook endpoint reachable.')).css('color', 'green');
+            } else {
+                $result.text('\u2716 ' + (data.message || 'Webhook endpoint test failed.')).css('color', '#d63638');
+            }
+        }).fail(function (jqXHR) {
+            $button.prop('disabled', false).text(originalText);
+            var data = jqXHR.responseJSON && jqXHR.responseJSON.data ? jqXHR.responseJSON.data : {};
+            $result.text('\u2716 ' + (data.message || 'Webhook endpoint test failed.')).css('color', '#d63638');
+        });
+    });
+
 })(jQuery);

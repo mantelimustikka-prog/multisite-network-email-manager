@@ -696,6 +696,45 @@ class Installer
                     KEY idx_provider_checked (provider_status_checked_at)
                 ){$charset_suffix};",
             ),
+            'mnem_webhook_log' => array(
+                'name' => $tracking_prefix . 'mnem_webhook_log',
+                'columns' => array(
+                    'id' => 'bigint(20) unsigned',
+                    'provider' => 'varchar(50)',
+                    'event_type' => 'varchar(100)',
+                    'recipient_email' => 'varchar(255)',
+                    'message_id' => 'varchar(255)',
+                    'status' => 'varchar(50)',
+                    'received_at' => 'datetime',
+                    'processed_at' => 'datetime',
+                    'success' => 'tinyint(1)',
+                    'error_message' => 'text',
+                    'payload' => 'longtext',
+                ),
+                'indexes' => array(
+                    'PRIMARY' => array('id'),
+                    'provider_received' => array('provider', 'received_at'),
+                    'message_id' => array('message_id'),
+                    'recipient_email' => array('recipient_email'),
+                ),
+                'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_webhook_log (
+                    id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                    provider varchar(50) NOT NULL DEFAULT '',
+                    event_type varchar(100) NOT NULL DEFAULT '',
+                    recipient_email varchar(255) NOT NULL DEFAULT '',
+                    message_id varchar(255) NOT NULL DEFAULT '',
+                    status varchar(50) NOT NULL DEFAULT '',
+                    received_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    processed_at datetime NULL,
+                    success tinyint(1) NOT NULL DEFAULT 0,
+                    error_message text NULL,
+                    payload longtext NULL,
+                    PRIMARY KEY  (id),
+                    KEY provider_received (provider, received_at),
+                    KEY message_id (message_id),
+                    KEY recipient_email (recipient_email)
+                ){$charset_suffix};",
+            ),
         );
     }
 

@@ -1550,12 +1550,24 @@ class Queue
         return $resolved_status;
     }
 
-    public static function refresh_single_item_status(int $queue_id): void
+    /**
+     * Re-check a single queue row against its provider and persist any status change.
+     *
+     * @return array{changed:bool,status:string,previous_status:string,display_status:string}
+     */
+    public static function refresh_single_item_status(int $queue_id): array
     {
         global $wpdb;
 
+        $result = array(
+            'changed' => false,
+            'status' => '',
+            'previous_status' => '',
+            'display_status' => '',
+        );
+
         if ($queue_id <= 0) {
-            return;
+            return $result;
         }
 
         $table = $wpdb->base_prefix . 'mnem_queue';
@@ -1568,23 +1580,31 @@ class Queue
             ARRAY_A
         );
 
-        if (!is_array($row) || empty($row['provider_type']) || empty($row['provider_message_id'])) {
-            return;
+        if (!is_array($row)) {
+            return $result;
         }
 
         $current_status = isset($row['status']) ? (string) $row['status'] : '';
+        $result['status'] = $current_status;
+        $result['previous_status'] = $current_status;
+        $result['display_status'] = self::get_display_status(array('status' => $current_status));
+
+        if (empty($row['provider_type']) || empty($row['provider_message_id'])) {
+            return $result;
+        }
+
         $actual_status = self::retrieve_message_status(
             (string) $row['provider_type'],
             (string) $row['provider_message_id'],
             isset($row['recipient_email']) ? (string) $row['recipient_email'] : ''
         );
         if ($actual_status === '' || $actual_status === $current_status) {
-            return;
+            return $result;
         }
 
         $resolved_status = self::resolve_status_update($current_status, $actual_status);
         if ($resolved_status === $current_status) {
-            return;
+            return $result;
         }
 
         $wpdb->query(
@@ -1594,6 +1614,18 @@ class Queue
                 $queue_id
             )
         );
+
+        $result['changed'] = true;
+        $result['status'] = $resolved_status;
+        $result['display_status'] = self::get_display_status(array('status' => $resolved_status));
+
+        Logger::info('Queue item status refreshed from provider.', array(
+            'queue_id' => $queue_id,
+            'old_status' => $current_status,
+            'new_status' => $resolved_status,
+        ));
+
+        return $result;
     }
 
     private static function retrieve_sendgrid_message_status(string $message_id): string

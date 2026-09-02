@@ -15,7 +15,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '12');
+    define('MNEM_DB_VERSION', '13');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {

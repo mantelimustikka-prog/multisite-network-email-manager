@@ -33,6 +33,26 @@ class StatusSyncCronTest extends TestCase
         $this->assertSame('mnem_status_sync_10_minutes', $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK]['recurrence']);
     }
 
+    public function test_sync_last_100_emails_includes_sent_and_delivered_within_recent_window()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+        };
+
+        StatusSyncCron::sync_last_100_emails();
+
+        $query = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("'pending'", $query);
+        $this->assertStringContainsString("'sent'", $query);
+        $this->assertStringContainsString("'delivered'", $query);
+        $this->assertStringContainsString("'deferred'", $query);
+        $this->assertStringContainsString('sent_at >=', $query);
+    }
+
     public function test_deactivate_clears_sync_hook()
     {
         $GLOBALS['mnem_cron_events'][StatusSyncCron::HOOK] = array(

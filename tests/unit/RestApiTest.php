@@ -81,6 +81,77 @@ class RestApiTest extends TestCase
         $this->assertStringContainsString("status = 'clicked'", $queries);
     }
 
+    public function test_handle_webhook_logs_receipt_to_webhook_log_table()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 55,
+                    'status' => 'sent',
+                    'opened' => '',
+                    'clicked' => '',
+                    'opens_count' => 0,
+                    'clicks_count' => 0,
+                    'provider_metadata' => '{}',
+                );
+            }
+        };
+
+        $request = new class {
+            public function get_route()
+            {
+                return '/mnem/v1/webhooks/brevo';
+            }
+
+            public function get_body()
+            {
+                return wp_json_encode(array(
+                    'event' => 'delivered',
+                    'email' => 'jane@example.com',
+                    'message-id' => 'brevo-1',
+                    'ts_event' => 1786881600,
+                ));
+            }
+        };
+
+        $api = new RestApi();
+        $result = $api->handle_webhook($request);
+
+        $this->assertTrue($result['success']);
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('INSERT INTO wp_mnem_webhook_log', $queries);
+        $this->assertStringContainsString('UPDATE wp_mnem_webhook_log', $queries);
+    }
+
+    public function test_handle_webhook_test_ping_is_logged_without_queue_update()
+    {
+        $GLOBALS['wpdb'] = new wpdb();
+
+        $request = new class {
+            public function get_route()
+            {
+                return '/mnem/v1/webhooks/brevo';
+            }
+
+            public function get_body()
+            {
+                return wp_json_encode(array('mnem_webhook_test' => true));
+            }
+        };
+
+        $api = new RestApi();
+        $result = $api->handle_webhook($request);
+
+        $this->assertTrue($result['success']);
+        $this->assertTrue($result['test']);
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('INSERT INTO wp_mnem_webhook_log', $queries);
+        $this->assertStringContainsString('success = 1', $queries);
+        $this->assertStringNotContainsString('wp_mnem_queue', $queries);
+    }
+
     public function test_handle_brevo_webhook_parses_timestamp_and_ts_fields()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
