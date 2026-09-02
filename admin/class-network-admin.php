@@ -57,6 +57,9 @@ class NetworkAdmin
         add_action('wp_ajax_mnem_get_sms_campaign_stats', array($this, 'ajax_get_sms_campaign_stats'));
         add_action('wp_ajax_mnem_preview_sms_recipients', array($this, 'ajax_preview_sms_recipients'));
         add_action('wp_ajax_mnem_get_sms_list_info', array($this, 'ajax_get_sms_list_info'));
+        add_action('wp_ajax_mnem_sms_log_unsubscribe', array($this, 'ajax_sms_log_unsubscribe'));
+        add_action('wp_ajax_mnem_sms_log_delete_user', array($this, 'ajax_sms_log_delete_user'));
+        add_action('wp_ajax_mnem_sms_log_unsubscribe_delete', array($this, 'ajax_sms_log_unsubscribe_delete'));
 
         $menu = new AdminMenu();
         $menu->init();
@@ -982,6 +985,28 @@ class NetworkAdmin
                         'i18n' => array(
                             'sourceView' => __('HTML Source', 'multisite-network-email-manager'),
                             'visualView' => __('Visual Editor', 'multisite-network-email-manager'),
+                        ),
+                    )
+                );
+            }
+        }
+
+        if ($page === 'mnem-logs' && function_exists('wp_enqueue_script') && file_exists(MNEM_PLUGIN_DIR . 'assets/sms-logs.js')) {
+            wp_enqueue_script('mnem-sms-logs', MNEM_PLUGIN_URL . 'assets/sms-logs.js', array('jquery'), MNEM_VERSION, true);
+
+            if (function_exists('wp_localize_script')) {
+                wp_localize_script(
+                    'mnem-sms-logs',
+                    'mnemSmsLogs',
+                    array(
+                        'ajaxUrl' => admin_url('admin-ajax.php'),
+                        'nonce'   => function_exists('wp_create_nonce') ? wp_create_nonce('mnem_sms_logs_ajax') : '',
+                        'i18n'    => array(
+                            'confirmUnsubscribe'       => __('Unsubscribe this phone number from the SMS list?', 'multisite-network-email-manager'),
+                            'confirmDeleteUser'        => __('Delete the WordPress user associated with this phone number?', 'multisite-network-email-manager'),
+                            'confirmUnsubscribeDelete' => __('Unsubscribe from the SMS list AND delete the WordPress user?', 'multisite-network-email-manager'),
+                            'working'                  => __('Working…', 'multisite-network-email-manager'),
+                            'requestFailed'            => __('The request failed. Please try again.', 'multisite-network-email-manager'),
                         ),
                     )
                 );
@@ -2040,6 +2065,24 @@ class NetworkAdmin
             return;
         }
 
+        try {
+            $this->do_sms_log_unsubscribe($request);
+            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    /**
+     * Unsubscribe a phone number from its SMS list.
+     *
+     * @param array{sms_queue_id:int,phone:string,list_id:int} $request
+     * @return void
+     * @throws \Exception When the subscriber cannot be unsubscribed.
+     */
+    private function do_sms_log_unsubscribe(array $request)
+    {
         $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
 
         try {
@@ -2068,8 +2111,6 @@ class NetworkAdmin
                 'sms_queue_id' => $request['sms_queue_id'],
                 'admin_id'     => $admin_id,
             ));
-
-            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed', array('tab' => 'sms'));
         } catch (\Exception $e) {
             \MNEM\Logger::error('SMS log unsubscribe failed.', array(
                 'phone'    => $request['phone'],
@@ -2078,8 +2119,7 @@ class NetworkAdmin
                 'admin_id' => $admin_id,
             ));
 
-            $this->store_error_detail($e->getMessage());
-            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            throw $e;
         }
     }
 
@@ -2107,6 +2147,24 @@ class NetworkAdmin
             return;
         }
 
+        try {
+            $this->do_sms_log_delete_user($request);
+            $this->redirect_with_notice('mnem-logs', 'sms_log_user_deleted', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    /**
+     * Delete the WordPress user associated with a subscriber phone number.
+     *
+     * @param array{sms_queue_id:int,phone:string,list_id:int} $request
+     * @return int Deleted WordPress user ID.
+     * @throws \Exception When the user cannot be deleted.
+     */
+    private function do_sms_log_delete_user(array $request)
+    {
         $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
 
         try {
@@ -2133,7 +2191,7 @@ class NetworkAdmin
                 'admin_id'        => $admin_id,
             ));
 
-            $this->redirect_with_notice('mnem-logs', 'sms_log_user_deleted', array('tab' => 'sms'));
+            return $user_id;
         } catch (\Exception $e) {
             \MNEM\Logger::error('SMS log delete user failed.', array(
                 'phone'    => $request['phone'],
@@ -2142,8 +2200,7 @@ class NetworkAdmin
                 'admin_id' => $admin_id,
             ));
 
-            $this->store_error_detail($e->getMessage());
-            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            throw $e;
         }
     }
 
@@ -2171,6 +2228,24 @@ class NetworkAdmin
             return;
         }
 
+        try {
+            $this->do_sms_log_unsubscribe_delete($request);
+            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed_and_deleted', array('tab' => 'sms'));
+        } catch (\Exception $e) {
+            $this->store_error_detail($e->getMessage());
+            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+        }
+    }
+
+    /**
+     * Unsubscribe a phone number and delete its WordPress user in one action.
+     *
+     * @param array{sms_queue_id:int,phone:string,list_id:int} $request
+     * @return int Deleted WordPress user ID.
+     * @throws \Exception When either part of the action fails.
+     */
+    private function do_sms_log_unsubscribe_delete(array $request)
+    {
         $admin_id = function_exists('get_current_user_id') ? get_current_user_id() : 0;
 
         try {
@@ -2211,7 +2286,7 @@ class NetworkAdmin
                 'admin_id'        => $admin_id,
             ));
 
-            $this->redirect_with_notice('mnem-logs', 'sms_log_unsubscribed_and_deleted', array('tab' => 'sms'));
+            return $user_id;
         } catch (\Exception $e) {
             \MNEM\Logger::error('SMS log unsubscribe & delete failed.', array(
                 'phone'    => $request['phone'],
@@ -2220,9 +2295,137 @@ class NetworkAdmin
                 'admin_id' => $admin_id,
             ));
 
-            $this->store_error_detail($e->getMessage());
-            $this->redirect_with_notice('mnem-logs', 'sms_log_action_failed', array('tab' => 'sms'));
+            throw $e;
         }
+    }
+
+    /**
+     * Validate AJAX permissions/nonce and extract the SMS log request data.
+     *
+     * Sends a JSON error response and returns null when validation fails.
+     *
+     * @return array{sms_queue_id:int,phone:string,list_id:int}|null
+     */
+    private function get_sms_log_ajax_request()
+    {
+        if (!$this->current_user_can_manage_network()) {
+            wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'multisite-network-email-manager')), 403);
+            return null;
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$this->verify_nonce($nonce, 'mnem_sms_logs_ajax')) {
+            wp_send_json_error(array('message' => __('Security check failed. Please reload the page and try again.', 'multisite-network-email-manager')), 403);
+            return null;
+        }
+
+        $request = $this->get_sms_log_action_request_data();
+        if ($request === null) {
+            wp_send_json_error(array('message' => __('Missing required data for this action.', 'multisite-network-email-manager')), 400);
+            return null;
+        }
+
+        return $request;
+    }
+
+    /**
+     * AJAX: unsubscribe the phone number of an SMS log entry from its list.
+     *
+     * @return void
+     */
+    public function ajax_sms_log_unsubscribe()
+    {
+        $request = $this->get_sms_log_ajax_request();
+        if ($request === null) {
+            return;
+        }
+
+        try {
+            $this->do_sms_log_unsubscribe($request);
+        } catch (\Exception $e) {
+            wp_send_json_error(array(
+                'message'      => $e->getMessage(),
+                'action'       => 'unsubscribe',
+                'sms_queue_id' => $request['sms_queue_id'],
+            ));
+            return;
+        }
+
+        wp_send_json_success(array(
+            'message'            => __('Subscriber unsubscribed successfully.', 'multisite-network-email-manager'),
+            'action'             => 'unsubscribe',
+            'sms_queue_id'       => $request['sms_queue_id'],
+            'buttons_to_disable' => array('unsubscribe', 'both'),
+            'new_button_text'    => array('unsubscribe' => __('✓ Unsubscribed', 'multisite-network-email-manager')),
+        ));
+    }
+
+    /**
+     * AJAX: delete the WordPress user attached to an SMS log entry.
+     *
+     * @return void
+     */
+    public function ajax_sms_log_delete_user()
+    {
+        $request = $this->get_sms_log_ajax_request();
+        if ($request === null) {
+            return;
+        }
+
+        try {
+            $this->do_sms_log_delete_user($request);
+        } catch (\Exception $e) {
+            wp_send_json_error(array(
+                'message'      => $e->getMessage(),
+                'action'       => 'delete_user',
+                'sms_queue_id' => $request['sms_queue_id'],
+            ));
+            return;
+        }
+
+        wp_send_json_success(array(
+            'message'            => __('WordPress user deleted successfully.', 'multisite-network-email-manager'),
+            'action'             => 'delete_user',
+            'sms_queue_id'       => $request['sms_queue_id'],
+            'buttons_to_disable' => array('delete_user', 'both'),
+            'new_button_text'    => array('delete_user' => __('✓ Deleted', 'multisite-network-email-manager')),
+        ));
+    }
+
+    /**
+     * AJAX: unsubscribe and delete the WordPress user in a single call.
+     *
+     * @return void
+     */
+    public function ajax_sms_log_unsubscribe_delete()
+    {
+        $request = $this->get_sms_log_ajax_request();
+        if ($request === null) {
+            return;
+        }
+
+        try {
+            $this->do_sms_log_unsubscribe_delete($request);
+        } catch (\Exception $e) {
+            wp_send_json_error(array(
+                'message'      => $e->getMessage(),
+                'action'       => 'both',
+                'sms_queue_id' => $request['sms_queue_id'],
+            ));
+            return;
+        }
+
+        wp_send_json_success(array(
+            'message'            => __('Subscriber unsubscribed and WordPress user deleted.', 'multisite-network-email-manager'),
+            'action'             => 'both',
+            'sms_queue_id'       => $request['sms_queue_id'],
+            'buttons_to_disable' => array('unsubscribe', 'delete_user', 'both'),
+            'new_button_text'    => array(
+                'unsubscribe' => __('✓ Unsubscribed', 'multisite-network-email-manager'),
+                'delete_user' => __('✓ Deleted', 'multisite-network-email-manager'),
+                'both'        => __('✓ Completed', 'multisite-network-email-manager'),
+            ),
+        ));
     }
 
     private function wp_user_exists(int $user_id): bool
