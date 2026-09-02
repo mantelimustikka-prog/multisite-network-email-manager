@@ -133,107 +133,130 @@ $_email_tab_param = '&tab=email';
     </form>
 
     <div class="mnem-panel" style="padding: 12px 16px;">
-        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <!-- Bulk Actions Row -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 15px;">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <label for="mnem-bulk-action"><strong><?php esc_html_e('Bulk Actions:', 'multisite-network-email-manager'); ?></strong></label>
+                <div style="display: flex; gap: 8px;">
+                    <select name="bulk_action" id="mnem-bulk-action" form="mnem-bulk-form"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>
+                        <option value="">-- Select Action --</option>
+                        <option value="delete_pending">Delete All Pending</option>
+                        <option value="delete_failed">Delete All Failed</option>
+                        <option value="delete_selected">Delete Selected Items</option>
+                        <option value="unsubscribe_delete_accounts"><?php esc_html_e('Unsubscribe & Delete Account', 'multisite-network-email-manager'); ?></option>
+                    </select>
+                    <button type="submit" form="mnem-bulk-form" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
+                </div>
+            </div>
 
-            <!-- Bulk Actions -->
-            <label for="mnem-bulk-action"><strong><?php esc_html_e('Bulk Actions:', 'multisite-network-email-manager'); ?></strong></label>
-            <select name="bulk_action" id="mnem-bulk-action" form="mnem-bulk-form"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>
-                <option value="">-- Select Action --</option>
-                <option value="delete_pending">Delete All Pending</option>
-                <option value="delete_failed">Delete All Failed</option>
-                <option value="delete_selected">Delete Selected Items</option>
-                <option value="unsubscribe_delete_accounts"><?php esc_html_e('Unsubscribe & Delete Account', 'multisite-network-email-manager'); ?></option>
-            </select>
-            <button type="submit" form="mnem-bulk-form" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
+            <!-- Status Filter Column -->
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <select name="status_filter" id="mnem-status-filter" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
+                        <option value=""><?php esc_html_e('All Statuses', 'multisite-network-email-manager'); ?></option>
+                        <?php foreach ($all_statuses as $s) : ?>
+                            <option value="<?php echo esc_attr($s); ?>"<?php selected($status_filter, $s); ?>>
+                                <?php echo esc_html(ucwords(str_replace('_', ' ', $s))); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if ($status_filter !== '') : ?>
+                        <?php
+                        $clear_filter_args = array(
+                            'page' => 'mnem-logs',
+                            'tab' => 'email',
+                            'per_page' => $per_page,
+                        );
+                        if ($search_email !== '') {
+                            $clear_filter_args['search_email'] = $search_email;
+                        }
+                        if ($search_subject !== '') {
+                            $clear_filter_args['search_subject'] = $search_subject;
+                        }
+                        ?>
+                        <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
+                    <?php endif; ?>
+                </div>
+            </div>
 
-            <!-- Status Filter -->
-            <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
-            <select name="status_filter" id="mnem-status-filter" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
-                <option value=""><?php esc_html_e('All Statuses', 'multisite-network-email-manager'); ?></option>
-                <?php foreach ($all_statuses as $s) : ?>
-                    <option value="<?php echo esc_attr($s); ?>"<?php selected($status_filter, $s); ?>>
-                        <?php echo esc_html(ucwords(str_replace('_', ' ', $s))); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <?php if ($status_filter !== '') : ?>
-                <?php
-                $clear_filter_args = array(
-                    'page' => 'mnem-logs',
-                    'tab' => 'email',
-                    'per_page' => $per_page,
-                );
-                if ($search_email !== '') {
-                    $clear_filter_args['search_email'] = $search_email;
-                }
-                if ($search_subject !== '') {
-                    $clear_filter_args['search_subject'] = $search_subject;
-                }
-                ?>
-                <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Filter', 'multisite-network-email-manager'); ?></a>
-            <?php endif; ?>
+            <!-- Per Page Column -->
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <label for="mnem-per-page"><strong><?php esc_html_e('Per page:', 'multisite-network-email-manager'); ?></strong></label>
+                <select name="per_page" id="mnem-per-page" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
+                    <?php foreach (array(10, 20, 50, 100, 200, 500) as $opt) : ?>
+                        <option value="<?php echo esc_attr((string) $opt); ?>"<?php selected($per_page, $opt); ?>><?php echo esc_html((string) $opt); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
 
-            <!-- Per Page -->
-            <label for="mnem-per-page"><strong><?php esc_html_e('Per page:', 'multisite-network-email-manager'); ?></strong></label>
-            <select name="per_page" id="mnem-per-page" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();">
-                <?php foreach (array(10, 20, 50, 100, 200, 500) as $opt) : ?>
-                    <option value="<?php echo esc_attr((string) $opt); ?>"<?php selected($per_page, $opt); ?>><?php echo esc_html((string) $opt); ?></option>
-                <?php endforeach; ?>
-            </select>
-
-            <!-- Search -->
-            <label for="mnem-search-email"><strong><?php esc_html_e('Email Address:', 'multisite-network-email-manager'); ?></strong></label>
-            <input
-                type="search"
-                id="mnem-search-email"
-                name="search_email"
-                form="mnem-filter-form"
-                value="<?php echo esc_attr($search_email); ?>"
-                placeholder="<?php echo esc_attr(esc_html__('Search recipient email', 'multisite-network-email-manager')); ?>"
-            />
-
-            <label for="mnem-search-subject"><strong><?php esc_html_e('Email Subject:', 'multisite-network-email-manager'); ?></strong></label>
-            <input
-                type="search"
-                id="mnem-search-subject"
-                name="search_subject"
-                form="mnem-filter-form"
-                value="<?php echo esc_attr($search_subject); ?>"
-                placeholder="<?php echo esc_attr(esc_html__('Search email subject', 'multisite-network-email-manager')); ?>"
-            />
-            <button type="submit" form="mnem-filter-form" class="button"><?php esc_html_e('Search', 'multisite-network-email-manager'); ?></button>
-            <?php if ($search_email !== '' || $search_subject !== '') : ?>
-                <?php
-                $clear_search_args = array(
-                    'page' => 'mnem-logs',
-                    'tab' => 'email',
-                );
-                if ($status_filter !== '') {
-                    $clear_search_args['status_filter'] = $status_filter;
-                }
-                if ($per_page !== 50) {
-                    $clear_search_args['per_page'] = $per_page;
-                }
-                ?>
-                <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_search_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Search', 'multisite-network-email-manager'); ?></a>
-            <?php endif; ?>
-
-            <span class="description">
-                <?php
-                $range_start = $total_filtered > 0 ? (($current_page - 1) * $per_page) + 1 : 0;
-                $range_end   = min($current_page * $per_page, $total_filtered);
-                printf(
-                    esc_html__('Showing %1$s-%2$s of %3$s records', 'multisite-network-email-manager'),
-                    esc_html(number_format($range_start)),
-                    esc_html(number_format($range_end)),
-                    esc_html(number_format($total_filtered))
-                );
-                ?>
-            </span>
-
+            <!-- Record Count -->
+            <div style="display: flex; flex-direction: column; gap: 5px; justify-content: flex-end;">
+                <span class="description">
+                    <?php
+                    $range_start = $total_filtered > 0 ? (($current_page - 1) * $per_page) + 1 : 0;
+                    $range_end   = min($current_page * $per_page, $total_filtered);
+                    printf(
+                        esc_html__('Showing %1$s-%2$s of %3$s records', 'multisite-network-email-manager'),
+                        esc_html(number_format($range_start)),
+                        esc_html(number_format($range_end)),
+                        esc_html(number_format($total_filtered))
+                    );
+                    ?>
+                </span>
+            </div>
         </div>
 
-        <!-- Warning message placed below the dropdown controls -->
+        <!-- Search Row -->
+        <div style="display: flex; gap: 15px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 15px;">
+            <!-- Email Address Search -->
+            <div style="display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 250px;">
+                <label for="mnem-search-email"><strong><?php esc_html_e('Email Address:', 'multisite-network-email-manager'); ?></strong></label>
+                <input
+                    type="search"
+                    id="mnem-search-email"
+                    name="search_email"
+                    form="mnem-filter-form"
+                    value="<?php echo esc_attr($search_email); ?>"
+                    placeholder="<?php echo esc_attr(esc_html__('Search recipient email', 'multisite-network-email-manager')); ?>"
+                />
+            </div>
+
+            <!-- Email Subject Search -->
+            <div style="display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 250px;">
+                <label for="mnem-search-subject"><strong><?php esc_html_e('Email Subject:', 'multisite-network-email-manager'); ?></strong></label>
+                <input
+                    type="search"
+                    id="mnem-search-subject"
+                    name="search_subject"
+                    form="mnem-filter-form"
+                    value="<?php echo esc_attr($search_subject); ?>"
+                    placeholder="<?php echo esc_attr(esc_html__('Search email subject', 'multisite-network-email-manager')); ?>"
+                />
+            </div>
+
+            <!-- Search Buttons -->
+            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                <button type="submit" form="mnem-filter-form" class="button"><?php esc_html_e('Search', 'multisite-network-email-manager'); ?></button>
+                <?php if ($search_email !== '' || $search_subject !== '') : ?>
+                    <?php
+                    $clear_search_args = array(
+                        'page' => 'mnem-logs',
+                        'tab' => 'email',
+                    );
+                    if ($status_filter !== '') {
+                        $clear_search_args['status_filter'] = $status_filter;
+                    }
+                    if ($per_page !== 50) {
+                        $clear_search_args['per_page'] = $per_page;
+                    }
+                    ?>
+                    <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_search_args, '', '&'))); ?>" class="button"><?php esc_html_e('Clear Search', 'multisite-network-email-manager'); ?></a>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Warning message below all controls -->
         <div style="margin-top: 12px;">
             <p class="description" style="color: #b32d2e; margin: 0;">
                 <?php esc_html_e('Warning: "Unsubscribe & Delete Account" permanently deletes', 'multisite-network-email-manager'); ?><br />
@@ -257,6 +280,7 @@ $_email_tab_param = '&tab=email';
             </p>
         <?php endif; ?>
     </div>
+
     <script>
         (function () {
             var filterForm = document.getElementById('mnem-filter-form');
