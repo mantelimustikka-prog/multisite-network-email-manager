@@ -145,9 +145,6 @@ $_email_tab_param = '&tab=email';
                 <option value="unsubscribe_delete_accounts"><?php esc_html_e('Unsubscribe & Delete Account', 'multisite-network-email-manager'); ?></option>
             </select>
             <button type="submit" form="mnem-bulk-form" class="button"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>>Apply</button>
-            <span class="description" style="color: #b32d2e;">
-                <?php esc_html_e('Warning: "Unsubscribe & Delete Account" permanently deletes the network user accounts of the selected recipients.', 'multisite-network-email-manager'); ?>
-            </span>
 
             <!-- Status Filter -->
             <label for="mnem-status-filter"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
@@ -235,6 +232,15 @@ $_email_tab_param = '&tab=email';
             </span>
 
         </div>
+
+        <!-- Warning message placed below the dropdown controls -->
+        <div style="margin-top: 12px;">
+            <p class="description" style="color: #b32d2e; margin: 0;">
+                <?php esc_html_e('Warning: "Unsubscribe & Delete Account" permanently deletes', 'multisite-network-email-manager'); ?><br />
+                <?php esc_html_e('the network user accounts of the selected recipients.', 'multisite-network-email-manager'); ?>
+            </p>
+        </div>
+
         <?php if ($search_email !== '' || $search_subject !== '') : ?>
             <p class="description" style="margin-top: 10px;">
                 <strong><?php esc_html_e('Searching for:', 'multisite-network-email-manager'); ?></strong>
@@ -293,7 +299,7 @@ $_email_tab_param = '&tab=email';
                 ));
                 ?>
                 <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=1'); ?>">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></a>
-                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=' . max(1, $current_page - 1)); ?>">&lsaquo; <?php esc_html_e('Prev', 'multisite-network-email-manager'); ?></a>
+                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=' . max(1, $current_page - 1)); ?>">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></a>
                 <span class="paging-input" style="padding: 0 8px;">
                     <?php
                     printf(
@@ -391,7 +397,7 @@ $_email_tab_param = '&tab=email';
         <div class="tablenav bottom" style="margin-top: 8px;">
             <div class="tablenav-pages" style="float: right;">
                 <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=1'); ?>">&laquo; <?php esc_html_e('First', 'multisite-network-email-manager'); ?></a>
-                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=' . max(1, $current_page - 1)); ?>">&lsaquo; <?php esc_html_e('Prev', 'multisite-network-email-manager'); ?></a>
+                <a class="button<?php echo $current_page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($page_url_base . '&paged=' . max(1, $current_page - 1)); ?>">&lsaquo; <?php esc_html_e('Previous', 'multisite-network-email-manager'); ?></a>
                 <span class="paging-input" style="padding: 0 8px;">
                     <?php
                     printf(
