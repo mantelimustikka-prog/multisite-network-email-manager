@@ -766,6 +766,13 @@ if ($GLOBALS['wpdb'] === null) {
     $GLOBALS['wpdb'] = new wpdb();
 }
 
+if (!function_exists('rest_url')) {
+    function rest_url($path = '')
+    {
+        return 'http://example.org/wp-json/' . ltrim((string) $path, '/');
+    }
+}
+
 if (!function_exists('wp_remote_get')) {
     function wp_remote_get($url, $args = array())
     {
@@ -945,6 +952,7 @@ require_once __DIR__ . '/../includes/class-cli-command.php';
 require_once __DIR__ . '/../includes/class-user-events-campaign.php';
 require_once __DIR__ . '/../includes/class-user-events.php';
 require_once __DIR__ . '/../includes/class-smtp-diagnostics.php';
+require_once __DIR__ . '/../includes/class-webhook-log.php';
 require_once __DIR__ . '/../includes/class-rest-api.php';
 require_once __DIR__ . '/../includes/class-subscriber-lists.php';
 require_once __DIR__ . '/../includes/class-phone-validator.php';

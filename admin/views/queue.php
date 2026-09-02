@@ -239,6 +239,17 @@ $_email_tab_param = '&tab=email';
                 <?php endif; ?>
             </div>
 
+            <!-- Refresh Controls -->
+            <div style="display: flex; flex-direction: column; gap: 3px; min-width: 130px;">
+                <label style="font-size: 12px; font-weight: bold; margin: 0;"><strong><?php esc_html_e('Statuses:', 'multisite-network-email-manager'); ?></strong></label>
+                <button
+                    type="button"
+                    class="button mnem-refresh-all-statuses"
+                    style="padding: 5px 10px; font-size: 13px; white-space: nowrap;"
+                    <?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?>
+                ><?php esc_html_e('Refresh Now', 'multisite-network-email-manager'); ?></button>
+            </div>
+
             <!-- Record Count -->
             <div style="display: flex; flex-direction: column; gap: 3px; text-align: right; white-space: nowrap; min-width: 160px;">
                 <span style="font-size: 12px; color: #666;">
@@ -262,6 +273,10 @@ $_email_tab_param = '&tab=email';
                 <?php esc_html_e('Warning: "Unsubscribe & Delete Account" permanently deletes', 'multisite-network-email-manager'); ?><br />
                 <?php esc_html_e('the network user accounts of the selected recipients.', 'multisite-network-email-manager'); ?>
             </p>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <span class="description mnem-refresh-indicator" id="mnem-refresh-indicator" data-refreshed-at=""><?php esc_html_e('Statuses have not been refreshed yet on this page.', 'multisite-network-email-manager'); ?></span>
         </div>
 
         <?php if ($search_email !== '' || $search_subject !== '') : ?>
@@ -340,7 +355,7 @@ $_email_tab_param = '&tab=email';
         </div>
         <?php endif; ?>
 
-        <table class="widefat striped">
+        <table class="widefat striped" id="mnem-queue-table" data-auto-refresh="1">
             <thead>
                 <tr>
                     <th scope="col" class="check-column"><input type="checkbox" id="mnem-check-all"<?php echo empty($queue_items) ? ' disabled="disabled"' : ''; ?> /></th>
@@ -368,7 +383,7 @@ $_email_tab_param = '&tab=email';
                         <?php $is_processing = isset($item['status']) && $item['status'] === 'processing'; ?>
                         <?php $display_status = \MNEM\Queue::get_display_status($item); ?>
                         <?php $status_slug = isset($item['status']) ? strtolower((string) $item['status']) : 'failed'; ?>
-                        <tr>
+                        <tr class="mnem-queue-row" data-queue-id="<?php echo esc_attr((string) $item['id']); ?>">
                             <th scope="row" class="check-column">
                                 <input type="checkbox" class="mnem-queue-checkbox" name="queue_ids[]" form="mnem-bulk-form" value="<?php echo esc_attr((string) $item['id']); ?>" />
                             </th>
@@ -377,7 +392,7 @@ $_email_tab_param = '&tab=email';
                             <td><?php echo esc_html((string) $item['campaign_id']); ?></td>
                             <td><?php echo esc_html($item['recipient_email']); ?></td>
                             <td><?php echo esc_html($item['subject']); ?></td>
-                            <td><span class="mnem-badge mnem-status-<?php echo esc_attr($status_slug); ?>"><?php echo esc_html($display_status); ?></span></td>
+                            <td class="mnem-queue-status-cell"><span class="mnem-badge mnem-status-<?php echo esc_attr($status_slug); ?>"><?php echo esc_html($display_status); ?></span></td>
                             <td><?php echo esc_html((string) $item['attempts']); ?></td>
                             <td><?php echo esc_html($item['scheduled_at']); ?></td>
                             <td title="<?php echo esc_attr(!empty($item['opened']) ? 'First open: ' . (string) $item['opened'] : 'No opens yet'); ?>"><?php echo esc_html((string) (isset($item['opens_count']) ? (int) $item['opens_count'] : 0)); ?></td>
@@ -393,6 +408,11 @@ $_email_tab_param = '&tab=email';
                                     data-status="<?php echo esc_attr($item['status']); ?>"
                                     data-created-at="<?php echo esc_attr($item['created_at']); ?>"
                                 >Preview</button>
+                                <button
+                                    type="button"
+                                    class="button button-small mnem-refresh-queue-item"
+                                    data-queue-id="<?php echo esc_attr((string) $item['id']); ?>"
+                                ><?php esc_html_e('Refresh', 'multisite-network-email-manager'); ?></button>
                                 <?php if ($item['status'] !== 'processing') : ?>
                                     <button
                                         type="button"

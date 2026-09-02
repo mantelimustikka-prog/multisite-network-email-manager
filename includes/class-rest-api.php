@@ -520,7 +520,21 @@ class RestApi
 
         Logger::info('Webhook received.', array('provider' => $provider, 'event_count' => is_array($data) ? count($data) : 1));
 
+        // Connectivity test ping sent from the webhook health screen.
+        if (!empty($data['mnem_webhook_test'])) {
+            $log_id = WebhookLog::record($provider, 'mnem_webhook_test', '', '', '', $data);
+            WebhookLog::mark_processed($log_id, true);
+
+            return array('success' => true, 'provider' => $provider, 'test' => true, 'event_count' => 0);
+        }
+
         $events = $this->extract_webhook_events($provider, $data);
+
+        if (empty($events)) {
+            $log_id = WebhookLog::record($provider, '', '', '', '', is_array($data) ? $data : array());
+            WebhookLog::mark_processed($log_id, false, 'No recognisable events were found in the webhook payload.');
+        }
+
         foreach ($events as $event) {
             $event_type = isset($event['event_type']) ? (string) $event['event_type'] : '';
             $recipient = isset($event['recipient']) ? (string) $event['recipient'] : '';
@@ -528,6 +542,8 @@ class RestApi
             $timestamp = isset($event['timestamp']) ? (string) $event['timestamp'] : '';
             $payload = isset($event['payload']) && is_array($event['payload']) ? $event['payload'] : array();
             $status = Queue::map_webhook_status($provider, $event_type, $payload);
+
+            $log_id = WebhookLog::record($provider, $event_type, $recipient, $message_id, $status, $payload);
 
             Logger::info('Webhook event processed.', array(
                 'provider'   => $provider,
@@ -539,10 +555,12 @@ class RestApi
             ));
 
             if ($status === '') {
+                WebhookLog::mark_processed($log_id, false, 'Unmapped event type: ' . $event_type);
                 continue;
             }
 
-            Queue::update_status_from_webhook($provider, $message_id, $status, $payload, $recipient, $timestamp);
+            $updated = Queue::update_status_from_webhook($provider, $message_id, $status, $payload, $recipient, $timestamp);
+            WebhookLog::mark_processed($log_id, (bool) $updated, $updated ? '' : 'No matching queue row was updated.');
 
             if ($recipient !== '' && in_array($status, array('bounce', 'invalid_email', 'complaint'), true)) {
                 $site_id = function_exists('get_current_blog_id') ? (int) get_current_blog_id() : 1;

@@ -8,8 +8,9 @@ class StatusSyncCron
 {
     public const HOOK = 'mnem_sync_provider_statuses';
     private const VALID_INTERVALS = array(5, 10, 15, 20, 30, 60);
-    private const SYNCABLE_STATUSES = array('sent', 'processing', 'deferred', 'soft_bounce');
+    private const SYNCABLE_STATUSES = array('pending', 'processing', 'sent', 'delivered', 'deferred', 'soft_bounce');
     private const SYNC_LIMIT = 100;
+    private const SYNC_WINDOW_DAYS = 30;
 
     public function init(): void
     {
@@ -73,6 +74,7 @@ class StatusSyncCron
 
         $table = $wpdb->base_prefix . 'mnem_queue';
         $status_placeholders = implode(', ', array_fill(0, count(self::SYNCABLE_STATUSES), '%s'));
+        $threshold = gmdate('Y-m-d H:i:s', time() - (self::SYNC_WINDOW_DAYS * (defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400)));
         $rows = (array) $wpdb->get_results(
             call_user_func_array(
                 array($wpdb, 'prepare'),
@@ -83,11 +85,12 @@ class StatusSyncCron
                         WHERE status IN ({$status_placeholders})
                         AND provider_type <> ''
                         AND provider_message_id <> ''
+                        AND sent_at >= %s
                         ORDER BY sent_at DESC, id DESC
                         LIMIT %d",
                     ),
                     self::SYNCABLE_STATUSES,
-                    array(self::SYNC_LIMIT)
+                    array($threshold, self::SYNC_LIMIT)
                 )
             ),
             ARRAY_A

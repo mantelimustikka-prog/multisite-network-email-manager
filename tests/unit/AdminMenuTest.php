@@ -248,7 +248,7 @@ class AdminMenuTest extends TestCase
 
         $this->assertStringContainsString('search_email=jane%40example.com', $output);
         $this->assertStringContainsString('search_subject=Welcome', $output);
-        $this->assertStringContainsString('Clear Search', $output);
+        $this->assertStringContainsString('admin.php?page=mnem-logs&tab=email&per_page=10', $output);
     }
 
     public function test_render_queue_shows_force_delete_for_processing_items()

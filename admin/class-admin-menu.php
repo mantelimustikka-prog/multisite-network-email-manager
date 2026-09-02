@@ -590,7 +590,7 @@ class AdminMenu
     public function render_settings()
     {
         $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'general';
-        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'general', 'sms');
+        $allowed_tabs = array('smtp', 'sender', 'header-footer', 'status-updates', 'webhook-health', 'general', 'sms');
         if (!in_array($active_tab, $allowed_tabs, true)) {
             $active_tab = 'general';
         }
@@ -608,11 +608,18 @@ class AdminMenu
         $sms_integrity_stats = \MNEM\SmsSubscriberLists::get_data_integrity_overview();
         $sms_integrity_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_integrity_result();
         $sms_status_sync_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_status_sync_result();
+        $webhook_provider = isset($settings['provider_type']) ? (string) $settings['provider_type'] : 'smtp';
+        if (!in_array($webhook_provider, \MNEM\Admin\NetworkAdmin::WEBHOOK_PROVIDERS, true)) {
+            $webhook_provider = 'brevo';
+        }
+        $webhook_url = \MNEM\WebhookLog::get_webhook_url($webhook_provider);
+        $webhook_recent = \MNEM\WebhookLog::get_recent(10);
+        $webhook_stats = \MNEM\WebhookLog::get_stats();
         $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
         $notice_message = $this->get_notice_message($notice);
         $notice_class = $this->get_notice_class($notice);
 
-        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
+        $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'webhook_provider', 'webhook_url', 'webhook_recent', 'webhook_stats', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
     }
 
     public function render_campaigns()
