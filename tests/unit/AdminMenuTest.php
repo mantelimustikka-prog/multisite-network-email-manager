@@ -480,4 +480,40 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('mnem-sms-subscriber-lists-bulk-add', $output);
         $this->assertStringContainsString('mnem-invalid-phone-numbers', $output);
     }
+
+    public function test_render_logs_sms_tab_populates_provider_status_dropdown()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT DISTINCT provider_status FROM wp_mnem_sms_queue') !== false) {
+                    return array('bounced', 'delivered', 'failed');
+                }
+                return array();
+            }
+        };
+
+        $_GET = array(
+            'page' => 'mnem-logs',
+            'tab' => 'sms',
+        );
+
+        $menu = new AdminMenu();
+        ob_start();
+        $menu->render_logs();
+        $output = ob_get_clean();
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('SELECT DISTINCT provider_status FROM wp_mnem_sms_queue', $queries);
+        $this->assertStringContainsString("provider_status IS NOT NULL AND provider_status <> ''", $queries);
+        $this->assertStringContainsString('ORDER BY provider_status ASC', $queries);
+
+        $this->assertStringContainsString('<option value="bounced">', $output);
+        $this->assertStringContainsString('<option value="delivered">', $output);
+        $this->assertStringContainsString('<option value="failed">', $output);
+        $this->assertStringContainsString('Bounced', $output);
+        $this->assertStringContainsString('Delivered', $output);
+        $this->assertStringContainsString('Failed', $output);
+    }
 }
