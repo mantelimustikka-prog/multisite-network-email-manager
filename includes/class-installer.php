@@ -649,6 +649,11 @@ class Installer
                     'message_type' => 'varchar(20)',
                     'provider_type' => 'varchar(50)',
                     'provider_message_id' => 'varchar(255)',
+                    'provider_status' => 'varchar(50)',
+                    'provider_status_checked_at' => 'datetime',
+                    'last_sync_error' => 'text',
+                    'sync_attempts' => 'int(10) unsigned',
+                    'provider_metadata' => 'longtext',
                     'sent_at' => 'datetime',
                     'attempts' => 'int(10) unsigned',
                     'created_at' => 'datetime',
@@ -660,6 +665,8 @@ class Installer
                     'idx_site_id' => array('site_id'),
                     'idx_sms_campaign_id' => array('sms_campaign_id'),
                     'idx_created_at' => array('created_at'),
+                    'idx_provider_status' => array('provider_status'),
+                    'idx_provider_checked' => array('provider_status_checked_at'),
                 ),
                 'create_sql' => "CREATE TABLE {$tracking_prefix}mnem_sms_queue (
                     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -671,6 +678,11 @@ class Installer
                     message_type varchar(20) NOT NULL DEFAULT 'sms',
                     provider_type varchar(50) NOT NULL DEFAULT '',
                     provider_message_id varchar(255) NOT NULL DEFAULT '',
+                    provider_status varchar(50) NULL,
+                    provider_status_checked_at datetime NULL,
+                    last_sync_error text NULL,
+                    sync_attempts int(10) unsigned NOT NULL DEFAULT 0,
+                    provider_metadata longtext NULL,
                     sent_at datetime NULL,
                     attempts int(10) unsigned NOT NULL DEFAULT 0,
                     created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -679,7 +691,9 @@ class Installer
                     KEY idx_status (status),
                     KEY idx_site_id (site_id),
                     KEY idx_sms_campaign_id (sms_campaign_id),
-                    KEY idx_created_at (created_at)
+                    KEY idx_created_at (created_at),
+                    KEY idx_provider_status (provider_status),
+                    KEY idx_provider_checked (provider_status_checked_at)
                 ){$charset_suffix};",
             ),
         );

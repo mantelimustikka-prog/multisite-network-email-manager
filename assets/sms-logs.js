@@ -77,6 +77,46 @@
         });
     }
 
+    $(document).on('click', '.mnem-sms-refresh-status', function (event) {
+        event.preventDefault();
+
+        var $button = $(this);
+        var $wrapper = $button.closest('.mnem-sms-log-actions');
+        var $row = $button.closest('tr');
+        var originalText = $button.text();
+
+        $button.prop('disabled', true).text(i18n.refreshing || 'Refreshing…');
+        $.post(settings.ajaxUrl, {
+            action: 'mnem_sms_log_refresh_status',
+            nonce: settings.nonce,
+            sms_queue_id: $wrapper.data('queue-id')
+        }).done(function (response) {
+            if (!response || !response.success) {
+                var error = response && response.data && response.data.message
+                    ? response.data.message
+                    : (i18n.requestFailed || 'The request failed. Please try again.');
+                $button.prop('disabled', false).text(originalText);
+                showNotice($wrapper, error, true);
+                return;
+            }
+
+            if (response.data.provider_status) {
+                $row.find('.mnem-sms-provider-status').text(response.data.provider_status_label || response.data.provider_status);
+                $row.find('.mnem-sms-provider-checked').text(response.data.checked_at || '—');
+                $row.find('.mnem-sms-queue-status .mnem-badge')
+                    .attr('class', 'mnem-badge mnem-status-' + response.data.status)
+                    .text(response.data.status.charAt(0).toUpperCase() + response.data.status.slice(1));
+                $button.remove();
+            } else {
+                $button.prop('disabled', false).text(originalText);
+            }
+            showNotice($wrapper, response.data.message, false);
+        }).fail(function () {
+            $button.prop('disabled', false).text(originalText);
+            showNotice($wrapper, i18n.requestFailed || 'The request failed. Please try again.', true);
+        });
+    });
+
     $(document).on('click', '.mnem-sms-log-action', function (event) {
         event.preventDefault();
 

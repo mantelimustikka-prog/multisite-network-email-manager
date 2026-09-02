@@ -192,9 +192,11 @@ class SmsWebhookHandlerTest extends TestCase
         $api = new RestApi();
         $api->handle_sms_webhook($request);
 
-        // None of the UPDATE queries should set status = 'sent' (going backward).
+        // None of the UPDATE queries should set the main status column back to 'sent'
+        // (going backward). Note: updating provider_status = 'sent' is expected and fine,
+        // so we must not match that as a false positive.
         $queries = implode("\n", $GLOBALS['wpdb']->queries);
-        $this->assertStringNotContainsString("status = 'sent'", $queries);
+        $this->assertDoesNotMatchRegularExpression("/(?<!provider_)status = 'sent'/", $queries);
     }
 
     // ------------------------------------------------------------------

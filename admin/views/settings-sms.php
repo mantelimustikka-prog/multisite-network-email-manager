@@ -253,6 +253,72 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
     <?php submit_button(esc_html__('Save SMS Settings', 'multisite-network-email-manager')); ?>
 </form>
 
+<h3><?php esc_html_e('Provider Status Sync', 'multisite-network-email-manager'); ?></h3>
+<form method="post" action="">
+    <?php wp_nonce_field('mnem_sms_provider_status_sync'); ?>
+    <input type="hidden" name="mnem_action" value="sync_sms_provider_statuses" />
+    <table class="form-table" role="presentation">
+        <tr>
+            <th scope="row"><label for="mnem_sync_provider"><?php esc_html_e('Provider', 'multisite-network-email-manager'); ?></label></th>
+            <td>
+                <select name="sync_provider" id="mnem_sync_provider" required>
+                    <?php foreach ($sms_providers as $key => $label) : ?>
+                        <option value="<?php echo esc_attr($key); ?>"<?php selected($sms_provider, $key); ?>><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><label for="mnem_sync_date_range"><?php esc_html_e('Date Range', 'multisite-network-email-manager'); ?></label></th>
+            <td>
+                <select name="sync_date_range" id="mnem_sync_date_range">
+                    <option value="7"><?php esc_html_e('Last 7 days', 'multisite-network-email-manager'); ?></option>
+                    <option value="30"><?php esc_html_e('Last 30 days', 'multisite-network-email-manager'); ?></option>
+                    <option value="custom"><?php esc_html_e('Custom range', 'multisite-network-email-manager'); ?></option>
+                </select>
+                <input type="date" name="sync_date_from" aria-label="<?php echo esc_attr__('Custom start date', 'multisite-network-email-manager'); ?>" />
+                <input type="date" name="sync_date_to" aria-label="<?php echo esc_attr__('Custom end date', 'multisite-network-email-manager'); ?>" />
+            </td>
+        </tr>
+        <tr>
+            <th scope="row"><label for="mnem_sync_limit"><?php esc_html_e('Limit', 'multisite-network-email-manager'); ?></label></th>
+            <td>
+                <select name="sync_limit" id="mnem_sync_limit">
+                    <?php foreach (array(100, 500, 1000) as $limit) : ?>
+                        <option value="<?php echo esc_attr((string) $limit); ?>"><?php echo esc_html((string) $limit); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <label style="margin-left:12px;">
+                    <input type="checkbox" name="sync_dry_run" value="1" />
+                    <?php esc_html_e('Dry run (preview changes only)', 'multisite-network-email-manager'); ?>
+                </label>
+            </td>
+        </tr>
+    </table>
+    <?php submit_button(__('Sync SMS Status from Provider', 'multisite-network-email-manager'), 'secondary'); ?>
+</form>
+
+<?php if (!empty($sms_status_sync_result)) : ?>
+    <div class="notice notice-info inline">
+        <p>
+            <?php
+            printf(
+                esc_html__('Checked: %1$d; Updated: %2$d; Delivered: %3$d; Failed: %4$d; Bounced: %5$d; Rejected: %6$d.', 'multisite-network-email-manager'),
+                (int) $sms_status_sync_result['checked'],
+                (int) $sms_status_sync_result['updated'],
+                (int) $sms_status_sync_result['delivered'],
+                (int) $sms_status_sync_result['failed'],
+                (int) $sms_status_sync_result['bounced'],
+                (int) $sms_status_sync_result['rejected']
+            );
+            ?>
+        </p>
+        <?php if (!empty($sms_status_sync_result['errors'])) : ?>
+            <ul><?php foreach ($sms_status_sync_result['errors'] as $error) : ?><li><?php echo esc_html($error); ?></li><?php endforeach; ?></ul>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
+
 <h3><?php esc_html_e('SMS Data Integrity', 'multisite-network-email-manager'); ?></h3>
 <table class="form-table" role="presentation">
     <tr>

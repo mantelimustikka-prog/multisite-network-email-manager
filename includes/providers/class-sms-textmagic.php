@@ -110,6 +110,40 @@ class SmsTextmagic extends SmsBaseProvider
         return $this->error_result('TextMagic send failed (HTTP ' . $response['code'] . '): ' . $detail);
     }
 
+    public function get_message_status(string $message_id): array
+    {
+        $username = isset($this->config['username']) ? trim((string) $this->config['username']) : '';
+        $api_key  = isset($this->config['api_key']) ? trim((string) $this->config['api_key']) : '';
+        $message_id = trim($message_id);
+
+        if ($username === '' || $api_key === '' || $message_id === '') {
+            return array('success' => false, 'provider_status' => '', 'message' => 'TextMagic credentials and message ID are required.');
+        }
+
+        $response = $this->http_get(self::API_BASE . '/messages/' . rawurlencode($message_id), array(
+            'X-TM-Username' => $username,
+            'X-TM-Key'      => $api_key,
+            'Accept'        => 'application/json',
+        ));
+
+        if (is_wp_error($response)) {
+            return array('success' => false, 'provider_status' => '', 'message' => 'Connection error: ' . $response->get_error_message());
+        }
+
+        $data = json_decode($response['body'], true);
+        $status = is_array($data) && isset($data['status']) ? (string) $data['status'] : '';
+        if ($response['code'] !== 200 || $status === '') {
+            return array('success' => false, 'provider_status' => '', 'message' => 'TextMagic status lookup failed (HTTP ' . $response['code'] . ').');
+        }
+
+        return array('success' => true, 'provider_status' => $status, 'message' => 'TextMagic status retrieved.');
+    }
+
+    public function supports_message_status_lookup(): bool
+    {
+        return true;
+    }
+
     public static function get_webhook_signature_key(): string
     {
         return '';

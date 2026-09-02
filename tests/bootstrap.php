@@ -26,7 +26,7 @@ if (!defined('MNEM_VERSION')) {
 }
 
 if (!defined('MNEM_DB_VERSION')) {
-    define('MNEM_DB_VERSION', '9');
+    define('MNEM_DB_VERSION', '12');
 }
 
 if (!defined('MNEM_PLUGIN_DIR')) {
@@ -936,6 +936,7 @@ require_once __DIR__ . '/../includes/providers/class-sms-vonage.php';
 require_once __DIR__ . '/../includes/class-sms-provider-status-map.php';
 require_once __DIR__ . '/../includes/class-sms-provider-manager.php';
 require_once __DIR__ . '/../includes/class-sms-settings.php';
+require_once __DIR__ . '/../includes/class-sms-provider-sync-manager.php';
 require_once __DIR__ . '/../admin/class-admin-menu.php';
 require_once __DIR__ . '/../admin/class-table-diagnostics.php';
 require_once __DIR__ . '/../admin/class-network-admin.php';

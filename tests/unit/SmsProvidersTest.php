@@ -202,6 +202,20 @@ class SmsProvidersTest extends TestCase
         $this->assertStringContainsString('Account: Alice', $result['message']);
     }
 
+    public function test_textmagic_message_status_lookup(): void
+    {
+        $provider = new SmsTextmagicTestDouble(
+            array('username' => 'demo', 'api_key' => 'secret'),
+            array('code' => 200, 'body' => '{"status":"r"}')
+        );
+
+        $result = $provider->get_message_status('789');
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('r', $result['provider_status']);
+        $this->assertSame('https://rest.textmagic.com/api/v2/messages/789', $provider->last_url);
+    }
+
     // ------------------------------------------------------------------
     // SimpleTexting
     // ------------------------------------------------------------------
@@ -391,6 +405,15 @@ class SmsProvidersTest extends TestCase
     public function test_status_map_twilio_delivered(): void
     {
         $this->assertSame('delivered', SmsProviderStatusMap::map('twilio', 'delivered'));
+    }
+
+    public function test_status_map_textmagic_delivery_codes(): void
+    {
+        $this->assertSame('delivered', SmsProviderStatusMap::map_textmagic_status('d'));
+        $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('f'));
+        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('r'));
+        $this->assertSame('bounce', SmsProviderStatusMap::map_textmagic_status('b'));
+        $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('Submitted'));
     }
 
     public function test_status_map_twilio_undelivered_maps_to_bounce(): void

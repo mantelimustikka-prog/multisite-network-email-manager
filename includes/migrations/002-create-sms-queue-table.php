@@ -47,6 +47,11 @@ function mnem_migration_002()
         message_type VARCHAR(20) NOT NULL DEFAULT 'sms',
         provider_type VARCHAR(50) NOT NULL DEFAULT '',
         provider_message_id VARCHAR(255) NOT NULL DEFAULT '',
+        provider_status VARCHAR(50) NULL,
+        provider_status_checked_at DATETIME NULL,
+        last_sync_error TEXT NULL,
+        sync_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        provider_metadata LONGTEXT NULL,
         sent_at DATETIME NULL,
         attempts INT UNSIGNED NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -54,7 +59,9 @@ function mnem_migration_002()
         KEY idx_status (status),
         KEY idx_site_id (site_id),
         KEY idx_sms_campaign_id (sms_campaign_id),
-        KEY idx_created_at (created_at)
+        KEY idx_created_at (created_at),
+        KEY idx_provider_status (provider_status),
+        KEY idx_provider_checked (provider_status_checked_at)
     ) {$charset_collate};";
 
     dbDelta($sql_sms_queue);
@@ -88,6 +95,13 @@ function mnem_migration_002()
         return array('success' => $success, 'messages' => $messages);
     }
 
+    $provider_metadata_exists = (int) $wpdb->get_var($wpdb->prepare(
+        'SELECT COUNT(1) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+        $queue_table,
+        'provider_metadata'
+    ));
+    $provider_metadata_select = $provider_metadata_exists > 0 ? 'provider_metadata' : 'NULL';
+
     // Count how many SMS rows exist so we can report accurately.
     $sms_count = (int) $wpdb->get_var(
         $wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} WHERE message_type = %s", 'sms')
@@ -100,7 +114,7 @@ function mnem_migration_002()
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $inserted = $wpdb->query(
             "INSERT IGNORE INTO {$sms_table}
-                (id, site_id, sms_campaign_id, phone_number, body, status, message_type, provider_type, provider_message_id, sent_at, attempts, created_at)
+                (id, site_id, sms_campaign_id, phone_number, body, status, message_type, provider_type, provider_message_id, provider_metadata, sent_at, attempts, created_at)
              SELECT
                 id,
                 COALESCE(site_id, 0),
@@ -111,6 +125,7 @@ function mnem_migration_002()
                 'sms',
                 COALESCE(provider_type, ''),
                 COALESCE(provider_message_id, ''),
+                {$provider_metadata_select},
                 sent_at,
                 COALESCE(attempts, 0),
                 COALESCE(created_at, NOW())
