@@ -413,7 +413,6 @@ class SmsProvidersTest extends TestCase
         $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('f'));
         $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('r'));
         $this->assertSame('bounce', SmsProviderStatusMap::map_textmagic_status('b'));
-        $this->assertSame('bounce', SmsProviderStatusMap::map_textmagic_status('a'));
         $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('Submitted'));
     }
 

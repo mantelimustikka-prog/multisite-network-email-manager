@@ -95,10 +95,11 @@ class SmsProviderSyncManager
                 continue;
             }
 
-            $changed = $canonical !== (string) $row['status'] || $raw_status !== (string) $row['provider_status'];
+            $resolved_status = $this->resolve_status((string) $row['status'], $canonical);
+            $changed = $resolved_status !== (string) $row['status'] || $raw_status !== (string) $row['provider_status'];
             if ($dry_run) {
                 if ($changed) {
-                    $this->add_change_to_summary($summary, $row, $canonical, $raw_status);
+                    $this->add_change_to_summary($summary, $row, $resolved_status, $raw_status);
                 }
             } else {
                 $checked_at = $this->current_time_mysql();
@@ -107,7 +108,7 @@ class SmsProviderSyncManager
                     SET status = %s, provider_status = %s, provider_status_checked_at = %s,
                         last_sync_error = NULL, sync_attempts = 0
                     WHERE id = %d AND status = %s",
-                    $canonical,
+                    $resolved_status,
                     $raw_status,
                     $checked_at,
                     (int) $row['id'],
@@ -128,7 +129,7 @@ class SmsProviderSyncManager
                     continue;
                 }
                 if ($changed) {
-                    $this->add_change_to_summary($summary, $row, $canonical, $raw_status);
+                    $this->add_change_to_summary($summary, $row, $resolved_status, $raw_status);
                 }
 
                 Logger::info('SMS provider status synchronized.', array(
@@ -138,12 +139,21 @@ class SmsProviderSyncManager
                     'provider_message_id' => (string) $row['provider_message_id'],
                     'provider_status' => $raw_status,
                     'old_status' => (string) $row['status'],
-                    'new_status' => $canonical,
+                    'new_status' => $resolved_status,
                 ));
             }
         }
 
         return $summary;
+    }
+
+    private function resolve_status(string $current_status, string $new_status): string
+    {
+        $order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'bounce', 'failed', 'rejected'));
+        $current_order = isset($order[$current_status]) ? $order[$current_status] : -1;
+        $new_order = isset($order[$new_status]) ? $order[$new_status] : -1;
+
+        return $new_order >= 0 && $new_order < $current_order ? $current_status : $new_status;
     }
 
     /**

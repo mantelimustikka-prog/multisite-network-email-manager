@@ -2106,10 +2106,11 @@ class Queue
                 "UPDATE {$table}
                 SET provider_status = %s, provider_status_checked_at = %s,
                     last_sync_error = NULL, sync_attempts = 0
-                WHERE id = %d",
+                WHERE id = %d AND status = %s",
                 $provider_status,
                 self::current_time_mysql(),
-                (int) $row['id']
+                (int) $row['id'],
+                (string) $row['status']
             )) !== false;
         }
 
@@ -2132,13 +2133,14 @@ class Queue
                 SET status = %s, provider_status = %s, provider_status_checked_at = %s,
                     last_sync_error = NULL, sync_attempts = 0,
                     sent_at = COALESCE(sent_at, %s), provider_metadata = %s
-                WHERE id = %d",
+                WHERE id = %d AND status = %s",
                 $queue_status,
                 $provider_status,
                 $timestamp,
                 $timestamp,
                 $merged_meta,
-                (int) $row['id']
+                (int) $row['id'],
+                (string) $row['status']
             )
         );
 

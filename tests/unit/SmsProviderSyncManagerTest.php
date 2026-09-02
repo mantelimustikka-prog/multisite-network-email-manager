@@ -112,4 +112,32 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertNotEmpty($result['warnings']);
         $this->assertStringContainsString("WHERE id = 44 AND status = 'sent'", implode("\n", $GLOBALS['wpdb']->queries));
     }
+
+    public function test_sync_does_not_regress_delivered_status_to_sent(): void
+    {
+        $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 45,
+                    'status' => 'delivered',
+                    'provider_status' => 'd',
+                    'provider_message_id' => 'tm-45',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame('delivered', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'delivered'", implode("\n", $GLOBALS['wpdb']->queries));
+    }
 }
