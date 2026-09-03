@@ -84,7 +84,9 @@ class SmsProviderSyncManager
             $raw_status = !empty($result['provider_status']) ? (string) $result['provider_status'] : '';
             $canonical = SmsProviderStatusMap::map($provider, $raw_status);
 
-            if (empty($result['success']) || $canonical === '') {
+            // Distinguish genuine provider failures from successful status retrieval with unmapped status.
+            if (empty($result['success'])) {
+                // Real provider/API failure.
                 $error = !empty($result['message'])
                     ? (string) $result['message']
                     : __('The provider returned an unknown SMS status.', 'multisite-network-email-manager');
@@ -95,6 +97,25 @@ class SmsProviderSyncManager
                 continue;
             }
 
+            if ($canonical === '') {
+                // Provider returned success but the status code is unmapped (new/unknown status).
+                // Log as warning, skip row, do not retry.
+                $summary['warnings'][] = sprintf(
+                    __('SMS #%d: provider returned unmapped status "%s".', 'multisite-network-email-manager'),
+                    (int) $row['id'],
+                    $raw_status
+                );
+                Logger::warning('SMS provider returned an unmapped status.', array(
+                    'source' => isset($options['source']) ? (string) $options['source'] : 'manual',
+                    'queue_id' => (int) $row['id'],
+                    'provider' => $provider,
+                    'provider_message_id' => (string) $row['provider_message_id'],
+                    'provider_status' => $raw_status,
+                ));
+                continue;
+            }
+
+            // Status was retrieved successfully and mapped.
             $resolved_status = $this->resolve_status((string) $row['status'], $canonical);
             $changed = $resolved_status !== (string) $row['status'] || $raw_status !== (string) $row['provider_status'];
             if ($dry_run) {
