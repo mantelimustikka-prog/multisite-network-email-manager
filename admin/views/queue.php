@@ -64,38 +64,77 @@ $_email_tab_param = '&tab=email';
     </div>
 
     <div class="mnem-panel">
-        <h2>Queue Summary</h2>
-        <table class="widefat striped">
-            <tbody>
-                <?php if (empty($queue_summary)) : ?>
-                    <tr>
-                        <td colspan="2">No status data available.</td>
-                    </tr>
-                <?php else : ?>
-                    <?php foreach ($queue_summary as $status => $count) : ?>
+        <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" class="mnem-queue-summary-toggle" id="mnem-queue-summary-toggle">
+            <span class="dashicons dashicons-arrow-down" id="mnem-queue-summary-icon"></span>
+            <h2 style="margin: 0; display: inline;">Queue Summary</h2>
+        </div>
+        <div id="mnem-queue-summary-content" style="display: none; margin-top: 15px;">
+            <table class="widefat striped">
+                <tbody>
+                    <?php if (empty($queue_summary)) : ?>
                         <tr>
-                            <th scope="row"><?php echo esc_html(ucwords(str_replace('_', ' ', (string) $status))); ?></th>
-                            <td><?php echo esc_html((string) ((int) $count)); ?></td>
+                            <td colspan="2">No status data available.</td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-        <div class="mnem-actions">
-            <form method="post">
-                <?php wp_nonce_field('mnem_queue'); ?>
-                <input type="hidden" name="mnem_action" value="process_queue_now" />
-                <input type="hidden" name="redirect_page" value="mnem-logs" />
-                <?php submit_button('Process Queue Now', 'secondary', 'submit', false); ?>
-            </form>
-            <form method="post">
-                <?php wp_nonce_field('mnem_queue'); ?>
-                <input type="hidden" name="mnem_action" value="retry_failed_queue" />
-                <input type="hidden" name="redirect_page" value="mnem-logs" />
-                <?php submit_button('Retry Failed Items', 'secondary', 'submit', false); ?>
-            </form>
+                    <?php else : ?>
+                        <?php foreach ($queue_summary as $status => $count) : ?>
+                            <tr>
+                                <th scope="row"><?php echo esc_html(ucwords(str_replace('_', ' ', (string) $status))); ?></th>
+                                <td><?php echo esc_html((string) ((int) $count)); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            <div class="mnem-actions">
+                <form method="post">
+                    <?php wp_nonce_field('mnem_queue'); ?>
+                    <input type="hidden" name="mnem_action" value="process_queue_now" />
+                    <input type="hidden" name="redirect_page" value="mnem-logs" />
+                    <?php submit_button('Process Queue Now', 'secondary', 'submit', false); ?>
+                </form>
+                <form method="post">
+                    <?php wp_nonce_field('mnem_queue'); ?>
+                    <input type="hidden" name="mnem_action" value="retry_failed_queue" />
+                    <input type="hidden" name="redirect_page" value="mnem-logs" />
+                    <?php submit_button('Retry Failed Items', 'secondary', 'submit', false); ?>
+                </form>
+            </div>
         </div>
     </div>
+
+    <script>
+        (function() {
+            var toggle = document.getElementById('mnem-queue-summary-toggle');
+            var content = document.getElementById('mnem-queue-summary-content');
+            var icon = document.getElementById('mnem-queue-summary-icon');
+            
+            if (!toggle || !content || !icon) {
+                return;
+            }
+            
+            // Check localStorage for saved state, default to closed (false)
+            var isOpen = localStorage.getItem('mnem_queue_summary_open') === 'true';
+            
+            function updateUI() {
+                if (isOpen) {
+                    content.style.display = 'block';
+                    icon.className = 'dashicons dashicons-arrow-up';
+                } else {
+                    content.style.display = 'none';
+                    icon.className = 'dashicons dashicons-arrow-down';
+                }
+            }
+            
+            toggle.addEventListener('click', function() {
+                isOpen = !isOpen;
+                localStorage.setItem('mnem_queue_summary_open', isOpen);
+                updateUI();
+            });
+            
+            // Initialize with saved state
+            updateUI();
+        })();
+    </script>
 
     <?php
     // Build base URL preserving current filters except paged.
@@ -176,7 +215,7 @@ $_email_tab_param = '&tab=email';
                             $clear_filter_args['search_subject'] = $search_subject;
                         }
                         ?>
-                        <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button" style="padding: 5px 10px; font-size: 13px; white-space: nowrap;"><?php esc_html_e('Clear', 'multisite-network-email-manager'); ?></a>
+                        <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button" style="padding: 5px 10px; font-size: 13px;">Clear</a>
                     <?php endif; ?>
                 </div>
             </div>
@@ -235,7 +274,7 @@ $_email_tab_param = '&tab=email';
                         $clear_search_args['per_page'] = $per_page;
                     }
                     ?>
-                    <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_search_args, '', '&'))); ?>" class="button" style="padding: 5px 10px; font-size: 13px; white-space: nowrap;"><?php esc_html_e('Clear', 'multisite-network-email-manager'); ?></a>
+                    <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_search_args, '', '&'))); ?>" class="button" style="padding: 5px 10px; font-size: 13px; white-space: nowrap;">Clear</a>
                 <?php endif; ?>
             </div>
 
@@ -395,8 +434,8 @@ $_email_tab_param = '&tab=email';
                             <td class="mnem-queue-status-cell"><span class="mnem-badge mnem-status-<?php echo esc_attr($status_slug); ?>"><?php echo esc_html($display_status); ?></span></td>
                             <td><?php echo esc_html((string) $item['attempts']); ?></td>
                             <td><?php echo esc_html($item['scheduled_at']); ?></td>
-                            <td title="<?php echo esc_attr(!empty($item['opened']) ? 'First open: ' . (string) $item['opened'] : 'No opens yet'); ?>"><?php echo esc_html((string) (isset($item['opens_count']) ? (int) $item['opens_count'] : 0)); ?></td>
-                            <td title="<?php echo esc_attr(!empty($item['clicked']) ? 'First click: ' . (string) $item['clicked'] : 'No clicks yet'); ?>"><?php echo esc_html((string) (isset($item['clicks_count']) ? (int) $item['clicks_count'] : 0)); ?></td>
+                            <td title="<?php echo esc_attr(!empty($item['opened']) ? 'First open: ' . (string) $item['opened'] : 'No opens yet'); ?>"><?php echo esc_html((string) (isset($item['opens_count']) ? $item['opens_count'] : 0)); ?></td>
+                            <td title="<?php echo esc_attr(!empty($item['clicked']) ? 'First click: ' . (string) $item['clicked'] : 'No clicks yet'); ?>"><?php echo esc_html((string) (isset($item['clicks_count']) ? $item['clicks_count'] : 0)); ?></td>
                             <td><?php echo esc_html(!empty($item['sent_at']) ? $item['sent_at'] : '—'); ?></td>
                             <td>
                                 <button
@@ -464,4 +503,4 @@ $_email_tab_param = '&tab=email';
         <input type="hidden" name="redirect_page" value="mnem-logs" />
     </form>
 
-    <p class="description">Retry backoff status: <?php echo esc_html($queue_stats['next_retry_at'] !== '' ? $queue_stats['next_retry_at'] . ' (attempt ' . (string) $queue_stats['next_retry_attempts'] . ')' : 'No retries scheduled'); ?></p>
+    <p class="description">Retry backoff status: <?php echo esc_html($queue_stats['next_retry_at'] !== '' ? $queue_stats['next_retry_at'] . ' (attempt ' . (string) $queue_stats['next_retry_attempts'] . ')' : 'No pending retries'); ?></p>
