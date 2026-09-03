@@ -184,7 +184,7 @@ class AdminMenu
         $sms_phone_search     = '';
         $sms_date_from        = '';
         $sms_date_to          = '';
-        $sms_stats            = array('total' => 0, 'pending' => 0, 'sent' => 0, 'delivered' => 0, 'failed' => 0);
+        $sms_stats            = array('total' => 0, 'pending' => 0, 'sent' => 0, 'delivered' => 0, 'failed' => 0, 'rejected' => 0);
 
         if ($active_tab === 'sms') {
             $queue_table         = $wpdb->base_prefix . 'mnem_sms_queue';
@@ -254,6 +254,8 @@ class AdminMenu
             $sms_stats['delivered'] = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'delivered'));
             // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             $sms_stats['failed']  = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'failed'));
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $sms_stats['rejected'] = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(1) FROM {$queue_table} q WHERE {$sms_base_where} AND q.status = %s", 'rejected'));
 
             if (!empty($sms_where_args)) {
                 $sms_count_query = call_user_func_array(
