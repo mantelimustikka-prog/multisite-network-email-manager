@@ -178,6 +178,57 @@ $provider_field_defs = array(
 <hr />
 
 <h2><?php esc_html_e('Cron Settings', 'multisite-network-email-manager'); ?></h2>
+
+<?php
+$cron_interval_labels = array(
+    'mnem_1_minute'   => __('1 minute', 'multisite-network-email-manager'),
+    'mnem_5_minutes'  => __('5 minutes', 'multisite-network-email-manager'),
+    'mnem_15_minutes' => __('15 minutes', 'multisite-network-email-manager'),
+    'mnem_30_minutes' => __('30 minutes', 'multisite-network-email-manager'),
+    'hourly'          => __('1 hour', 'multisite-network-email-manager'),
+    'mnem_6_hours'    => __('6 hours', 'multisite-network-email-manager'),
+    'mnem_12_hours'   => __('12 hours', 'multisite-network-email-manager'),
+    'daily'           => __('Daily', 'multisite-network-email-manager'),
+);
+$current_interval_label = isset($cron_interval_labels[$cron_status['interval']])
+    ? $cron_interval_labels[$cron_status['interval']]
+    : (string) $cron_status['interval'];
+$immediate_send_enabled = \MNEM\Queue::is_immediate_send_enabled();
+$fast_track_next_run = isset($cron_status['fast_track_next_run']) ? (string) $cron_status['fast_track_next_run'] : '';
+?>
+<div class="notice notice-info inline">
+    <p><strong><?php esc_html_e('Transactional Email Delivery Times', 'multisite-network-email-manager'); ?></strong></p>
+    <p>
+        <?php esc_html_e('Transactional emails (one-time passcodes, password resets and account notifications) always have HIGH PRIORITY: they are processed before campaign emails and are not subject to campaign rate limits.', 'multisite-network-email-manager'); ?>
+    </p>
+    <ul style="list-style: disc; margin-left: 20px;">
+        <li>
+            <?php
+            if ($immediate_send_enabled) {
+                printf(
+                    esc_html__('Immediate send: enabled — transactional emails are sent while the request is still running (timeout: %d seconds).', 'multisite-network-email-manager'),
+                    (int) \MNEM\Queue::get_immediate_send_timeout()
+                );
+            } else {
+                esc_html_e('Immediate send: disabled — transactional emails wait for the fast-track cron.', 'multisite-network-email-manager');
+            }
+            ?>
+        </li>
+        <li>
+            <?php esc_html_e('Fast-track cron: transactional emails that could not be sent immediately are retried every 1 minute.', 'multisite-network-email-manager'); ?>
+            <?php if ($fast_track_next_run !== '') : ?>
+                <?php printf(esc_html__('Next fast-track run: %s (UTC).', 'multisite-network-email-manager'), esc_html($fast_track_next_run)); ?>
+            <?php endif; ?>
+        </li>
+        <li>
+            <?php printf(esc_html__('Campaign emails use the queue processing interval below (currently: %s).', 'multisite-network-email-manager'), esc_html($current_interval_label)); ?>
+        </li>
+    </ul>
+    <p>
+        <?php esc_html_e('WordPress cron only runs when your site receives traffic. On low-traffic sites, use the "Process Queue Now" button below or trigger wp-cron.php from a real server cron job to guarantee timely delivery.', 'multisite-network-email-manager'); ?>
+    </p>
+</div>
+
 <form method="post" action="">
     <?php wp_nonce_field('mnem_smtp_settings'); ?>
     <input type="hidden" name="mnem_action" value="save_cron_settings" />

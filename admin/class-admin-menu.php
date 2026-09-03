@@ -75,6 +75,7 @@ class AdminMenu
         $current_page      = 1;
         $per_page          = 50;
         $status_filter     = '';
+        $source_filter     = '';
         $all_statuses      = array();
         $search_email      = '';
         $search_subject    = '';
@@ -83,6 +84,7 @@ class AdminMenu
             $queue_table = $wpdb->base_prefix . 'mnem_queue';
 
             $status_filter  = isset($_GET['status_filter']) ? sanitize_text_field(wp_unslash($_GET['status_filter'])) : '';
+            $source_filter  = self::sanitize_source_filter(isset($_GET['source_filter']) ? sanitize_text_field(wp_unslash($_GET['source_filter'])) : '');
             $search_email   = isset($_GET['search_email']) ? sanitize_text_field(wp_unslash($_GET['search_email'])) : '';
             $search_subject = isset($_GET['search_subject']) ? sanitize_text_field(wp_unslash($_GET['search_subject'])) : '';
 
@@ -104,6 +106,12 @@ class AdminMenu
             if ($status_filter !== '') {
                 $where_clauses[] = 'status = %s';
                 $where_args[]    = $status_filter;
+            }
+            foreach (self::build_source_filter_clause($source_filter) as $source_clause) {
+                $where_clauses[] = $source_clause['clause'];
+                foreach ($source_clause['args'] as $source_arg) {
+                    $where_args[] = $source_arg;
+                }
             }
             if ($search_email !== '') {
                 $where_clauses[] = 'LOWER(recipient_email) LIKE %s';
@@ -130,7 +138,7 @@ class AdminMenu
                 $total_filtered = $total_all_records;
             }
 
-            $queue_select_columns = 'id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
+            $queue_select_columns = 'id, blog_id, campaign_id, source, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
             if (!empty($where_args)) {
                 $queue_query = call_user_func_array(
                     array($wpdb, 'prepare'),
@@ -298,7 +306,7 @@ class AdminMenu
             'queue_items', 'queue_stats', 'queue_summary',
             'total_all_records', 'total_filtered', 'total_pages',
             'current_page', 'per_page', 'status_filter', 'all_statuses',
-            'search_email', 'search_subject',
+            'source_filter', 'search_email', 'search_subject',
             // sms vars
             'sms_items', 'sms_campaigns_list',
             'sms_total_all', 'sms_total_filtered', 'sms_total_pages',
@@ -804,6 +812,42 @@ class AdminMenu
         $this->render_view('email-templates.php', compact('templates', 'notice', 'notice_message', 'notice_class'));
     }
 
+    /**
+     * Validate the queue source filter value.
+     */
+    private static function sanitize_source_filter(string $source_filter): string
+    {
+        $allowed = array_merge(
+            array('transactional', \MNEM\Queue::SOURCE_CAMPAIGN),
+            \MNEM\Queue::get_transactional_sources()
+        );
+
+        return in_array($source_filter, $allowed, true) ? $source_filter : '';
+    }
+
+    /**
+     * Build the prepared WHERE fragment(s) for the queue source filter.
+     *
+     * @return array<int,array{clause:string,args:array<int,string>}>
+     */
+    private static function build_source_filter_clause(string $source_filter): array
+    {
+        if ($source_filter === '') {
+            return array();
+        }
+
+        if ($source_filter === 'transactional') {
+            $sources = \MNEM\Queue::get_transactional_sources();
+
+            return array(array(
+                'clause' => 'source IN (' . implode(', ', array_fill(0, count($sources), '%s')) . ')',
+                'args' => $sources,
+            ));
+        }
+
+        return array(array('clause' => 'source = %s', 'args' => array($source_filter)));
+    }
+
     public function render_queue()
     {
         global $wpdb;
@@ -812,6 +856,7 @@ class AdminMenu
 
         // Status filter + optional search filters.
         $status_filter = isset($_GET['status_filter']) ? sanitize_text_field(wp_unslash($_GET['status_filter'])) : '';
+        $source_filter = self::sanitize_source_filter(isset($_GET['source_filter']) ? sanitize_text_field(wp_unslash($_GET['source_filter'])) : '');
         $search_email = isset($_GET['search_email']) ? sanitize_text_field(wp_unslash($_GET['search_email'])) : '';
         $search_subject = isset($_GET['search_subject']) ? sanitize_text_field(wp_unslash($_GET['search_subject'])) : '';
 
@@ -837,6 +882,13 @@ class AdminMenu
         if ($status_filter !== '') {
             $where_clauses[] = 'status = %s';
             $where_args[] = $status_filter;
+        }
+
+        foreach (self::build_source_filter_clause($source_filter) as $source_clause) {
+            $where_clauses[] = $source_clause['clause'];
+            foreach ($source_clause['args'] as $source_arg) {
+                $where_args[] = $source_arg;
+            }
         }
 
         if ($search_email !== '') {
@@ -867,7 +919,7 @@ class AdminMenu
 
         // Fetch page of records.
         // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        $queue_select_columns = 'id, blog_id, campaign_id, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
+        $queue_select_columns = 'id, blog_id, campaign_id, source, recipient_email, subject, status, attempts, scheduled_at, sent_at, opened, clicked, opens_count, clicks_count, created_at, provider_message_id, provider_metadata';
         if (!empty($where_args)) {
             $queue_query = call_user_func_array(
                 array($wpdb, 'prepare'),
@@ -908,7 +960,7 @@ class AdminMenu
             'notice', 'notice_message', 'notice_class',
             'total_all_records', 'total_filtered', 'total_pages',
             'current_page', 'per_page', 'status_filter', 'all_statuses',
-            'search_email', 'search_subject'
+            'source_filter', 'search_email', 'search_subject'
         ));
     }
 
