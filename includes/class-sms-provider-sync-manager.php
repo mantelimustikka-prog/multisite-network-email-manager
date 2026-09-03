@@ -129,25 +129,17 @@ class SmsProviderSyncManager
                     "UPDATE {$table}
                     SET status = %s, provider_status = %s, provider_status_checked_at = %s,
                         last_sync_error = NULL, sync_attempts = 0
-                    WHERE id = %d AND status = %s",
+                    WHERE id = %d",
                     $resolved_status,
                     $raw_status,
                     $checked_at,
-                    (int) $row['id'],
-                    (string) $row['status']
+                    (int) $row['id']
                 ));
 
                 if ($updated === false) {
                     $error = __('Could not update the SMS queue row.', 'multisite-network-email-manager');
                     $summary['errors'][] = sprintf('SMS #%d: %s', (int) $row['id'], $error);
                     $this->record_failure((int) $row['id'], (int) $row['sync_attempts'], $error);
-                    continue;
-                }
-                if ($updated === 0 && $changed) {
-                    $summary['warnings'][] = sprintf(
-                        __('SMS #%d changed while its provider status was being checked; it was not overwritten.', 'multisite-network-email-manager'),
-                        (int) $row['id']
-                    );
                     continue;
                 }
                 if ($changed) {
