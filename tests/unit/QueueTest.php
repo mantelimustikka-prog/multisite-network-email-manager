@@ -749,14 +749,14 @@ class QueueTest extends TestCase
                 'from_number' => base64_encode('+15550000000'),
             ),
         ));
-        // Send call (POST) succeeds, provider status lookup (GET) reports TextMagic's "r" (rejected).
+        // Send call (POST) succeeds, provider status lookup (GET) reports TextMagic's "j" (rejected).
         $GLOBALS['mnem_http_response'] = array(
             'response' => array('code' => 201),
             'body'     => wp_json_encode(array('id' => 'tm-79')),
         );
         $GLOBALS['mnem_http_get_response'] = array(
             'response' => array('code' => 200),
-            'body'     => wp_json_encode(array('status' => 'r')),
+            'body'     => wp_json_encode(array('status' => 'j')),
         );
 
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -809,7 +809,7 @@ class QueueTest extends TestCase
         $this->assertSame(1, $processed);
         $joined = implode("\n", $GLOBALS['wpdb']->queries);
         $this->assertStringContainsString("status = 'sent'", $joined);
-        $this->assertStringContainsString("provider_status = 'r'", $joined);
+        $this->assertStringContainsString("provider_status = 'j'", $joined);
         $this->assertStringContainsString("status = 'rejected'", $joined);
     }
 

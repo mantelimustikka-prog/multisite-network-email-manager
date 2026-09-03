@@ -224,7 +224,7 @@ class SmsWebhookHandlerTest extends TestCase
         };
 
         $request = $this->make_request('textmagic', array(
-            'status'   => 'r',
+            'status'   => 'j',
             'id'       => 'TM-rejected-1',
             'receiver' => '+15550002222',
         ));

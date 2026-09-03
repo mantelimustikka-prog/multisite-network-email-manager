@@ -411,15 +411,19 @@ class SmsProvidersTest extends TestCase
     {
         $this->assertSame('delivered', SmsProviderStatusMap::map_textmagic_status('d'));
         $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('f'));
-        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('r'));
-        $this->assertSame('bounce', SmsProviderStatusMap::map_textmagic_status('b'));
+        $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('r'));
+        $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('a'));
+        $this->assertSame('pending', SmsProviderStatusMap::map_textmagic_status('b'));
+        $this->assertSame('pending', SmsProviderStatusMap::map_textmagic_status('s'));
+        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('j'));
+        $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('u'));
         $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('Submitted'));
     }
 
     public function test_status_map_textmagic_distinguishes_rejected_from_failed(): void
     {
         // Rejected = valid, reachable number blocked by the account owner or the mobile user.
-        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('r'));
+        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('j'));
         $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('rejected'));
         // Failed = invalid number or unreachable mobile network.
         $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('e'));
@@ -500,17 +504,21 @@ class SmsProvidersTest extends TestCase
 
     public function test_display_name_textmagic_rejected_code_is_human_readable(): void
     {
-        $this->assertSame('Rejected', SmsProviderStatusMap::get_provider_display_name('textmagic', 'r'));
+        $this->assertSame('Rejected', SmsProviderStatusMap::get_provider_display_name('textmagic', 'j'));
     }
 
     public function test_display_name_textmagic_letter_codes(): void
     {
         $this->assertSame('Queued', SmsProviderStatusMap::get_provider_display_name('textmagic', 'q'));
-        $this->assertSame('Sent', SmsProviderStatusMap::get_provider_display_name('textmagic', 's'));
+        $this->assertSame('Sent', SmsProviderStatusMap::get_provider_display_name('textmagic', 'r'));
+        $this->assertSame('Acknowledged', SmsProviderStatusMap::get_provider_display_name('textmagic', 'a'));
+        $this->assertSame('Queued by Carrier', SmsProviderStatusMap::get_provider_display_name('textmagic', 'b'));
+        $this->assertSame('Scheduled', SmsProviderStatusMap::get_provider_display_name('textmagic', 's'));
         $this->assertSame('Delivered', SmsProviderStatusMap::get_provider_display_name('textmagic', 'd'));
-        $this->assertSame('Failed', SmsProviderStatusMap::get_provider_display_name('textmagic', 'e'));
+        $this->assertSame('Sending Error', SmsProviderStatusMap::get_provider_display_name('textmagic', 'e'));
         $this->assertSame('Failed', SmsProviderStatusMap::get_provider_display_name('textmagic', 'f'));
-        $this->assertSame('Bounced', SmsProviderStatusMap::get_provider_display_name('textmagic', 'b'));
+        $this->assertSame('Rejected', SmsProviderStatusMap::get_provider_display_name('textmagic', 'j'));
+        $this->assertSame('Unknown', SmsProviderStatusMap::get_provider_display_name('textmagic', 'u'));
     }
 
     public function test_display_name_falls_back_to_canonical_status_for_word_codes(): void
@@ -537,14 +545,14 @@ class SmsProvidersTest extends TestCase
 
     public function test_queue_get_sms_display_status_uses_provider_status_when_available(): void
     {
-        $item = array('status' => 'rejected', 'provider_type' => 'textmagic', 'provider_status' => 'r');
+        $item = array('status' => 'rejected', 'provider_type' => 'textmagic', 'provider_status' => 'j');
         $this->assertSame('Rejected', \MNEM\Queue::get_sms_display_status($item));
     }
 
     public function test_queue_get_sms_display_status_overrides_stale_sent_queue_status(): void
     {
         $item = array('status' => 'sent', 'provider_type' => 'textmagic', 'provider_status' => 'r');
-        $this->assertSame('Rejected', \MNEM\Queue::get_sms_display_status($item));
+        $this->assertSame('Sent', \MNEM\Queue::get_sms_display_status($item));
     }
 
     public function test_queue_get_sms_display_status_falls_back_to_queue_status(): void
