@@ -173,6 +173,41 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertStringContainsString('SMS #46', (string) $result['errors'][0]);
     }
 
+    public function test_unmapped_status_with_success_reports_warning_not_error(): void
+    {
+        $GLOBALS['mnem_http_response'] = array(
+            'response' => array('code' => 200),
+            'body' => '{"status":"z"}',
+        );
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 47,
+                    'status' => 'sent',
+                    'provider_status' => '',
+                    'provider_message_id' => 'tm-47',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame(1, $result['checked']);
+        $this->assertSame(0, $result['updated']);
+        $this->assertEmpty($result['errors']);
+        $this->assertNotEmpty($result['warnings']);
+        $this->assertStringContainsString('SMS #47', (string) $result['warnings'][0]);
+        $this->assertStringNotContainsString('UPDATE ', implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
     public function test_sync_error_is_reported_when_provider_does_not_support_lookup(): void
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
