@@ -306,6 +306,36 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
     <?php submit_button(esc_html__('Save SMS Settings', 'multisite-network-email-manager')); ?>
 </form>
 
+<h3><?php esc_html_e('SMS Delivery Statuses', 'multisite-network-email-manager'); ?></h3>
+<table class="widefat striped" style="max-width:820px;">
+    <thead>
+        <tr>
+            <th scope="col"><?php esc_html_e('Status', 'multisite-network-email-manager'); ?></th>
+            <th scope="col"><?php esc_html_e('Meaning', 'multisite-network-email-manager'); ?></th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php
+        $mnem_sms_status_docs = array(
+            'sent'      => __('The provider accepted the message; delivery is still pending.', 'multisite-network-email-manager'),
+            'delivered' => __('The mobile handset received the message.', 'multisite-network-email-manager'),
+            'bounce'    => __('Temporary delivery issue reported by the provider; the message can be retried.', 'multisite-network-email-manager'),
+            'failed'    => __('The number is invalid or the mobile network could not be reached (technical failure).', 'multisite-network-email-manager'),
+            'rejected'  => __('The number is valid and reachable, but the provider account owner or the mobile user blocked this message. Do not retry.', 'multisite-network-email-manager'),
+        );
+        foreach ($mnem_sms_status_docs as $mnem_sms_status_slug => $mnem_sms_status_text) :
+            ?>
+            <tr>
+                <td><span class="mnem-badge mnem-status-<?php echo esc_attr($mnem_sms_status_slug); ?>"><?php echo esc_html(ucfirst($mnem_sms_status_slug)); ?></span></td>
+                <td><?php echo esc_html($mnem_sms_status_text); ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
+<p class="description">
+    <?php esc_html_e('Rejected messages should not be retried and are excluded from retry operations. Consider removing rejected numbers from future campaigns.', 'multisite-network-email-manager'); ?>
+</p>
+
 <h3><?php esc_html_e('Provider Status Sync', 'multisite-network-email-manager'); ?></h3>
 <form method="post" action="">
     <?php wp_nonce_field('mnem_sms_provider_status_sync'); ?>

@@ -40,6 +40,7 @@ defined('ABSPATH') || exit;
                     'sent'    => array('label' => __('Sent', 'multisite-network-email-manager'), 'color' => '#00a32a'),
                     'delivered' => array('label' => __('Delivered', 'multisite-network-email-manager'), 'color' => '#0073aa'),
                     'failed'  => array('label' => __('Failed', 'multisite-network-email-manager'), 'color' => '#d63638'),
+                    'rejected' => array('label' => __('Rejected', 'multisite-network-email-manager'), 'color' => '#dba617'),
                 );
                 foreach ($sms_stat_items as $key => $meta) :
                     $sms_stat_status = $key === 'total' ? '' : $key;
@@ -71,6 +72,10 @@ defined('ABSPATH') || exit;
                 <?php endforeach; ?>
             </div>
 
+            <p class="description" style="margin-bottom:16px;">
+                <?php esc_html_e('Failed = invalid number or the handset could not be reached. Rejected = the number is valid but the provider account owner or the mobile user blocked the message; rejected items are excluded from retry operations and should be removed from future campaigns.', 'multisite-network-email-manager'); ?>
+            </p>
+
             <!-- Filters -->
             <form method="get" action="<?php echo esc_url(network_admin_url('admin.php')); ?>" class="mnem-filters" style="margin-bottom:16px;">
                 <input type="hidden" name="page" value="mnem-logs" />
@@ -82,7 +87,7 @@ defined('ABSPATH') || exit;
                     <label for="mnem-sms-status"><strong><?php esc_html_e('Status:', 'multisite-network-email-manager'); ?></strong></label>
                     <select name="sms_status" id="mnem-sms-status" onchange="this.form.submit();">
                         <option value=""><?php esc_html_e('All Statuses', 'multisite-network-email-manager'); ?></option>
-                        <?php foreach (array('pending', 'sent', 'failed', 'bounced') as $s) : ?>
+                        <?php foreach (array('pending', 'sent', 'delivered', 'bounce', 'failed', 'rejected') as $s) : ?>
                             <option value="<?php echo esc_attr($s); ?>"<?php selected($sms_status_filter, $s); ?>>
                                 <?php echo esc_html(ucfirst($s)); ?>
                             </option>

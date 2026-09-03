@@ -1022,4 +1022,38 @@ class QueueTest extends TestCase
         $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", $joined);
         $this->assertStringNotContainsString("source IN ('campaign')", $joined);
     }
+
+    public function test_retry_failed_only_requeues_failed_items()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query, $x = 0)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+        };
+
+        Queue::retry_failed(1);
+
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("status = 'failed'", $joined);
+        // Rejected messages were blocked by the recipient/account and must never be re-queued.
+        $this->assertStringNotContainsString("'rejected'", $joined);
+    }
+
+    public function test_rejected_status_is_terminal_in_lifecycle_order()
+    {
+        $order = array_flip(Queue::STATUS_LIFECYCLE_ORDER);
+
+        $this->assertArrayHasKey('rejected', $order);
+        foreach (Queue::SUCCESS_STATUSES as $success_status) {
+            $this->assertLessThan($order['rejected'], $order[$success_status]);
+        }
+    }
 }

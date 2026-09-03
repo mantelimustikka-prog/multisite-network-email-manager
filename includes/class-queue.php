@@ -16,6 +16,12 @@ class Queue
     public const TERMINAL_ISSUE_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const NON_SUCCESS_FINAL_STATUSES = array('bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const WEBHOOK_STATUSES = array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
+    /** Canonical status used when a provider reports that the recipient or the account blocked the message. */
+    public const REJECTED_STATUS = 'rejected';
+    /** Statuses that must never be re-queued: the recipient/account blocked the message, so retrying is pointless. */
+    public const NON_RETRYABLE_STATUSES = array(self::REJECTED_STATUS);
+    /** Status lifecycle order used to keep status updates idempotent (never move backwards). */
+    public const STATUS_LIFECYCLE_ORDER = array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected');
     public const SOURCE_CORE = 'core';
     public const SOURCE_CAMPAIGN = 'campaign';
     public const SOURCE_USER_EVENT = 'user_event';
@@ -1042,6 +1048,10 @@ class Queue
         );
     }
 
+    /**
+     * Re-queue failed items. Statuses in NON_RETRYABLE_STATUSES (e.g. `rejected`) are never
+     * re-queued because the recipient or the provider account blocked the message.
+     */
     public static function retry_failed(int $site_id)
     {
         global $wpdb;
@@ -2290,7 +2300,8 @@ class Queue
         }
 
         // Idempotency: never move backward in status lifecycle.
-        $status_order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'opened', 'clicked', 'bounce', 'soft_bounce', 'invalid_email', 'deferred', 'complaint', 'unsubscribed', 'suppressed', 'failed', 'rejected'));
+        // `rejected` sits last in the lifecycle, so it is terminal: later success updates only refresh the provider status.
+        $status_order = array_flip(self::STATUS_LIFECYCLE_ORDER);
         $current_order = isset($status_order[$row['status']]) ? $status_order[$row['status']] : -1;
         $new_order     = isset($status_order[$queue_status])  ? $status_order[$queue_status]  : -1;
         if ($new_order < $current_order && $new_order !== -1) {

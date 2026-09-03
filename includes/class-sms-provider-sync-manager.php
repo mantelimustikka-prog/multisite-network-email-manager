@@ -147,6 +147,10 @@ class SmsProviderSyncManager
         return $summary;
     }
 
+    /**
+     * Keep status updates idempotent: a status never moves backwards in the lifecycle.
+     * `rejected` is last, so it is terminal and cannot be overridden by a later success status.
+     */
     private function resolve_status(string $current_status, string $new_status): string
     {
         $order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'bounce', 'failed', 'rejected'));

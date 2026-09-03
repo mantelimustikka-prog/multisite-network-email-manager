@@ -208,6 +208,70 @@ class SmsWebhookHandlerTest extends TestCase
         $this->assertSame('', SmsProviderStatusMap::map('fakeprovider', 'delivered'));
     }
 
+    public function test_textmagic_rejected_webhook_updates_queue_status(): void
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('id' => 77, 'status' => 'sent', 'provider_metadata' => '{}');
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $request = $this->make_request('textmagic', array(
+            'status'   => 'r',
+            'id'       => 'TM-rejected-1',
+            'receiver' => '+15550002222',
+        ));
+
+        $api    = new RestApi();
+        $result = $api->handle_sms_webhook($request);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('rejected', $result['status']);
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('TM-rejected-1', $queries);
+        $this->assertStringContainsString("status = 'rejected'", $queries);
+    }
+
+    public function test_rejected_status_is_not_overridden_by_delivered_webhook(): void
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('id' => 78, 'status' => 'rejected', 'provider_metadata' => '{}');
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $request = $this->make_request('textmagic', array(
+            'status'   => 'd',
+            'id'       => 'TM-rejected-1',
+            'receiver' => '+15550002222',
+        ));
+
+        $api = new RestApi();
+        $api->handle_sms_webhook($request);
+
+        // Only provider_status may be refreshed; the terminal queue status must stay 'rejected'.
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringNotContainsString("SET status = 'delivered'", $queries);
+        $this->assertStringContainsString("provider_status = 'd'", $queries);
+    }
+
     public function test_map_covers_all_tracked_providers(): void
     {
         foreach (SmsProviderStatusMap::get_tracking_providers() as $provider) {

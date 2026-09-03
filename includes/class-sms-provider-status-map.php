@@ -7,7 +7,12 @@ defined('ABSPATH') || exit;
 /**
  * Maps provider-specific SMS delivery statuses to the queue's canonical statuses.
  *
- * Queue canonical statuses: pending, sent, delivered, failed, bounce
+ * Queue canonical statuses: pending, sent, delivered, bounce, failed, rejected
+ *
+ * `failed` and `rejected` are distinct terminal statuses:
+ * - `failed`   the number is invalid or the handset could not be reached (technical failure).
+ * - `rejected` the number is valid and reachable, but the message was blocked by the
+ *              provider account owner or by the mobile user. Rejected messages must not be retried.
  */
 class SmsProviderStatusMap
 {
@@ -36,6 +41,8 @@ class SmsProviderStatusMap
             'q'            => 'pending',
             's'            => 'sent',
             'd'            => 'delivered',
+            // TextMagic separates technical failures from user/account blocks:
+            // 'e'/'f' = invalid number or unreachable network, 'r' = blocked by account owner or mobile user.
             'e'            => 'failed',
             'f'            => 'failed',
             'r'            => 'rejected',

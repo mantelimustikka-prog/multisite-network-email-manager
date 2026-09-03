@@ -416,6 +416,23 @@ class SmsProvidersTest extends TestCase
         $this->assertSame('sent', SmsProviderStatusMap::map_textmagic_status('Submitted'));
     }
 
+    public function test_status_map_textmagic_distinguishes_rejected_from_failed(): void
+    {
+        // Rejected = valid, reachable number blocked by the account owner or the mobile user.
+        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('r'));
+        $this->assertSame('rejected', SmsProviderStatusMap::map_textmagic_status('rejected'));
+        // Failed = invalid number or unreachable mobile network.
+        $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('e'));
+        $this->assertSame('failed', SmsProviderStatusMap::map_textmagic_status('failed'));
+    }
+
+    public function test_rejected_is_a_recognised_queue_status(): void
+    {
+        $this->assertContains('rejected', \MNEM\Queue::WEBHOOK_STATUSES);
+        $this->assertContains('rejected', \MNEM\Queue::NON_SUCCESS_FINAL_STATUSES);
+        $this->assertContains('rejected', \MNEM\Queue::NON_RETRYABLE_STATUSES);
+    }
+
     public function test_status_map_twilio_undelivered_maps_to_bounce(): void
     {
         $this->assertSame('bounce', SmsProviderStatusMap::map('twilio', 'undelivered'));
