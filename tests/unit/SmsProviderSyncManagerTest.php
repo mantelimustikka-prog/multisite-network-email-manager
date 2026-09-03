@@ -199,6 +199,38 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertStringContainsString("SET status = 'rejected'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
+    public function test_zero_rows_affected_does_not_report_an_update(): void
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 50,
+                    'status' => 'sent',
+                    'provider_status' => '',
+                    'provider_message_id' => 'tm-50',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame(1, $result['checked']);
+        $this->assertSame(0, $result['updated']);
+        $this->assertSame(0, $result['rejected']);
+        $this->assertEmpty($result['changes']);
+        $this->assertEmpty($result['errors']);
+        $this->assertNotEmpty($result['warnings']);
+        $this->assertStringContainsString('SMS #50', $result['warnings'][0]);
+    }
+
     public function test_sync_errors_are_included_in_result(): void
     {
         $GLOBALS['mnem_http_response'] = array(
