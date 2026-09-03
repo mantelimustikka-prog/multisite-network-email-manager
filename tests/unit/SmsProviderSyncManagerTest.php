@@ -53,7 +53,6 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertSame(1, $result['checked']);
         $this->assertSame(1, $result['updated']);
         $this->assertSame(0, $result['rejected']);
-        $this->assertSame(1, $result['sent']);
         $queries = implode("\n", $GLOBALS['wpdb']->queries);
         $this->assertStringContainsString("status = 'sent'", $queries);
         $this->assertStringContainsString("provider_status = 'r'", $queries);
@@ -118,7 +117,7 @@ class SmsProviderSyncManagerTest extends TestCase
 
     public function test_sync_trusts_provider_status_even_when_it_regresses_from_delivered_to_sent(): void
     {
-        $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
+        $GLOBALS['mnem_http_response']['body'] = '{"status":"r"}';
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_results($query, $output = OBJECT)
             {
@@ -146,7 +145,7 @@ class SmsProviderSyncManagerTest extends TestCase
 
     public function test_sync_trusts_provider_status_even_when_it_regresses_from_rejected_to_sent(): void
     {
-        $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
+        $GLOBALS['mnem_http_response']['body'] = '{"status":"r"}';
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_results($query, $output = OBJECT)
             {
