@@ -166,7 +166,7 @@ class SmsWebhookHandlerTest extends TestCase
     // Idempotency: duplicate webhook should not regress status
     // ------------------------------------------------------------------
 
-    public function test_duplicate_webhook_does_not_regress_delivered_to_sent(): void
+    public function test_webhook_trusts_provider_status_even_when_it_regresses_from_delivered_to_sent(): void
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_row($query, $output = OBJECT)
@@ -192,11 +192,10 @@ class SmsWebhookHandlerTest extends TestCase
         $api = new RestApi();
         $api->handle_sms_webhook($request);
 
-        // None of the UPDATE queries should set the main status column back to 'sent'
-        // (going backward). Note: updating provider_status = 'sent' is expected and fine,
-        // so we must not match that as a false positive.
+        // The provider's status is the source of truth: the main status column must be
+        // updated to 'sent' even though the row was previously 'delivered'.
         $queries = implode("\n", $GLOBALS['wpdb']->queries);
-        $this->assertDoesNotMatchRegularExpression("/(?<!provider_)status = 'sent'/", $queries);
+        $this->assertStringContainsString("SET status = 'sent'", $queries);
     }
 
     // ------------------------------------------------------------------
@@ -241,7 +240,7 @@ class SmsWebhookHandlerTest extends TestCase
         $this->assertStringContainsString("status = 'rejected'", $queries);
     }
 
-    public function test_rejected_status_is_not_overridden_by_delivered_webhook(): void
+    public function test_webhook_trusts_provider_status_even_when_rejected_is_overridden_by_delivered(): void
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_row($query, $output = OBJECT)
@@ -266,9 +265,10 @@ class SmsWebhookHandlerTest extends TestCase
         $api = new RestApi();
         $api->handle_sms_webhook($request);
 
-        // Only provider_status may be refreshed; the terminal queue status must stay 'rejected'.
+        // The provider's status is the source of truth: the queue status must be updated
+        // to 'delivered' even though it was previously 'rejected'.
         $queries = implode("\n", $GLOBALS['wpdb']->queries);
-        $this->assertStringNotContainsString("SET status = 'delivered'", $queries);
+        $this->assertStringContainsString("SET status = 'delivered'", $queries);
         $this->assertStringContainsString("provider_status = 'd'", $queries);
     }
 
