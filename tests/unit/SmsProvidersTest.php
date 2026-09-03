@@ -493,4 +493,73 @@ class SmsProvidersTest extends TestCase
             $this->assertContains($provider, $tracking, "Provider {$provider} should be in tracking map");
         }
     }
+
+    // ------------------------------------------------------------------
+    // SmsProviderStatusMap::get_provider_display_name (admin UI labels)
+    // ------------------------------------------------------------------
+
+    public function test_display_name_textmagic_rejected_code_is_human_readable(): void
+    {
+        $this->assertSame('Rejected', SmsProviderStatusMap::get_provider_display_name('textmagic', 'r'));
+    }
+
+    public function test_display_name_textmagic_letter_codes(): void
+    {
+        $this->assertSame('Queued', SmsProviderStatusMap::get_provider_display_name('textmagic', 'q'));
+        $this->assertSame('Sent', SmsProviderStatusMap::get_provider_display_name('textmagic', 's'));
+        $this->assertSame('Delivered', SmsProviderStatusMap::get_provider_display_name('textmagic', 'd'));
+        $this->assertSame('Failed', SmsProviderStatusMap::get_provider_display_name('textmagic', 'e'));
+        $this->assertSame('Failed', SmsProviderStatusMap::get_provider_display_name('textmagic', 'f'));
+        $this->assertSame('Bounced', SmsProviderStatusMap::get_provider_display_name('textmagic', 'b'));
+    }
+
+    public function test_display_name_falls_back_to_canonical_status_for_word_codes(): void
+    {
+        $this->assertSame('Delivered', SmsProviderStatusMap::get_provider_display_name('twilio', 'delivered'));
+        $this->assertSame('Bounced', SmsProviderStatusMap::get_provider_display_name('twilio', 'undelivered'));
+        $this->assertSame('Failed', SmsProviderStatusMap::get_provider_display_name('vonage', 'rejected'));
+    }
+
+    public function test_display_name_returns_raw_status_when_unmapped(): void
+    {
+        $this->assertSame('Some Custom Status', SmsProviderStatusMap::get_provider_display_name('textmagic', 'some_custom_status'));
+    }
+
+    public function test_display_name_returns_empty_for_empty_inputs(): void
+    {
+        $this->assertSame('', SmsProviderStatusMap::get_provider_display_name('textmagic', ''));
+        $this->assertSame('', SmsProviderStatusMap::get_provider_display_name('', 'r'));
+    }
+
+    // ------------------------------------------------------------------
+    // Queue SMS display/rejection helpers
+    // ------------------------------------------------------------------
+
+    public function test_queue_get_sms_display_status_uses_provider_status_when_available(): void
+    {
+        $item = array('status' => 'rejected', 'provider_type' => 'textmagic', 'provider_status' => 'r');
+        $this->assertSame('Rejected', \MNEM\Queue::get_sms_display_status($item));
+    }
+
+    public function test_queue_get_sms_display_status_falls_back_to_queue_status(): void
+    {
+        $item = array('status' => 'pending', 'provider_type' => '', 'provider_status' => '');
+        $this->assertSame('Pending', \MNEM\Queue::get_sms_display_status($item));
+
+        $item2 = array('status' => 'bounce', 'provider_type' => '', 'provider_status' => '');
+        $this->assertSame('Bounced', \MNEM\Queue::get_sms_display_status($item2));
+    }
+
+    public function test_queue_is_rejected_true_for_rejected_status(): void
+    {
+        $this->assertTrue(\MNEM\Queue::is_rejected(array('status' => 'rejected')));
+        $this->assertTrue(\MNEM\Queue::is_rejected(array('status' => 'REJECTED')));
+    }
+
+    public function test_queue_is_rejected_false_for_other_statuses(): void
+    {
+        $this->assertFalse(\MNEM\Queue::is_rejected(array('status' => 'failed')));
+        $this->assertFalse(\MNEM\Queue::is_rejected(array('status' => 'sent')));
+        $this->assertFalse(\MNEM\Queue::is_rejected(array()));
+    }
 }
