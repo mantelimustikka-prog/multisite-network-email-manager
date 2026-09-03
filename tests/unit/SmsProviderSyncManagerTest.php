@@ -183,4 +183,45 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertSame(0, $result['checked']);
         $this->assertNotEmpty($result['errors']);
     }
+
+    public function test_unmapped_status_with_success_reports_warning_not_error(): void
+    {
+        // Provider returns success=true but status cannot be mapped (e.g., unknown/future status code)
+        $GLOBALS['mnem_http_response'] = array(
+            'response' => array('code' => 200),
+            'body' => '{"status":"z"}',  // 'z' is not in the TextMagic status map
+        );
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(array(
+                    'id' => 47,
+                    'status' => 'sent',
+                    'provider_status' => '',
+                    'provider_message_id' => 'tm-47',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 0;  // No update should occur
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        // Should be treated as a warning, not an error
+        $this->assertEmpty($result['errors'], 'Unmapped but successful status should not produce an error');
+        $this->assertNotEmpty($result['warnings'], 'Unmapped status should produce a warning');
+        $this->assertStringContainsString('SMS #47', $result['warnings'][0]);
+        $this->assertStringContainsString('unmapped status', $result['warnings'][0]);
+        // No UPDATE query should have been executed (continue skipped it)
+        $update_queries = array_filter($GLOBALS['wpdb']->queries, function ($q) {
+            return stripos($q, 'UPDATE') !== false;
+        });
+        $this->assertEmpty($update_queries, 'Unmapped status should not trigger a queue update');
+    }
 }
