@@ -116,7 +116,7 @@ class AdminMenuTest extends TestCase
             public function get_results($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT id, blog_id, campaign_id, recipient_email, subject, status') !== false) {
+                if (strpos($query, 'SELECT id, blog_id, campaign_id, source, recipient_email, subject, status') !== false) {
                     return array(
                         array(
                             'id' => 1,
@@ -195,7 +195,7 @@ class AdminMenuTest extends TestCase
             public function get_results($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT id, blog_id, campaign_id, recipient_email, subject, status') !== false) {
+                if (strpos($query, 'SELECT id, blog_id, campaign_id, source, recipient_email, subject, status') !== false) {
                     return array(
                         array(
                             'id' => 2,
@@ -251,6 +251,75 @@ class AdminMenuTest extends TestCase
         $this->assertStringContainsString('admin.php?page=mnem-logs&tab=email&per_page=10', $output);
     }
 
+    public function test_render_queue_filters_transactional_sources()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT id, blog_id, campaign_id, source, recipient_email, subject, status') !== false) {
+                    return array(
+                        array(
+                            'id' => 3,
+                            'blog_id' => 1,
+                            'campaign_id' => 0,
+                            'source' => 'user_event',
+                            'recipient_email' => 'otp@example.com',
+                            'subject' => 'Your code',
+                            'status' => 'sent',
+                            'attempts' => 1,
+                            'scheduled_at' => '2026-08-17 10:00:00',
+                            'sent_at' => '2026-08-17 10:00:01',
+                            'opened' => null,
+                            'clicked' => null,
+                            'opens_count' => 0,
+                            'clicks_count' => 0,
+                            'created_at' => '2026-08-17 09:00:00',
+                            'provider_message_id' => '',
+                            'provider_metadata' => '',
+                        ),
+                    );
+                }
+                return array();
+            }
+
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array('sent');
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('scheduled_at' => '', 'attempts' => 0);
+            }
+        };
+
+        $_GET = array(
+            'page' => 'mnem-queue',
+            'source_filter' => 'transactional',
+            'per_page' => 10,
+            'paged' => 1,
+        );
+
+        $menu = new AdminMenu();
+        ob_start();
+        $menu->render_queue();
+        $output = ob_get_clean();
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+
+        $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", $queries);
+        $this->assertStringContainsString('User Event', $output);
+        $this->assertStringContainsString('name="source_filter" value="transactional"', $output);
+    }
+
     public function test_render_queue_shows_force_delete_for_processing_items()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -266,12 +335,13 @@ class AdminMenuTest extends TestCase
             public function get_results($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                if (strpos($query, 'SELECT id, blog_id, campaign_id, recipient_email, subject, status') !== false) {
+                if (strpos($query, 'SELECT id, blog_id, campaign_id, source, recipient_email, subject, status') !== false) {
                     return array(
                         array(
                             'id' => 9,
                             'blog_id' => 1,
                             'campaign_id' => 0,
+                            'source' => 'core',
                             'recipient_email' => 'stuck@example.com',
                             'subject' => 'Stuck',
                             'status' => 'processing',

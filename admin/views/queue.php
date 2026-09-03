@@ -137,10 +137,22 @@ $_email_tab_param = '&tab=email';
     </script>
 
     <?php
+    $source_filter = isset($source_filter) ? (string) $source_filter : '';
+    $source_labels = array(
+        \MNEM\Queue::SOURCE_CORE       => __('Core', 'multisite-network-email-manager'),
+        \MNEM\Queue::SOURCE_PLUGIN     => __('Plugin', 'multisite-network-email-manager'),
+        \MNEM\Queue::SOURCE_USER_EVENT => __('User Event', 'multisite-network-email-manager'),
+        \MNEM\Queue::SOURCE_CAMPAIGN   => __('Campaign', 'multisite-network-email-manager'),
+    );
+    $transactional_sources = \MNEM\Queue::get_transactional_sources();
+
     // Build base URL preserving current filters except paged.
     $base_url_args = array('page' => 'mnem-logs', 'tab' => 'email');
     if ($status_filter !== '') {
         $base_url_args['status_filter'] = $status_filter;
+    }
+    if ($source_filter !== '') {
+        $base_url_args['source_filter'] = $source_filter;
     }
     if ($search_email !== '') {
         $base_url_args['search_email'] = $search_email;
@@ -162,6 +174,7 @@ $_email_tab_param = '&tab=email';
         <?php wp_nonce_field('mnem_queue_item_delete'); ?>
         <input type="hidden" name="redirect_page" value="mnem-logs" />
         <input type="hidden" name="status_filter" value="<?php echo esc_attr($status_filter); ?>" />
+        <input type="hidden" name="source_filter" value="<?php echo esc_attr($source_filter); ?>" />
         <input type="hidden" name="per_page" value="<?php echo esc_attr((string) $per_page); ?>" />
     </form>
 
@@ -170,6 +183,12 @@ $_email_tab_param = '&tab=email';
         <input type="hidden" name="page" value="mnem-logs" />
         <input type="hidden" name="tab" value="email" />
     </form>
+
+    <div class="notice notice-info inline">
+        <p>
+            <?php esc_html_e('Transactional emails (Core, Plugin and User Event sources — for example one-time passcodes and password resets) are sent immediately on enqueue, are retried by a dedicated 1-minute cron, and are always processed before campaign emails.', 'multisite-network-email-manager'); ?>
+        </p>
+    </div>
 
     <div class="mnem-panel" style="padding: 12px 16px;">
         <!-- Main Filter Controls Row - All on one line -->
@@ -214,10 +233,25 @@ $_email_tab_param = '&tab=email';
                         if ($search_subject !== '') {
                             $clear_filter_args['search_subject'] = $search_subject;
                         }
+                        if ($source_filter !== '') {
+                            $clear_filter_args['source_filter'] = $source_filter;
+                        }
                         ?>
                         <a href="<?php echo esc_url(network_admin_url('admin.php?' . http_build_query($clear_filter_args, '', '&'))); ?>" class="button" style="padding: 5px 10px; font-size: 13px;">Clear</a>
                     <?php endif; ?>
                 </div>
+            </div>
+
+            <!-- Source Filter -->
+            <div style="display: flex; flex-direction: column; gap: 3px; min-width: 160px;">
+                <label for="mnem-source-filter" style="font-size: 12px; font-weight: bold; margin: 0;"><strong><?php esc_html_e('Source:', 'multisite-network-email-manager'); ?></strong></label>
+                <select name="source_filter" id="mnem-source-filter" form="mnem-filter-form" onchange="document.getElementById('mnem-filter-form').submit();" style="padding: 5px; font-size: 13px;">
+                    <option value=""><?php esc_html_e('All Sources', 'multisite-network-email-manager'); ?></option>
+                    <option value="transactional"<?php selected($source_filter, 'transactional'); ?>><?php esc_html_e('Transactional only', 'multisite-network-email-manager'); ?></option>
+                    <?php foreach ($source_labels as $source_key => $source_label) : ?>
+                        <option value="<?php echo esc_attr($source_key); ?>"<?php selected($source_filter, $source_key); ?>><?php echo esc_html($source_label); ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <!-- Per Page -->
@@ -269,6 +303,9 @@ $_email_tab_param = '&tab=email';
                     );
                     if ($status_filter !== '') {
                         $clear_search_args['status_filter'] = $status_filter;
+                    }
+                    if ($source_filter !== '') {
+                        $clear_search_args['source_filter'] = $source_filter;
                     }
                     if ($per_page !== 50) {
                         $clear_search_args['per_page'] = $per_page;
@@ -401,6 +438,7 @@ $_email_tab_param = '&tab=email';
                     <th>ID</th>
                     <th>Blog ID</th>
                     <th>Campaign</th>
+                    <th><?php esc_html_e('Source', 'multisite-network-email-manager'); ?></th>
                     <th>Recipient</th>
                     <th>Subject</th>
                     <th>Status</th>
@@ -415,7 +453,7 @@ $_email_tab_param = '&tab=email';
             <tbody>
                 <?php if (empty($queue_items)) : ?>
                     <tr>
-                        <td colspan="13">No queue items found.</td>
+                        <td colspan="14">No queue items found.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($queue_items as $item) : ?>
@@ -429,6 +467,18 @@ $_email_tab_param = '&tab=email';
                             <td><?php echo esc_html((string) $item['id']); ?></td>
                             <td><?php echo esc_html((string) $item['blog_id']); ?></td>
                             <td><?php echo esc_html((string) $item['campaign_id']); ?></td>
+                            <?php
+                            $item_source = isset($item['source']) ? (string) $item['source'] : '';
+                            $item_source_label = isset($source_labels[$item_source]) ? $source_labels[$item_source] : __('Unknown', 'multisite-network-email-manager');
+                            $is_transactional = in_array($item_source, $transactional_sources, true);
+                            ?>
+                            <td>
+                                <span class="mnem-badge mnem-source-<?php echo esc_attr($item_source !== '' ? $item_source : 'unknown'); ?>"
+                                    title="<?php echo esc_attr($is_transactional ? __('Transactional email — high priority', 'multisite-network-email-manager') : __('Campaign email', 'multisite-network-email-manager')); ?>"
+                                    style="<?php echo esc_attr($is_transactional ? 'background:#d5f5e3;color:#14532d;' : 'background:#e6e6e6;color:#333;'); ?>padding:2px 6px;border-radius:3px;font-size:11px;">
+                                    <?php echo esc_html($item_source_label); ?>
+                                </span>
+                            </td>
                             <td><?php echo esc_html($item['recipient_email']); ?></td>
                             <td><?php echo esc_html($item['subject']); ?></td>
                             <td class="mnem-queue-status-cell"><span class="mnem-badge mnem-status-<?php echo esc_attr($status_slug); ?>"><?php echo esc_html($display_status); ?></span></td>

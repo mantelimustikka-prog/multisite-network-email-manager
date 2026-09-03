@@ -793,4 +793,233 @@ class QueueTest extends TestCase
         $joined = implode("\n", $queries);
         $this->assertStringContainsString("status = 'failed'", $joined);
     }
+
+    public function test_enqueue_sends_transactional_email_immediately()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        unset($GLOBALS['mnem_wp_mail_return']);
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO wp_mnem_queue') !== false) {
+                    $this->insert_id = 91;
+                }
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 91,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'otp@example.com',
+                    'subject' => 'Your code',
+                    'body' => 'Body',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 0,
+                );
+            }
+        };
+
+        $queue_id = Queue::enqueue(1, 'otp@example.com', 'Your code', 'Body', 0, array('source' => Queue::SOURCE_CORE));
+
+        $this->assertSame(91, $queue_id);
+        $this->assertSame('otp@example.com', $GLOBALS['mnem_last_wp_mail']['to']);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("status = 'sent'", $joined);
+    }
+
+    public function test_enqueue_does_not_send_campaign_email_immediately()
+    {
+        $GLOBALS['mnem_last_wp_mail'] = null;
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO wp_mnem_queue') !== false) {
+                    $this->insert_id = 92;
+                }
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+        };
+
+        $queue_id = Queue::enqueue(1, 'subscriber@example.com', 'Newsletter', 'Body', 5, array('source' => Queue::SOURCE_CAMPAIGN));
+
+        $this->assertSame(92, $queue_id);
+        $this->assertNull($GLOBALS['mnem_last_wp_mail']);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringNotContainsString("status = 'processing'", $joined);
+    }
+
+    public function test_enqueue_leaves_transactional_email_pending_when_immediate_send_fails()
+    {
+        $GLOBALS['mnem_site_options']['mnem_smtp_settings'] = array(
+            'host' => 'smtp.example.test',
+            'port' => 587,
+            'encryption' => 'tls',
+            'username' => '',
+            'password' => '',
+            'from_email' => 'sender@example.test',
+            'from_name' => 'Sender',
+            'provider_type' => 'smtp',
+            'provider_config' => array(),
+            'fallback_provider' => '',
+            'fallback_enabled' => false,
+        );
+        $GLOBALS['mnem_wp_mail_return'] = false;
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO wp_mnem_queue') !== false) {
+                    $this->insert_id = 93;
+                }
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 93,
+                    'site_id' => 1,
+                    'blog_id' => 1,
+                    'campaign_id' => 0,
+                    'recipient_email' => 'otp@example.com',
+                    'subject' => 'Your code',
+                    'body' => 'Body',
+                    'from_email' => 'from@example.com',
+                    'from_name' => 'From Name',
+                    'headers' => '[]',
+                    'attachments' => '[]',
+                    'metadata' => '{}',
+                    'attempts' => 0,
+                );
+            }
+        };
+
+        $queue_id = Queue::enqueue(1, 'otp@example.com', 'Your code', 'Body', 0, array('source' => Queue::SOURCE_USER_EVENT));
+
+        unset($GLOBALS['mnem_wp_mail_return']);
+
+        $this->assertSame(93, $queue_id);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("status = 'pending'", $joined);
+        $this->assertStringNotContainsString("status = 'sent'", $joined);
+    }
+
+    public function test_enqueue_skips_immediate_send_when_disabled()
+    {
+        $GLOBALS['mnem_last_wp_mail'] = null;
+        $GLOBALS['mnem_site_options'][Queue::OPTION_IMMEDIATE_SEND] = 0;
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO wp_mnem_queue') !== false) {
+                    $this->insert_id = 94;
+                }
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+        };
+
+        $queue_id = Queue::enqueue(1, 'otp@example.com', 'Your code', 'Body', 0, array('source' => Queue::SOURCE_CORE));
+
+        unset($GLOBALS['mnem_site_options'][Queue::OPTION_IMMEDIATE_SEND]);
+
+        $this->assertSame(94, $queue_id);
+        $this->assertNull($GLOBALS['mnem_last_wp_mail']);
+    }
+
+    public function test_process_batch_with_transactional_source_filter_skips_campaigns()
+    {
+        $GLOBALS['mnem_transients'] = array();
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+        };
+
+        $processed = Queue::process_batch(10, Queue::get_transactional_sources());
+
+        $this->assertSame(0, $processed);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", $joined);
+        $this->assertStringNotContainsString("source IN ('campaign')", $joined);
+    }
 }
