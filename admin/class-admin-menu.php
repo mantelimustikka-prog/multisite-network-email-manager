@@ -617,6 +617,9 @@ class AdminMenu
         $sms_providers = \MNEM\SmsProviderManager::get_available_providers();
         $sms_integrity_stats = \MNEM\SmsSubscriberLists::get_data_integrity_overview();
         $sms_integrity_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_integrity_result();
+        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
+        $notice_message = $this->get_notice_message($notice);
+        $notice_class = $this->get_notice_class($notice);
         $sms_status_sync_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_status_sync_result();
         $webhook_provider = isset($settings['provider_type']) ? (string) $settings['provider_type'] : 'smtp';
         if (!in_array($webhook_provider, \MNEM\Admin\NetworkAdmin::WEBHOOK_PROVIDERS, true)) {
@@ -631,9 +634,6 @@ class AdminMenu
         foreach (\MNEM\Admin\NetworkAdmin::WEBHOOK_PROVIDERS as $available_provider) {
             $webhook_endpoints[$available_provider] = \MNEM\WebhookLog::get_webhook_url($available_provider);
         }
-        $notice = isset($_GET['mnem_notice']) ? sanitize_text_field(wp_unslash($_GET['mnem_notice'])) : '';
-        $notice_message = $this->get_notice_message($notice);
-        $notice_class = $this->get_notice_class($notice);
 
         $this->render_view('settings.php', compact('active_tab', 'settings', 'cron_status', 'webhook_provider', 'webhook_url', 'webhook_recent', 'webhook_stats', 'webhook_provider_stats', 'webhook_errors', 'webhook_endpoints', 'status_update_interval', 'queue_retention_days', 'campaign_rate_limit_per_minute', 'campaign_rate_limit_per_hour', 'campaign_rate_limit_per_day', 'campaign_delay_between_sends', 'sms_settings', 'sms_providers', 'sms_integrity_stats', 'sms_integrity_result', 'sms_status_sync_result', 'notice', 'notice_message', 'notice_class'));
     }
@@ -1185,6 +1185,12 @@ class AdminMenu
         $error_detail = in_array($notice, $error_detail_notices, true)
             ? \MNEM\Admin\NetworkAdmin::get_and_clear_error_detail()
             : '';
+        $sync_error_detail = '';
+        if ($notice === 'sms_status_sync_failed') {
+            $sync_result = \MNEM\Admin\NetworkAdmin::get_and_clear_sms_status_sync_result();
+            $sync_errors = isset($sync_result['errors']) && is_array($sync_result['errors']) ? $sync_result['errors'] : array();
+            $sync_error_detail = !empty($sync_errors) ? (string) reset($sync_errors) : '';
+        }
         $messages = array(
             'campaign_created' => 'Campaign created successfully.',
             'campaign_updated' => 'Campaign updated successfully.',
@@ -1283,7 +1289,7 @@ class AdminMenu
             'sms_log_unsubscribed_and_deleted' => 'Subscriber unsubscribed and WordPress user deleted.',
             'sms_log_action_failed' => 'Action failed. Please check logs.' . ($error_detail !== '' ? ' ' . $error_detail : ''),
             'sms_status_sync_complete' => 'SMS provider status sync completed.',
-            'sms_status_sync_failed' => 'SMS provider status sync completed with errors.',
+            'sms_status_sync_failed' => 'SMS provider status sync completed with errors.' . ($sync_error_detail !== '' ? ' ' . $sync_error_detail : ''),
         );
 
         return isset($messages[$notice]) ? $messages[$notice] : '';
