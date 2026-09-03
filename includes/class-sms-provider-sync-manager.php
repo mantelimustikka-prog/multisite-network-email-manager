@@ -169,12 +169,28 @@ class SmsProviderSyncManager
     }
 
     /**
-     * Keep status updates idempotent: a status never moves backwards in the lifecycle.
-     * `rejected` is last, so it is terminal and cannot be overridden by a later success status.
+     * `failed` and `rejected` are terminal peer statuses reported authoritatively by the
+     * provider. A status update is always allowed to progress forward into one of them
+     * (even from a previously recorded success status such as `sent`), but once a terminal
+     * status has been recorded it is final and must never regress back into an earlier
+     * status. Non-terminal statuses otherwise only move forward through the lifecycle.
      */
     private function resolve_status(string $current_status, string $new_status): string
     {
-        $order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'bounce', 'failed', 'rejected'));
+        $terminal_statuses = array('failed', 'rejected');
+
+        // Once a terminal status has been recorded it is final; never regress it back
+        // into an earlier status, including swapping between terminal peers.
+        if (in_array($current_status, $terminal_statuses, true)) {
+            return $current_status;
+        }
+
+        // Allow forward progression into a terminal status from any non-terminal state.
+        if (in_array($new_status, $terminal_statuses, true)) {
+            return $new_status;
+        }
+
+        $order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'bounce'));
         $current_order = isset($order[$current_status]) ? $order[$current_status] : -1;
         $new_order = isset($order[$new_status]) ? $order[$new_status] : -1;
 

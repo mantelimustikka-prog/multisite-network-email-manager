@@ -141,6 +141,62 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertStringContainsString("SET status = 'delivered'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
+    public function test_sync_does_not_regress_rejected_status_back_to_sent(): void
+    {
+        $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 48,
+                    'status' => 'rejected',
+                    'provider_status' => 'r',
+                    'provider_message_id' => 'tm-48',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame('rejected', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'rejected'", implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
+    public function test_sync_does_not_regress_failed_status_back_to_rejected(): void
+    {
+        $GLOBALS['mnem_http_response']['body'] = '{"status":"r"}';
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                return array(array(
+                    'id' => 49,
+                    'status' => 'failed',
+                    'provider_status' => 'f',
+                    'provider_message_id' => 'tm-49',
+                    'sync_attempts' => 0,
+                ));
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
+
+        $this->assertSame('failed', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'failed'", implode("\n", $GLOBALS['wpdb']->queries));
+    }
+
     public function test_sync_errors_are_included_in_result(): void
     {
         $GLOBALS['mnem_http_response'] = array(
