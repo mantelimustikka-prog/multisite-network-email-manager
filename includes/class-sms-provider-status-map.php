@@ -39,14 +39,15 @@ class SmsProviderStatusMap
         ),
         'textmagic' => array(
             'q'            => 'pending',
-            's'            => 'sent',
+            'r'            => 'sent',
+            'a'            => 'sent',
+            'b'            => 'pending',
+            's'            => 'pending',
             'd'            => 'delivered',
-            // TextMagic separates technical failures from user/account blocks:
-            // 'e'/'f' = invalid number or unreachable network, 'r' = blocked by account owner or mobile user.
             'e'            => 'failed',
             'f'            => 'failed',
-            'r'            => 'rejected',
-            'b'            => 'bounce',
+            'j'            => 'rejected',
+            'u'            => 'failed',
             'submitted'    => 'sent',
             'sent'         => 'sent',
             'delivered'    => 'delivered',
@@ -127,18 +128,21 @@ class SmsProviderStatusMap
     private static array $display_names = array(
         'textmagic' => array(
             'q' => 'Queued',
-            's' => 'Sent',
+            'r' => 'Sent',
+            'a' => 'Acknowledged',
+            'b' => 'Queued by Carrier',
+            's' => 'Scheduled',
             'd' => 'Delivered',
-            'e' => 'Failed',
+            'e' => 'Sending Error',
             'f' => 'Failed',
-            'r' => 'Rejected',
-            'b' => 'Bounced',
+            'j' => 'Rejected',
+            'u' => 'Unknown',
         ),
     );
 
     /**
      * Translate a provider-specific raw status code into a human-readable
-     * display name for admin UI purposes (e.g. TextMagic 'r' => 'Rejected').
+     * display name for admin UI purposes (e.g. TextMagic 'r' => 'Sent').
      *
      * Falls back to the canonical status bucket (via map()) humanised as
      * title case when no explicit display entry exists, and finally to a
