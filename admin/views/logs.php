@@ -287,7 +287,13 @@ defined('ABSPATH') || exit;
                     <?php else : ?>
                         <?php $sms_log_campaign_cache = array(); ?>
                         <?php foreach ($sms_items as $sms_item) : ?>
-                            <?php $sms_status_slug = isset($sms_item['status']) ? strtolower((string) $sms_item['status']) : 'pending'; ?>
+                            <?php
+                            $sms_status_slug = isset($sms_item['status']) ? strtolower((string) $sms_item['status']) : 'pending';
+                            $sms_status_display = \MNEM\Queue::get_sms_display_status($sms_item);
+                            if ($sms_status_display === '') {
+                                $sms_status_display = ucfirst($sms_status_slug);
+                            }
+                            ?>
                             <?php
                             $sms_row_campaign_id_for_cb = (int) $sms_item['sms_campaign_id'];
                             if (!array_key_exists($sms_row_campaign_id_for_cb, $sms_log_campaign_cache)) {
@@ -324,12 +330,12 @@ defined('ABSPATH') || exit;
                                 <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo esc_attr((string) $sms_item['body']); ?>">
                                     <?php echo esc_html((string) $sms_item['body']); ?>
                                 </td>
-                                <td class="mnem-sms-queue-status"><span class="mnem-badge mnem-status-<?php echo esc_attr($sms_status_slug); ?>"><?php echo esc_html(ucfirst($sms_status_slug)); ?></span></td>
                                 <?php
                                 $sms_provider_status = isset($sms_item['provider_status']) ? (string) $sms_item['provider_status'] : '';
                                 $sms_mapped_provider_status = $sms_provider_status !== ''
                                     ? \MNEM\SmsProviderStatusMap::map((string) $sms_item['provider_type'], $sms_provider_status)
                                     : '';
+                                $sms_effective_status_slug = $sms_mapped_provider_status !== '' ? $sms_mapped_provider_status : $sms_status_slug;
                                 $sms_status_out_of_sync = $sms_mapped_provider_status !== '' && $sms_mapped_provider_status !== $sms_status_slug;
                                 $sms_sync_error = isset($sms_item['last_sync_error']) ? (string) $sms_item['last_sync_error'] : '';
                                 $sms_provider_status_label = $sms_provider_status !== ''
@@ -339,6 +345,7 @@ defined('ABSPATH') || exit;
                                     $sms_provider_status_label = $sms_provider_status;
                                 }
                                 ?>
+                                <td class="mnem-sms-queue-status"><span class="mnem-badge mnem-status-<?php echo esc_attr($sms_effective_status_slug); ?>"><?php echo esc_html($sms_status_display); ?></span></td>
                                 <td class="mnem-sms-provider-status" title="<?php echo esc_attr($sms_sync_error !== '' ? $sms_sync_error : $sms_provider_status); ?>">
                                     <?php echo esc_html($sms_provider_status !== '' ? $sms_provider_status_label : '—'); ?>
                                     <?php if ($sms_status_out_of_sync) : ?>

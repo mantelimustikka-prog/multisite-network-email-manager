@@ -382,7 +382,8 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
 </form>
 
 <?php if (!empty($sms_status_sync_result)) : ?>
-    <div class="notice notice-info inline">
+    <?php $sms_status_sync_errors = !empty($sms_status_sync_result['errors']) && is_array($sms_status_sync_result['errors']) ? $sms_status_sync_result['errors'] : array(); ?>
+    <div class="notice <?php echo !empty($sms_status_sync_errors) ? 'notice-error' : 'notice-info'; ?> inline">
         <p>
             <?php
             printf(
@@ -396,8 +397,9 @@ $sms_notify_invalid_numbers = isset($sms_settings['notify_invalid_numbers']) ? (
             );
             ?>
         </p>
-        <?php if (!empty($sms_status_sync_result['errors'])) : ?>
-            <ul><?php foreach ($sms_status_sync_result['errors'] as $error) : ?><li><?php echo esc_html($error); ?></li><?php endforeach; ?></ul>
+        <?php if (!empty($sms_status_sync_errors)) : ?>
+            <p><strong><?php esc_html_e('Errors:', 'multisite-network-email-manager'); ?></strong></p>
+            <ul class="ul-disc"><?php foreach ($sms_status_sync_errors as $error) : ?><li><?php echo esc_html($error); ?></li><?php endforeach; ?></ul>
         <?php endif; ?>
     </div>
 <?php endif; ?>

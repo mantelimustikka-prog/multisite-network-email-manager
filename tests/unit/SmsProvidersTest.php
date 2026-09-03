@@ -541,6 +541,12 @@ class SmsProvidersTest extends TestCase
         $this->assertSame('Rejected', \MNEM\Queue::get_sms_display_status($item));
     }
 
+    public function test_queue_get_sms_display_status_overrides_stale_sent_queue_status(): void
+    {
+        $item = array('status' => 'sent', 'provider_type' => 'textmagic', 'provider_status' => 'r');
+        $this->assertSame('Rejected', \MNEM\Queue::get_sms_display_status($item));
+    }
+
     public function test_queue_get_sms_display_status_falls_back_to_queue_status(): void
     {
         $item = array('status' => 'pending', 'provider_type' => '', 'provider_status' => '');
