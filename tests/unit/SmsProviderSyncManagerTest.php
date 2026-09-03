@@ -113,7 +113,7 @@ class SmsProviderSyncManagerTest extends TestCase
         $this->assertStringContainsString("WHERE id = 44 AND status = 'sent'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
-    public function test_sync_does_not_regress_delivered_status_to_sent(): void
+    public function test_sync_trusts_provider_status_even_when_it_regresses_from_delivered_to_sent(): void
     {
         $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -137,11 +137,11 @@ class SmsProviderSyncManagerTest extends TestCase
 
         $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
 
-        $this->assertSame('delivered', $result['changes'][0]['new_status']);
-        $this->assertStringContainsString("SET status = 'delivered'", implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertSame('sent', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'sent'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
-    public function test_sync_does_not_regress_rejected_status_back_to_sent(): void
+    public function test_sync_trusts_provider_status_even_when_it_regresses_from_rejected_to_sent(): void
     {
         $GLOBALS['mnem_http_response']['body'] = '{"status":"s"}';
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -165,11 +165,11 @@ class SmsProviderSyncManagerTest extends TestCase
 
         $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
 
-        $this->assertSame('rejected', $result['changes'][0]['new_status']);
-        $this->assertStringContainsString("SET status = 'rejected'", implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertSame('sent', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'sent'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
-    public function test_sync_does_not_regress_failed_status_back_to_rejected(): void
+    public function test_sync_trusts_provider_status_even_when_it_regresses_from_failed_to_rejected(): void
     {
         $GLOBALS['mnem_http_response']['body'] = '{"status":"r"}';
         $GLOBALS['wpdb'] = new class extends wpdb {
@@ -193,8 +193,8 @@ class SmsProviderSyncManagerTest extends TestCase
 
         $result = (new SmsProviderSyncManager())->sync_statuses_from_provider('textmagic', 100);
 
-        $this->assertSame('failed', $result['changes'][0]['new_status']);
-        $this->assertStringContainsString("SET status = 'failed'", implode("\n", $GLOBALS['wpdb']->queries));
+        $this->assertSame('rejected', $result['changes'][0]['new_status']);
+        $this->assertStringContainsString("SET status = 'rejected'", implode("\n", $GLOBALS['wpdb']->queries));
     }
 
     public function test_sync_errors_are_included_in_result(): void

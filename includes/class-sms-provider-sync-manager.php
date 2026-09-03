@@ -115,8 +115,9 @@ class SmsProviderSyncManager
                 continue;
             }
 
-            // Status was retrieved successfully and mapped.
-            $resolved_status = $this->resolve_status((string) $row['status'], $canonical);
+            // Status was retrieved successfully and mapped. The provider's status is the
+            // source of truth and is stored directly without any lifecycle validation.
+            $resolved_status = $canonical;
             $changed = $resolved_status !== (string) $row['status'] || $raw_status !== (string) $row['provider_status'];
             if ($dry_run) {
                 if ($changed) {
@@ -166,35 +167,6 @@ class SmsProviderSyncManager
         }
 
         return $summary;
-    }
-
-    /**
-     * `failed` and `rejected` are terminal peer statuses reported authoritatively by the
-     * provider. A status update is always allowed to progress forward into one of them
-     * (even from a previously recorded success status such as `sent`), but once a terminal
-     * status has been recorded it is final and must never regress back into an earlier
-     * status. Non-terminal statuses otherwise only move forward through the lifecycle.
-     */
-    private function resolve_status(string $current_status, string $new_status): string
-    {
-        $terminal_statuses = array('failed', 'rejected');
-
-        // Once a terminal status has been recorded it is final; never regress it back
-        // into an earlier status, including swapping between terminal peers.
-        if (in_array($current_status, $terminal_statuses, true)) {
-            return $current_status;
-        }
-
-        // Allow forward progression into a terminal status from any non-terminal state.
-        if (in_array($new_status, $terminal_statuses, true)) {
-            return $new_status;
-        }
-
-        $order = array_flip(array('pending', 'processing', 'sent', 'delivered', 'bounce'));
-        $current_order = isset($order[$current_status]) ? $order[$current_status] : -1;
-        $new_order = isset($order[$new_status]) ? $order[$new_status] : -1;
-
-        return $new_order >= 0 && $new_order < $current_order ? $current_status : $new_status;
     }
 
     /**

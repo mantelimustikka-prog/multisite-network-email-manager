@@ -2375,24 +2375,8 @@ class Queue
             return false;
         }
 
-        // Idempotency: never move backward in status lifecycle.
-        // `rejected` sits last in the lifecycle, so it is terminal: later success updates only refresh the provider status.
-        $status_order = array_flip(self::STATUS_LIFECYCLE_ORDER);
-        $current_order = isset($status_order[$row['status']]) ? $status_order[$row['status']] : -1;
-        $new_order     = isset($status_order[$queue_status])  ? $status_order[$queue_status]  : -1;
-        if ($new_order < $current_order && $new_order !== -1) {
-            return $wpdb->query($wpdb->prepare(
-                "UPDATE {$table}
-                SET provider_status = %s, provider_status_checked_at = %s,
-                    last_sync_error = NULL, sync_attempts = 0
-                WHERE id = %d AND status = %s",
-                $provider_status,
-                self::current_time_mysql(),
-                (int) $row['id'],
-                (string) $row['status']
-            )) !== false;
-        }
-
+        // The provider's status is the source of truth: store it directly without any
+        // lifecycle validation second-guessing what the provider reports.
         $merged_meta = self::merge_provider_metadata(
             isset($row['provider_metadata']) ? (string) $row['provider_metadata'] : '',
             array(
