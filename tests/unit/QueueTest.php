@@ -738,8 +738,82 @@ class QueueTest extends TestCase
         $this->assertArrayNotHasKey('mnem_last_wp_mail', $GLOBALS);
     }
 
-    public function test_process_sms_item_marks_failed_when_phone_missing()
+    public function test_process_sms_item_persists_rejected_provider_status_after_send()
     {
+        unset($GLOBALS['mnem_last_wp_mail']);
+        $GLOBALS['mnem_site_options']['mnem_sms_provider'] = 'textmagic';
+        $GLOBALS['mnem_site_options']['mnem_sms_config'] = wp_json_encode(array(
+            'textmagic' => array(
+                'username' => base64_encode('demo'),
+                'api_key'  => base64_encode('secret'),
+                'from_number' => base64_encode('+15550000000'),
+            ),
+        ));
+        // Send call (POST) succeeds, provider status lookup (GET) reports TextMagic's "r" (rejected).
+        $GLOBALS['mnem_http_response'] = array(
+            'response' => array('code' => 201),
+            'body'     => wp_json_encode(array('id' => 'tm-79')),
+        );
+        $GLOBALS['mnem_http_get_response'] = array(
+            'response' => array('code' => 200),
+            'body'     => wp_json_encode(array('status' => 'r')),
+        );
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            private bool $sms_col_returned = false;
+
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'wp_mnem_sms_queue') !== false && !$this->sms_col_returned) {
+                    $this->sms_col_returned = true;
+                    return array(79);
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SELECT id, phone_number, body, sms_campaign_id FROM wp_mnem_sms_queue WHERE id = 79') !== false) {
+                    return array(
+                        'id'              => 79,
+                        'phone_number'    => '+15550001111',
+                        'body'            => 'Hello',
+                        'sms_campaign_id' => 0,
+                    );
+                }
+
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'SHOW TABLES LIKE') !== false) {
+                    return 'wp_mnem_logs';
+                }
+                return 0;
+            }
+        };
+
+        $processed = Queue::process_sms_batch(1);
+        unset($GLOBALS['mnem_http_response'], $GLOBALS['mnem_http_get_response']);
+
+        $this->assertSame(1, $processed);
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString("status = 'sent'", $joined);
+        $this->assertStringContainsString("provider_status = 'r'", $joined);
+        $this->assertStringContainsString("status = 'rejected'", $joined);
+    }
+
+    public function test_process_sms_item_marks_failed_when_phone_missing()    {
         $queries = array();
 
         $GLOBALS['wpdb'] = new class($queries) extends wpdb {

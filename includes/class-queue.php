@@ -500,7 +500,10 @@ class Queue
         $result = self::process_sms_item_result($id, $force);
 
         $campaign_id = isset($result['campaign_id']) ? (int) $result['campaign_id'] : 0;
-        if ($campaign_id > 0 && !empty($result['processed']) && in_array((string) $result['status'], array('sent', 'failed'), true)) {
+        // A send may already resolve to a terminal provider status (delivered/rejected/bounce),
+        // so treat all of those as processed for campaign status updates.
+        $campaign_statuses = array('sent', 'failed', 'delivered', 'rejected', 'bounce');
+        if ($campaign_id > 0 && !empty($result['processed']) && in_array((string) $result['status'], $campaign_statuses, true)) {
             SmsCampaigns::auto_update_campaign_status($campaign_id);
         }
 
@@ -669,10 +672,19 @@ class Queue
                 )
             );
             Logger::info('SMS queue item sent successfully.', array('queue_id' => $id, 'phone' => $phone));
+
+            // The provider may already report a terminal status (e.g. rejected) right after
+            // the send call, so query it immediately and persist the raw provider status.
+            $status = 'sent';
+            $resolved_status = self::refresh_sms_provider_status($id, $provider, $provider_type, $provider_message_id);
+            if ($resolved_status !== '') {
+                $status = $resolved_status;
+            }
+
             return array(
                 'processed' => true,
                 'success' => true,
-                'status' => 'sent',
+                'status' => $status,
                 'message' => isset($provider_result['message']) ? (string) $provider_result['message'] : '',
                 'queue_id' => $id,
                 'provider' => $provider_type,
@@ -701,6 +713,103 @@ class Queue
             'message_id' => $provider_message_id,
             'campaign_id' => $campaign_id,
         );
+    }
+
+    /**
+     * Query the SMS provider for the current status of a just-sent message and persist it.
+     *
+     * The raw provider status (e.g. TextMagic's "r") is always stored in the
+     * `provider_status` column so the UI can show the provider-reported reason, while the
+     * canonical queue status is updated from the mapped value.
+     *
+     * @param int    $id                  SMS queue row ID.
+     * @param object $provider            Active SMS provider instance.
+     * @param string $provider_type       Provider key (e.g. 'textmagic').
+     * @param string $provider_message_id Provider-issued message ID.
+     * @return string Canonical status when it was persisted, empty string otherwise.
+     */
+    private static function refresh_sms_provider_status(int $id, $provider, string $provider_type, string $provider_message_id): string
+    {
+        global $wpdb;
+
+        if ($id <= 0 || $provider_type === '' || $provider_message_id === '') {
+            return '';
+        }
+
+        if (function_exists('apply_filters') && !apply_filters('mnem_sms_sync_status_after_send', true, $provider_type, $id)) {
+            return '';
+        }
+
+        if (
+            !is_object($provider)
+            || !method_exists($provider, 'get_message_status')
+            || !method_exists($provider, 'supports_message_status_lookup')
+            || !$provider->supports_message_status_lookup()
+        ) {
+            return '';
+        }
+
+        $result = $provider->get_message_status($provider_message_id);
+        $raw_status = is_array($result) && !empty($result['provider_status']) ? (string) $result['provider_status'] : '';
+
+        if (!is_array($result) || empty($result['success']) || $raw_status === '') {
+            Logger::warning('SMS status lookup after send did not return a provider status.', array(
+                'queue_id' => $id,
+                'provider' => $provider_type,
+                'provider_message_id' => $provider_message_id,
+                'error' => is_array($result) && !empty($result['message']) ? (string) $result['message'] : '',
+            ));
+            return '';
+        }
+
+        $canonical = class_exists('\\MNEM\\SmsProviderStatusMap')
+            ? SmsProviderStatusMap::map($provider_type, $raw_status)
+            : '';
+
+        if ($canonical === '') {
+            Logger::warning('SMS provider returned an unmapped status after send.', array(
+                'queue_id' => $id,
+                'provider' => $provider_type,
+                'provider_message_id' => $provider_message_id,
+                'provider_status' => $raw_status,
+            ));
+            return '';
+        }
+
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
+        $updated = $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$table}
+                SET status = %s, provider_status = %s, provider_status_checked_at = %s,
+                    last_sync_error = NULL, sync_attempts = 0
+                WHERE id = %d",
+                $canonical,
+                $raw_status,
+                self::current_time_mysql(),
+                $id
+            )
+        );
+
+        if ($updated === false || (int) $updated === 0) {
+            Logger::warning('SMS provider status update after send affected no rows.', array(
+                'queue_id' => $id,
+                'provider' => $provider_type,
+                'provider_message_id' => $provider_message_id,
+                'provider_status' => $raw_status,
+                'new_status' => $canonical,
+            ));
+            return '';
+        }
+
+        Logger::info('SMS provider status synchronized after send.', array(
+            'queue_id' => $id,
+            'provider' => $provider_type,
+            'provider_message_id' => $provider_message_id,
+            'provider_status' => $raw_status,
+            'new_status' => $canonical,
+        ));
+
+        return $canonical;
     }
 
     /**

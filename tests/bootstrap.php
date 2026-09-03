@@ -776,6 +776,9 @@ if (!function_exists('rest_url')) {
 if (!function_exists('wp_remote_get')) {
     function wp_remote_get($url, $args = array())
     {
+        if (isset($GLOBALS['mnem_http_get_response'])) {
+            return $GLOBALS['mnem_http_get_response'];
+        }
         return isset($GLOBALS['mnem_http_response']) ? $GLOBALS['mnem_http_response'] : new WP_Error('http_request_failed', 'Mock not set.');
     }
 }
