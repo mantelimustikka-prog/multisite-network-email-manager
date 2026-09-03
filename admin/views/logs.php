@@ -332,9 +332,12 @@ defined('ABSPATH') || exit;
                                     : '';
                                 $sms_status_out_of_sync = $sms_mapped_provider_status !== '' && $sms_mapped_provider_status !== $sms_status_slug;
                                 $sms_sync_error = isset($sms_item['last_sync_error']) ? (string) $sms_item['last_sync_error'] : '';
-                                $sms_provider_status_label = $sms_mapped_provider_status === 'bounce'
-                                    ? __('Bounced', 'multisite-network-email-manager')
-                                    : ucfirst($sms_mapped_provider_status !== '' ? $sms_mapped_provider_status : $sms_provider_status);
+                                $sms_provider_status_label = $sms_provider_status !== ''
+                                    ? \MNEM\SmsProviderStatusMap::get_provider_display_name((string) $sms_item['provider_type'], $sms_provider_status)
+                                    : '';
+                                if ($sms_provider_status_label === '') {
+                                    $sms_provider_status_label = $sms_provider_status;
+                                }
                                 ?>
                                 <td class="mnem-sms-provider-status" title="<?php echo esc_attr($sms_sync_error !== '' ? $sms_sync_error : $sms_provider_status); ?>">
                                     <?php echo esc_html($sms_provider_status !== '' ? $sms_provider_status_label : '—'); ?>

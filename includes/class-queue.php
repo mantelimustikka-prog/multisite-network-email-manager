@@ -1307,6 +1307,82 @@ class Queue
         return ucwords(str_replace('_', ' ', $queue_status));
     }
 
+    /**
+     * Human-readable SMS status for an `mnem_sms_queue` row, preferring the
+     * provider-specific display name (e.g. TextMagic 'r' => 'Rejected') and
+     * falling back to the canonical queue status when no provider status is
+     * available yet.
+     *
+     * @param array<string,mixed> $item A row from mnem_sms_queue.
+     */
+    public static function get_sms_display_status(array $item): string
+    {
+        $provider_type   = isset($item['provider_type']) ? (string) $item['provider_type'] : '';
+        $provider_status = isset($item['provider_status']) ? (string) $item['provider_status'] : '';
+
+        if ($provider_type !== '' && $provider_status !== '') {
+            $display = SmsProviderStatusMap::get_provider_display_name($provider_type, $provider_status);
+            if ($display !== '') {
+                return $display;
+            }
+        }
+
+        $queue_status = isset($item['status']) ? strtolower((string) $item['status']) : '';
+        if ($queue_status === '') {
+            return '';
+        }
+
+        return $queue_status === 'bounce' ? 'Bounced' : ucwords(str_replace('_', ' ', $queue_status));
+    }
+
+    /**
+     * Whether an `mnem_sms_queue` row is in the terminal `rejected` state, i.e. the
+     * recipient's number is valid/reachable but the provider account owner or the
+     * mobile subscriber blocked the message. Rejected recipients must never be
+     * retried but are prime candidates for email follow-up campaigns.
+     *
+     * @param array<string,mixed> $item A row from mnem_sms_queue.
+     */
+    public static function is_rejected(array $item): bool
+    {
+        $status = isset($item['status']) ? strtolower((string) $item['status']) : '';
+        return $status === self::REJECTED_STATUS;
+    }
+
+    /**
+     * Fetch SMS queue rows with a terminal `rejected` status so their recipients
+     * can be targeted by email follow-up campaigns. Uses the `idx_status` index
+     * on `mnem_sms_queue` for efficient lookups.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function get_rejected_sms_recipients(int $site_id = 0, int $limit = 500): array
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_sms_queue';
+        $limit = max(1, $limit);
+
+        if ($site_id > 0) {
+            $sql = $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE status = %s AND site_id = %d ORDER BY updated_at DESC LIMIT %d",
+                self::REJECTED_STATUS,
+                $site_id,
+                $limit
+            );
+        } else {
+            $sql = $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE status = %s ORDER BY updated_at DESC LIMIT %d",
+                self::REJECTED_STATUS,
+                $limit
+            );
+        }
+
+        $rows = $wpdb->get_results($sql, ARRAY_A);
+
+        return is_array($rows) ? $rows : array();
+    }
+
     public static function update_status_from_webhook(string $provider, string $message_id, string $status, array $payload = array(), string $recipient = '', string $timestamp = ''): bool
     {
         global $wpdb;
