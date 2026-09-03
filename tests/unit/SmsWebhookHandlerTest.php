@@ -272,6 +272,40 @@ class SmsWebhookHandlerTest extends TestCase
         $this->assertStringContainsString("provider_status = 'd'", $queries);
     }
 
+    public function test_webhook_update_matches_on_id_only_without_status_check(): void
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array('id' => 101, 'status' => 'sent', 'provider_metadata' => '{}');
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $request = $this->make_request('textmagic', array(
+            'status'   => 'r',
+            'id'       => 'TM-race-1',
+            'receiver' => '+15550003333',
+        ));
+
+        $api = new RestApi();
+        $api->handle_sms_webhook($request);
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+
+        // The provider status is the source of truth: the UPDATE must target the row by
+        // id alone so it cannot silently match 0 rows when the status drifts between the
+        // SELECT and the UPDATE (race condition).
+        $this->assertStringContainsString('WHERE id = 101', $queries);
+        $this->assertStringNotContainsString("AND status = 'sent'", $queries);
+    }
+
     public function test_map_covers_all_tracked_providers(): void
     {
         foreach (SmsProviderStatusMap::get_tracking_providers() as $provider) {
