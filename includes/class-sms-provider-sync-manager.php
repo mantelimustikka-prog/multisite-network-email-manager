@@ -142,6 +142,26 @@ class SmsProviderSyncManager
                     $this->record_failure((int) $row['id'], (int) $row['sync_attempts'], $error);
                     continue;
                 }
+                $rows_affected = (int) $updated;
+                if ($rows_affected === 0) {
+                    // The row was removed or already updated concurrently, so nothing changed.
+                    $summary['warnings'][] = sprintf(
+                        __('SMS #%d: the queue row was not updated because it no longer matches (deleted or already updated).', 'multisite-network-email-manager'),
+                        (int) $row['id']
+                    );
+                    Logger::warning('SMS provider status update affected no rows.', array(
+                        'source' => isset($options['source']) ? (string) $options['source'] : 'manual',
+                        'queue_id' => (int) $row['id'],
+                        'provider' => $provider,
+                        'provider_message_id' => (string) $row['provider_message_id'],
+                        'provider_status' => $raw_status,
+                        'old_status' => (string) $row['status'],
+                        'new_status' => $resolved_status,
+                        'rows_affected' => 0,
+                    ));
+                    continue;
+                }
+
                 if ($changed) {
                     $this->add_change_to_summary($summary, $row, $resolved_status, $raw_status);
                 }
@@ -154,6 +174,7 @@ class SmsProviderSyncManager
                     'provider_status' => $raw_status,
                     'old_status' => (string) $row['status'],
                     'new_status' => $resolved_status,
+                    'rows_affected' => $rows_affected,
                 ));
             }
         }
