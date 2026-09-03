@@ -48,4 +48,51 @@ class CronTest extends TestCase
 
         $this->assertSame('mnem_15_minutes', get_site_option(Cron::OPTION_INTERVAL, ''));
     }
+
+    public function test_schedule_queue_processing_creates_fast_track_cron_event()
+    {
+        Cron::schedule_queue_processing();
+
+        $this->assertArrayHasKey(Cron::FAST_TRACK_HOOK, $GLOBALS['mnem_cron_events']);
+        $this->assertSame(Cron::FAST_TRACK_INTERVAL, $GLOBALS['mnem_cron_events'][Cron::FAST_TRACK_HOOK]['recurrence']);
+    }
+
+    public function test_register_intervals_includes_one_minute_schedule()
+    {
+        $cron = new Cron();
+        $schedules = $cron->register_intervals(array());
+
+        $this->assertArrayHasKey(Cron::FAST_TRACK_INTERVAL, $schedules);
+        $this->assertSame(60, $schedules[Cron::FAST_TRACK_INTERVAL]['interval']);
+    }
+
+    public function test_process_transactional_queue_batch_only_queries_transactional_sources()
+    {
+        $GLOBALS['mnem_site_options'][Cron::OPTION_FAST_TRACK_LOCK_UNTIL] = 0;
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_col($query)
+            {
+                $this->queries[] = $query;
+                return array();
+            }
+        };
+
+        $processed = Cron::process_transactional_queue_batch();
+        $joined = implode("\n", $GLOBALS['wpdb']->queries);
+
+        $this->assertSame(0, $processed);
+        $this->assertStringContainsString("source IN ('core', 'plugin', 'user_event')", $joined);
+        $this->assertStringNotContainsString("source IN ('campaign')", $joined);
+        $this->assertSame(0, (int) get_site_option(Cron::OPTION_FAST_TRACK_LOCK_UNTIL, 0));
+    }
+
+    public function test_process_transactional_queue_batch_skips_when_locked()
+    {
+        $GLOBALS['mnem_site_options'][Cron::OPTION_FAST_TRACK_LOCK_UNTIL] = time() + 60;
+
+        $processed = Cron::process_transactional_queue_batch();
+
+        $this->assertSame(0, $processed);
+        $GLOBALS['mnem_site_options'][Cron::OPTION_FAST_TRACK_LOCK_UNTIL] = 0;
+    }
 }

@@ -20,6 +20,10 @@ class Queue
     public const SOURCE_CAMPAIGN = 'campaign';
     public const SOURCE_USER_EVENT = 'user_event';
     public const SOURCE_PLUGIN = 'plugin';
+    /** Maximum number of seconds an immediate transactional send may block the current request. */
+    public const IMMEDIATE_SEND_TIMEOUT = 5;
+    /** Site option used to disable the immediate transactional send attempt. */
+    public const OPTION_IMMEDIATE_SEND = 'mnem_immediate_transactional_send';
 
     public static function enqueue(int $site_id, string $email, string $subject, string $body, int $campaign_id = 0, array $options = array())
     {
@@ -77,7 +81,104 @@ class Queue
             return false;
         }
 
-        return isset($wpdb->insert_id) ? (int) $wpdb->insert_id : true;
+        $queue_id = isset($wpdb->insert_id) ? (int) $wpdb->insert_id : 0;
+
+        if ($queue_id > 0) {
+            self::maybe_send_immediately($queue_id, $source);
+
+            return $queue_id;
+        }
+
+        return true;
+    }
+
+    /**
+     * Attempt to deliver a transactional email immediately so time sensitive
+     * messages (OTP, password resets, account notifications) do not wait for cron.
+     *
+     * Failures are intentionally swallowed: the row stays pending and the regular
+     * queue/cron processing retries it.
+     *
+     * @param int    $queue_id Queue row identifier.
+     * @param string $source   Queue row source.
+     * @return bool True when the message was delivered immediately.
+     */
+    private static function maybe_send_immediately(int $queue_id, string $source): bool
+    {
+        if ($queue_id < 1 || !in_array($source, self::get_transactional_sources(), true)) {
+            return false;
+        }
+
+        if (!self::is_immediate_send_enabled()) {
+            return false;
+        }
+
+        $timeout = self::get_immediate_send_timeout();
+        $timeout_filter = static function () use ($timeout) {
+            return $timeout;
+        };
+
+        if (function_exists('add_filter')) {
+            add_filter('http_request_timeout', $timeout_filter, 99);
+        }
+
+        $started = microtime(true);
+
+        try {
+            $result = self::process_item($queue_id, false, true);
+            $success = !empty($result['success']);
+
+            Logger::info('Immediate transactional send attempted.', array(
+                'queue_id' => $queue_id,
+                'source' => $source,
+                'success' => $success,
+                'status' => isset($result['status']) ? (string) $result['status'] : '',
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+            ));
+
+            return $success;
+        } catch (\Throwable $throwable) {
+            Logger::warning('Immediate transactional send failed; falling back to queue.', array(
+                'queue_id' => $queue_id,
+                'source' => $source,
+                'error' => $throwable->getMessage(),
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+            ));
+
+            return false;
+        } finally {
+            if (function_exists('remove_filter')) {
+                remove_filter('http_request_timeout', $timeout_filter, 99);
+            }
+        }
+    }
+
+    /**
+     * @return bool Whether immediate transactional sending is enabled.
+     */
+    public static function is_immediate_send_enabled(): bool
+    {
+        $enabled = (int) get_site_option(self::OPTION_IMMEDIATE_SEND, 1) === 1;
+
+        if (function_exists('apply_filters')) {
+            $enabled = (bool) apply_filters('mnem_immediate_transactional_send', $enabled);
+        }
+
+        return $enabled;
+    }
+
+    /**
+     * @return int Maximum seconds allowed for an immediate transactional send.
+     */
+    public static function get_immediate_send_timeout(): int
+    {
+        $timeout = self::IMMEDIATE_SEND_TIMEOUT;
+
+        if (function_exists('apply_filters')) {
+            $timeout = (int) apply_filters('mnem_immediate_transactional_send_timeout', $timeout);
+        }
+
+        return max(1, (int) $timeout);
     }
 
     /**
@@ -107,7 +208,15 @@ class Queue
         return $recovered;
     }
 
-    public static function process_batch(int $limit = 20)
+    /**
+     * Process a batch of pending queue items.
+     *
+     * @param int                    $limit   Maximum number of items to process.
+     * @param array<int,string>|null $sources Optional source filter. When provided, only
+     *                                       these sources are processed (e.g. transactional only).
+     * @return int Number of processed items.
+     */
+    public static function process_batch(int $limit = 20, ?array $sources = null)
     {
         global $wpdb;
 
@@ -116,6 +225,18 @@ class Queue
         $table = $wpdb->base_prefix . 'mnem_queue';
         $now = self::current_time_mysql();
         $limit = max(1, $limit);
+
+        $transactional_sources = self::get_transactional_sources();
+        if (is_array($sources)) {
+            $sources = array_values(array_intersect(
+                array(self::SOURCE_CORE, self::SOURCE_PLUGIN, self::SOURCE_USER_EVENT, self::SOURCE_CAMPAIGN),
+                $sources
+            ));
+            $transactional_sources = array_values(array_intersect($transactional_sources, $sources));
+            $process_campaigns = in_array(self::SOURCE_CAMPAIGN, $sources, true);
+        } else {
+            $process_campaigns = true;
+        }
 
         $rate_limit_per_minute = SmtpSettings::get_campaign_rate_limit_per_minute();
         $rate_limit_per_hour = SmtpSettings::get_campaign_rate_limit_per_hour();
@@ -128,7 +249,7 @@ class Queue
         $processed = 0;
 
         $remaining = $limit;
-        $transactional_ids = self::get_pending_ids_by_source($table, $now, $remaining, self::get_transactional_sources());
+        $transactional_ids = self::get_pending_ids_by_source($table, $now, $remaining, $transactional_sources);
         foreach ($transactional_ids as $id) {
             $result = self::process_item((int) $id);
             if (!empty($result['processed'])) {
@@ -137,7 +258,7 @@ class Queue
         }
 
         $remaining = $limit - $processed;
-        if ($remaining < 1) {
+        if ($remaining < 1 || !$process_campaigns) {
             return $processed;
         }
 
@@ -596,7 +717,7 @@ class Queue
         return self::process_item($id, true);
     }
 
-    public static function process_item(int $id, bool $force = false): array
+    public static function process_item(int $id, bool $force = false, bool $defer_status_refresh = false): array
     {
         global $wpdb;
 
@@ -759,14 +880,19 @@ class Queue
                 Logger::info('Queue email sent.', array('queue_id' => $id, 'blog_id' => $blog_id, 'campaign_id' => (int) $row['campaign_id'], 'recipient_email' => $row['recipient_email'], 'provider' => $provider_type, 'message_id' => $provider_message_id));
                 $status = 'sent';
 
-                // Wait briefly for the provider to process the message before polling.
-                if ($provider_type !== '' && $provider_message_id !== '') {
-                    sleep(2);
-                }
+                if ($defer_status_refresh) {
+                    // Never block the current request; poll the provider status later.
+                    self::schedule_delayed_status_refresh($id);
+                } else {
+                    // Wait briefly for the provider to process the message before polling.
+                    if ($provider_type !== '' && $provider_message_id !== '') {
+                        sleep(2);
+                    }
 
-                $resolved_status = self::refresh_provider_status($id, $provider_type, $provider_message_id, (string) $row['recipient_email']);
-                if ($resolved_status !== '') {
-                    $status = $resolved_status;
+                    $resolved_status = self::refresh_provider_status($id, $provider_type, $provider_message_id, (string) $row['recipient_email']);
+                    if ($resolved_status !== '') {
+                        $status = $resolved_status;
+                    }
                 }
             } else {
                 $status = $attempts >= self::MAX_ATTEMPTS ? 'failed' : 'pending';
@@ -827,7 +953,7 @@ class Queue
     /**
      * @return array<int,string>
      */
-    private static function get_transactional_sources(): array
+    public static function get_transactional_sources(): array
     {
         return array(
             self::SOURCE_CORE,
