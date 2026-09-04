@@ -929,24 +929,24 @@ class SmsSubscriberLists
             }
         }
 
+        $set_clauses = array('phone_number = %s');
+        $set_args    = array($formatted_phone);
         if ($is_standalone) {
-            $result = $wpdb->query(
-                $wpdb->prepare(
-                    "UPDATE {$table} SET phone_number = %s, subscriber_name = %s WHERE id = %d",
-                    $formatted_phone,
-                    $name,
-                    $subscriber_id
-                )
-            );
-        } else {
-            $result = $wpdb->query(
-                $wpdb->prepare(
-                    "UPDATE {$table} SET phone_number = %s WHERE id = %d",
-                    $formatted_phone,
-                    $subscriber_id
-                )
-            );
+            $set_clauses[] = 'subscriber_name = %s';
+            $set_args[]    = $name;
         }
+        $set_args[] = $subscriber_id;
+
+        $result = $wpdb->query(
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("UPDATE {$table} SET " . implode(', ', $set_clauses) . ' WHERE id = %d'),
+                    $set_args
+                )
+            )
+        );
 
         if ($result !== false) {
             Logger::info('SMS subscriber updated.', array(
@@ -1741,27 +1741,22 @@ class SmsSubscriberLists
 
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
 
-        if ($exclude_id > 0) {
-            $row = $wpdb->get_row(
-                $wpdb->prepare(
-                    "SELECT id, user_id, phone_number, subscription_status FROM {$table} WHERE list_id = %d AND phone_number = %s AND subscription_status = %s AND id <> %d LIMIT 1",
-                    $list_id,
-                    $phone_number,
-                    'subscribed',
-                    $exclude_id
-                ),
-                ARRAY_A
-            );
+        $where_sql  = "list_id = %d AND phone_number = %s AND subscription_status = %s";
+        $where_args = array($list_id, $phone_number, 'subscribed');
 
-            return is_array($row) ? $row : null;
+        if ($exclude_id > 0) {
+            $where_sql .= ' AND id <> %d';
+            $where_args[] = $exclude_id;
         }
 
         $row = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT id, user_id, phone_number, subscription_status FROM {$table} WHERE list_id = %d AND phone_number = %s AND subscription_status = %s LIMIT 1",
-                $list_id,
-                $phone_number,
-                'subscribed'
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("SELECT id, user_id, phone_number, subscription_status FROM {$table} WHERE {$where_sql} LIMIT 1"),
+                    $where_args
+                )
             ),
             ARRAY_A
         );
