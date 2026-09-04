@@ -1453,4 +1453,64 @@ class SmsSubscriberListsTest extends TestCase
         });
         $this->assertNotEmpty($unsubscribed_queries, 'Restored standalone subscriber should preserve unsubscribed status.');
     }
+
+    public function test_convert_standalone_to_users_logs_error_when_restore_also_fails()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $insert_call_count = 0;
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 9,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Erin',
+                        'phone_number' => '+16789012345',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'usermeta') !== false) {
+                    return 11;
+                }
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO') !== false) {
+                    $this->insert_call_count++;
+                    // Simulate both the add_subscriber INSERT and the
+                    // add_standalone_subscriber restore INSERT failing.
+                    return false;
+                }
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(0, $result['converted']);
+        $this->assertSame(1, $result['errors']);
+        $this->assertSame(0, $result['not_found']);
+        // Both the original conversion attempt and the restore attempt should
+        // have tried to INSERT, even though both failed.
+        $this->assertSame(2, $GLOBALS['wpdb']->insert_call_count);
+    }
 }

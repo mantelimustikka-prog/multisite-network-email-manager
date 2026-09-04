@@ -770,8 +770,16 @@ class SmsSubscriberLists
                 // Restore the standalone record so the subscriber is not lost,
                 // preserving its original subscription status.
                 $restore_result = self::add_standalone_subscriber($list_id, $original_name, $phone);
-                if (!empty($restore_result['success']) && $status === 'unsubscribed') {
-                    self::unsubscribe_standalone($list_id, $phone, $reason);
+                if (!empty($restore_result['success'])) {
+                    if ($status === 'unsubscribed') {
+                        self::unsubscribe_standalone($list_id, $phone, $reason);
+                    }
+                } else {
+                    Logger::error('Failed to restore standalone SMS subscriber after failed conversion; subscriber data may be lost.', array(
+                        'list_id' => $list_id,
+                        'phone' => $phone,
+                        'user_id' => $user_id,
+                    ));
                 }
                 continue;
             }
