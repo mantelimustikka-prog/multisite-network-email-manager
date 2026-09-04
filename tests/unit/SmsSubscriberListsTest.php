@@ -1171,4 +1171,221 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('name is required', strtolower($result['message']));
     }
+
+    public function test_convert_standalone_to_users_converts_matching_subscriber()
+    {
+        $GLOBALS['mnem_user_data'][7]->display_name = 'Alice Example';
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $update_queries = array();
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 1,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Alice',
+                        'phone_number' => '+12345678901',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'usermeta') !== false) {
+                    return 7;
+                }
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'UPDATE') !== false && strpos($query, 'subscriber_name') !== false) {
+                    $this->update_queries[] = $query;
+                }
+                $this->insert_id = 99;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(1, $result['converted']);
+        $this->assertSame(0, $result['not_found']);
+        $this->assertSame(0, $result['errors']);
+        $this->assertCount(1, $result['details']);
+        $this->assertSame(7, $result['details'][0]['user_id']);
+        $this->assertSame('Alice Example', $result['details'][0]['display_name']);
+        $this->assertNotEmpty($GLOBALS['wpdb']->update_queries);
+        $this->assertStringContainsString('Alice Example', $GLOBALS['wpdb']->update_queries[0]);
+    }
+
+    public function test_convert_standalone_to_users_reports_not_found_when_no_matching_user()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 2,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Unknown Person',
+                        'phone_number' => '+19999999999',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                // No matching user found for the phone number.
+                return 0;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(0, $result['converted']);
+        $this->assertSame(1, $result['not_found']);
+        $this->assertSame(0, $result['errors']);
+        $this->assertSame(array(), $result['details']);
+    }
+
+    public function test_convert_standalone_to_users_preserves_unsubscribed_status()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $unsubscribe_queries = array();
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 3,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Bob',
+                        'phone_number' => '+13456789012',
+                        'subscription_status' => 'unsubscribed',
+                        'unsubscribed_reason' => 'Opted out',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'usermeta') !== false) {
+                    return 8;
+                }
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "'unsubscribed'") !== false) {
+                    $this->unsubscribe_queries[] = $query;
+                }
+                $this->insert_id = 100;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(1, $result['converted']);
+        $this->assertSame(8, $result['details'][0]['user_id']);
+        $this->assertNotEmpty($GLOBALS['wpdb']->unsubscribe_queries);
+    }
+
+    public function test_convert_standalone_to_users_restores_standalone_when_add_subscriber_fails()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $insert_call_count = 0;
+            public $insert_queries = array();
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 4,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Carl',
+                        'phone_number' => '+14567890123',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'usermeta') !== false) {
+                    return 9;
+                }
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'INSERT INTO') !== false) {
+                    $this->insert_call_count++;
+                    $this->insert_queries[] = $query;
+                    if ($this->insert_call_count === 1) {
+                        // Simulate the first INSERT (add_subscriber) failing.
+                        return false;
+                    }
+                    $this->insert_id = 55;
+                }
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(0, $result['converted']);
+        $this->assertSame(1, $result['errors']);
+        $this->assertSame(0, $result['not_found']);
+        // The standalone subscriber should have been re-inserted after the failed conversion.
+        $this->assertCount(2, $GLOBALS['wpdb']->insert_queries);
+        $this->assertStringContainsString('Standalone Carl', $GLOBALS['wpdb']->insert_queries[1]);
+    }
 }

@@ -753,6 +753,9 @@ class SmsSubscriberLists
 
             $status = isset($row['subscription_status']) ? (string) $row['subscription_status'] : 'subscribed';
             $reason = isset($row['unsubscribed_reason']) ? (string) $row['unsubscribed_reason'] : '';
+            $original_name = isset($row['subscriber_name']) && $row['subscriber_name'] !== ''
+                ? (string) $row['subscriber_name']
+                : 'Standalone Subscriber';
 
             if (!self::remove_standalone_subscriber($list_id, $phone)) {
                 $errors++;
@@ -762,6 +765,8 @@ class SmsSubscriberLists
             $add_result = self::add_subscriber($list_id, $user_id, $phone);
             if (empty($add_result['success'])) {
                 $errors++;
+                // Restore the standalone record so the subscriber is not lost.
+                self::add_standalone_subscriber($list_id, $original_name, $phone);
                 continue;
             }
 
@@ -1565,7 +1570,9 @@ class SmsSubscriberLists
 
     /**
      * Search the network users table for a user whose phone-related user meta
-     * matches the given phone number.
+     * matches the given phone number. Falls back to a digits-only comparison
+     * so differently formatted numbers (spaces, dashes, missing '+') can still
+     * be matched.
      */
     private static function find_user_id_by_phone(string $phone_number): int
     {
@@ -1577,15 +1584,45 @@ class SmsSubscriberLists
         }
 
         $usermeta_table = isset($wpdb->usermeta) ? $wpdb->usermeta : $wpdb->base_prefix . 'usermeta';
+        $meta_keys_sql = "'phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone'";
 
-        $user_id = $wpdb->get_var(
+        $user_id = (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ('phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone') AND meta_value = %s LIMIT 1",
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) AND meta_value = %s LIMIT 1",
                 $phone_number
             )
         );
 
-        return (int) $user_id;
+        if ($user_id > 0) {
+            return $user_id;
+        }
+
+        $normalized_target = self::normalize_phone_digits($phone_number);
+        if ($normalized_target === '') {
+            return 0;
+        }
+
+        $candidates = (array) $wpdb->get_results(
+            "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql})",
+            ARRAY_A
+        );
+
+        foreach ($candidates as $candidate) {
+            $candidate_value = isset($candidate['meta_value']) ? (string) $candidate['meta_value'] : '';
+            if ($candidate_value === '') {
+                continue;
+            }
+            if (self::normalize_phone_digits($candidate_value) === $normalized_target) {
+                return isset($candidate['user_id']) ? (int) $candidate['user_id'] : 0;
+            }
+        }
+
+        return 0;
+    }
+
+    private static function normalize_phone_digits(string $phone_number): string
+    {
+        return (string) preg_replace('/\D+/', '', $phone_number);
     }
 
     private static function csv_escape(string $value)
