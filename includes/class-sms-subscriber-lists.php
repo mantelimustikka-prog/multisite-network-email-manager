@@ -611,7 +611,7 @@ class SmsSubscriberLists
             array($wpdb, 'prepare'),
             array_merge(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                array("SELECT s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                array("SELECT s.id, s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
                 $where_args,
                 array($per_page, $offset)
             )
@@ -843,6 +843,137 @@ class SmsSubscriberLists
         }
 
         return $result !== false;
+    }
+
+    /**
+     * Update an existing subscriber's phone number (and name, for standalone
+     * subscribers) identified by their subscriber row id.
+     *
+     * @param int         $subscriber_id Primary key of the row in mnem_sms_list_subscribers.
+     * @param string      $phone_number  New phone number.
+     * @param string      $name          New subscriber name (standalone subscribers only).
+     * @param string|null $country_code  Optional explicit country hint (ISO-2).
+     * @return array<string,mixed>
+     */
+    public static function update_subscriber(int $subscriber_id, string $phone_number, string $name = '', ?string $country_code = null): array
+    {
+        global $wpdb;
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+
+        if ($subscriber_id <= 0) {
+            return self::build_update_response(false, null, 'Invalid subscriber.', 'error');
+        }
+
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT id, list_id, user_id, subscriber_name FROM {$table} WHERE id = %d", $subscriber_id),
+            ARRAY_A
+        );
+
+        if (!is_array($existing)) {
+            return self::build_update_response(false, null, 'Subscriber not found.', 'error');
+        }
+
+        $list_id       = isset($existing['list_id']) ? (int) $existing['list_id'] : 0;
+        $user_id       = isset($existing['user_id']) ? (int) $existing['user_id'] : 0;
+        $is_standalone = $user_id === 0;
+
+        $phone_number = trim($phone_number);
+        if ($phone_number === '') {
+            return self::build_update_response(false, null, 'Phone number is required.', 'error');
+        }
+
+        $name = sanitize_text_field($name);
+        if ($is_standalone && $name === '') {
+            return self::build_update_response(false, null, 'Subscriber name is required.', 'error');
+        }
+
+        $validation = self::validate_phone_number($phone_number, $country_code);
+
+        // Ambiguous country: reject with explanation.
+        if (!$validation['valid'] && isset($validation['reason_code']) && $validation['reason_code'] === 'ambiguous_country') {
+            return self::build_update_response(false, $validation, 'Phone number is ambiguous: multiple countries could match.', 'error');
+        }
+
+        // Unsupported country: reject.
+        if ($validation['valid']) {
+            $allowed = SmsSettings::get_allowed_countries();
+            if (!empty($allowed)) {
+                $detected_country = isset($validation['country_iso2']) ? (string) $validation['country_iso2'] : '';
+                if ($detected_country !== '' && !in_array($detected_country, $allowed, true)) {
+                    return self::build_update_response(false, $validation, sprintf('Phone number country %s is not in the allowed countries list.', $detected_country), 'error');
+                }
+            }
+        }
+
+        // Invalid format: reject.
+        if (empty($validation['valid'])) {
+            return self::build_update_response(false, $validation, 'Phone number is invalid.', 'error');
+        }
+
+        $formatted_phone = (string) $validation['formatted'];
+
+        // Blocked number: reject.
+        if (InvalidPhoneNumbers::is_blocked($formatted_phone)) {
+            return self::build_update_response(false, array(
+                'valid'     => true,
+                'formatted' => $formatted_phone,
+                'error'     => '',
+            ), 'Phone number has been blocked from subscribing.', 'error');
+        }
+
+        // Cross-subscriber duplicate check (exclude the record being edited).
+        if (!SmsSettings::allow_duplicate_numbers()) {
+            $duplicate = self::find_subscriber_by_phone($list_id, $formatted_phone, $subscriber_id);
+            if (is_array($duplicate)) {
+                return self::build_update_response(false, $validation, 'Phone number is already subscribed to this list.', 'error');
+            }
+        }
+
+        $set_clauses = array('phone_number = %s');
+        $set_args    = array($formatted_phone);
+        if ($is_standalone) {
+            $set_clauses[] = 'subscriber_name = %s';
+            $set_args[]    = $name;
+        }
+        $set_args[] = $subscriber_id;
+
+        $result = $wpdb->query(
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("UPDATE {$table} SET " . implode(', ', $set_clauses) . ' WHERE id = %d'),
+                    $set_args
+                )
+            )
+        );
+
+        if ($result !== false) {
+            Logger::info('SMS subscriber updated.', array(
+                'list_id'       => $list_id,
+                'subscriber_id' => $subscriber_id,
+                'user_id'       => $user_id,
+                'admin_id'      => get_current_user_id(),
+            ));
+        }
+
+        return self::build_update_response($result !== false, $validation, $result !== false ? 'Subscriber updated successfully.' : 'Failed to update subscriber.', $result !== false ? 'updated' : 'error');
+    }
+
+    /**
+     * @param array<string,mixed>|null $validation
+     * @return array<string,mixed>
+     */
+    private static function build_update_response(bool $success, ?array $validation, string $message, string $action): array
+    {
+        return array(
+            'success'         => $success,
+            'action'          => $action,
+            'message'         => $message,
+            'phone_valid'     => $validation !== null ? !empty($validation['valid']) : false,
+            'phone_error'     => $validation !== null && isset($validation['error']) ? (string) $validation['error'] : '',
+            'formatted_phone' => $validation !== null && isset($validation['formatted']) ? (string) $validation['formatted'] : '',
+        );
     }
 
     public static function import_from_csv(int $list_id, string $csv_content)
@@ -1604,18 +1735,28 @@ class SmsSubscriberLists
     /**
      * @return array<string,mixed>|null
      */
-    private static function find_subscriber_by_phone(int $list_id, string $phone_number)
+    private static function find_subscriber_by_phone(int $list_id, string $phone_number, int $exclude_id = 0)
     {
         global $wpdb;
 
         $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
 
+        $where_sql  = "list_id = %d AND phone_number = %s AND subscription_status = %s";
+        $where_args = array($list_id, $phone_number, 'subscribed');
+
+        if ($exclude_id > 0) {
+            $where_sql .= ' AND id <> %d';
+            $where_args[] = $exclude_id;
+        }
+
         $row = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT user_id, phone_number, subscription_status FROM {$table} WHERE list_id = %d AND phone_number = %s AND subscription_status = %s LIMIT 1",
-                $list_id,
-                $phone_number,
-                'subscribed'
+            call_user_func_array(
+                array($wpdb, 'prepare'),
+                array_merge(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+                    array("SELECT id, user_id, phone_number, subscription_status FROM {$table} WHERE {$where_sql} LIMIT 1"),
+                    $where_args
+                )
             ),
             ARRAY_A
         );

@@ -1,6 +1,30 @@
 <?php
 
 defined('ABSPATH') || exit;
+
+if (!function_exists('mnem_render_sms_subscriber_edit_button')) {
+    /**
+     * Render the "Edit" button used to open the SMS subscriber edit modal.
+     *
+     * @param array<string,mixed> $subscriber    Subscriber row (from search/list queries).
+     * @param bool                $is_standalone Whether the subscriber is a standalone (non-user) subscriber.
+     */
+    function mnem_render_sms_subscriber_edit_button(array $subscriber, bool $is_standalone): void
+    {
+        ?>
+        <button
+            type="button"
+            class="button"
+            style="margin-left:6px;"
+            data-subscriber-id="<?php echo esc_attr((string) (isset($subscriber['id']) ? $subscriber['id'] : '')); ?>"
+            data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
+            data-subscriber-name="<?php echo esc_attr((string) (isset($subscriber['subscriber_name']) ? $subscriber['subscriber_name'] : '')); ?>"
+            data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
+            onclick="mnemOpenSmsEditModal(this);"
+        >Edit</button>
+        <?php
+    }
+}
 ?>
 <div class="wrap mnem-dashboard">
     <h1>SMS Subscriber Lists</h1>
@@ -267,6 +291,7 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                                     data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
                                     onclick="mnemOpenSmsUnsubscribeModal(this);"
                                 >Unsubscribe</button>
+                                <?php mnem_render_sms_subscriber_edit_button($subscriber, $is_standalone); ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -336,6 +361,7 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                                     <?php endif; ?>
                                     <?php submit_button('Restore', 'secondary', 'submit', false); ?>
                                 </form>
+                                <?php mnem_render_sms_subscriber_edit_button($subscriber, $is_standalone); ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -394,6 +420,59 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                     </form>
                 </div>
             </div>
+
+            <div id="mnem-sms-edit-modal" style="display:none;position:fixed;z-index:9999;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5);">
+                <div style="background:#fff;max-width:500px;margin:120px auto;padding:20px;">
+                    <h3>Edit Subscriber</h3>
+                    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
+                        <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
+                        <input type="hidden" name="mnem_action" value="sms_subscriber_edit" />
+                        <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
+                        <input type="hidden" name="subscriber_id" id="mnem-sms-edit-subscriber-id" value="" />
+                        <p id="mnem-sms-edit-name-row">
+                            <label for="mnem-sms-edit-subscriber-name">Subscriber Name</label><br />
+                            <input type="text" id="mnem-sms-edit-subscriber-name" name="subscriber_name" class="regular-text" />
+                        </p>
+                        <p>
+                            <label for="mnem-sms-edit-phone-number">Phone Number</label><br />
+                            <input type="text" id="mnem-sms-edit-phone-number" name="phone_number" class="regular-text" placeholder="+1234567890 or local format" required />
+                        </p>
+                        <div style="margin-top:10px;display:flex;gap:8px;">
+                            <button type="submit" class="button button-primary">Save Changes</button>
+                            <button type="button" class="button" onclick="mnemCloseSmsEditModal();">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <script>
+                if (typeof mnemOpenSmsEditModal === 'undefined') {
+                    function mnemOpenSmsEditModal(button) {
+                        var modal = document.getElementById('mnem-sms-edit-modal');
+                        var idField = document.getElementById('mnem-sms-edit-subscriber-id');
+                        var nameField = document.getElementById('mnem-sms-edit-subscriber-name');
+                        var nameRow = document.getElementById('mnem-sms-edit-name-row');
+                        var phoneField = document.getElementById('mnem-sms-edit-phone-number');
+                        if (!modal || !idField || !nameField || !nameRow || !phoneField || !button) {
+                            return;
+                        }
+                        var subscriberType = button.getAttribute('data-subscriber-type') || 'user';
+                        idField.value = button.getAttribute('data-subscriber-id') || '';
+                        nameField.value = button.getAttribute('data-subscriber-name') || '';
+                        phoneField.value = button.getAttribute('data-phone-number') || '';
+                        nameRow.style.display = subscriberType === 'standalone' ? '' : 'none';
+                        modal.style.display = 'block';
+                    }
+                }
+                if (typeof mnemCloseSmsEditModal === 'undefined') {
+                    function mnemCloseSmsEditModal() {
+                        var modal = document.getElementById('mnem-sms-edit-modal');
+                        if (!modal) {
+                            return;
+                        }
+                        modal.style.display = 'none';
+                    }
+                }
+            </script>
             <script>
                 if (typeof mnemOpenSmsUnsubscribeModal === 'undefined') {
                     function mnemOpenSmsUnsubscribeModal(button) {

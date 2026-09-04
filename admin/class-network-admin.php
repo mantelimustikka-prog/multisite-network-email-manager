@@ -781,6 +781,26 @@ class NetworkAdmin
             $this->redirect_with_notice('mnem-sms-subscriber-lists', $result ? 'sms_subscriber_restored' : 'sms_subscriber_operation_failed', $redirect_args);
         }
 
+        if ($action === 'sms_subscriber_edit') {
+            $subscriber_id = isset($_POST['subscriber_id']) ? (int) $_POST['subscriber_id'] : 0;
+            $phone_number = isset($_POST['phone_number']) ? sanitize_text_field(wp_unslash($_POST['phone_number'])) : '';
+            $subscriber_name = isset($_POST['subscriber_name']) ? sanitize_text_field(wp_unslash($_POST['subscriber_name'])) : '';
+
+            if ($subscriber_id <= 0) {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+
+            $result = \MNEM\SmsSubscriberLists::update_subscriber($subscriber_id, $phone_number, $subscriber_name);
+            if (empty($result['success'])) {
+                $redirect_args['mnem_alert'] = isset($result['message']) && $result['message'] !== '' ? $result['message'] : 'Failed to update subscriber.';
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_updated', $redirect_args);
+        }
+
         if ($action === 'sms_subscriber_import_csv') {
             $csv_content = isset($_POST['csv_content']) ? (string) wp_unslash($_POST['csv_content']) : '';
             if ($csv_content === '' && isset($_FILES['csv_file']['tmp_name']) && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
