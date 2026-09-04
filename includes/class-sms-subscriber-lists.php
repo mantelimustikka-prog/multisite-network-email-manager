@@ -703,6 +703,105 @@ class SmsSubscriberLists
         return $result !== false;
     }
 
+    /**
+     * Bulk-convert standalone subscribers in a list to network user subscribers
+     * whenever a matching phone number is found in the network users table.
+     *
+     * @return array<string,mixed> Summary with 'converted', 'not_found', 'errors' counts and 'details'.
+     */
+    public static function convert_standalone_to_users(int $list_id): array
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $rows = (array) $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND subscription_status IN ('subscribed', 'unsubscribed')",
+                $list_id,
+                0
+            ),
+            ARRAY_A
+        );
+
+        $converted = 0;
+        $not_found = 0;
+        $errors = 0;
+        $details = array();
+
+        foreach ($rows as $row) {
+            $phone = isset($row['phone_number']) ? trim((string) $row['phone_number']) : '';
+            if ($phone === '') {
+                $not_found++;
+                continue;
+            }
+
+            $user_id = self::find_user_id_by_phone($phone);
+            if ($user_id <= 0) {
+                $not_found++;
+                continue;
+            }
+
+            $user = function_exists('get_userdata') ? get_userdata($user_id) : null;
+            $display_name = '';
+            if (is_object($user)) {
+                if (!empty($user->display_name)) {
+                    $display_name = (string) $user->display_name;
+                } elseif (!empty($user->user_login)) {
+                    $display_name = (string) $user->user_login;
+                }
+            }
+
+            $status = isset($row['subscription_status']) ? (string) $row['subscription_status'] : 'subscribed';
+            $reason = isset($row['unsubscribed_reason']) ? (string) $row['unsubscribed_reason'] : '';
+
+            if (!self::remove_standalone_subscriber($list_id, $phone)) {
+                $errors++;
+                continue;
+            }
+
+            $add_result = self::add_subscriber($list_id, $user_id, $phone);
+            if (empty($add_result['success'])) {
+                $errors++;
+                continue;
+            }
+
+            if ($display_name !== '') {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET subscriber_name = %s WHERE list_id = %d AND user_id = %d",
+                        $display_name,
+                        $list_id,
+                        $user_id
+                    )
+                );
+            }
+
+            if ($status === 'unsubscribed') {
+                self::unsubscribe_user($list_id, $user_id, $reason);
+            }
+
+            $converted++;
+            $details[] = array(
+                'phone_number' => $phone,
+                'user_id'      => $user_id,
+                'display_name' => $display_name,
+            );
+
+            Logger::info('Standalone SMS subscriber converted to network user.', array(
+                'list_id'      => $list_id,
+                'user_id'      => $user_id,
+                'phone_number' => $phone,
+            ));
+        }
+
+        return array(
+            'converted' => $converted,
+            'not_found' => $not_found,
+            'errors'    => $errors,
+            'details'   => $details,
+        );
+    }
+
     public static function unsubscribe_standalone(int $list_id, string $phone_number, string $reason = ''): bool
     {
         global $wpdb;
@@ -1462,6 +1561,31 @@ class SmsSubscriberLists
         }
 
         return '';
+    }
+
+    /**
+     * Search the network users table for a user whose phone-related user meta
+     * matches the given phone number.
+     */
+    private static function find_user_id_by_phone(string $phone_number): int
+    {
+        global $wpdb;
+
+        $phone_number = trim($phone_number);
+        if ($phone_number === '') {
+            return 0;
+        }
+
+        $usermeta_table = isset($wpdb->usermeta) ? $wpdb->usermeta : $wpdb->base_prefix . 'usermeta';
+
+        $user_id = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ('phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone') AND meta_value = %s LIMIT 1",
+                $phone_number
+            )
+        );
+
+        return (int) $user_id;
     }
 
     private static function csv_escape(string $value)

@@ -212,7 +212,14 @@ if (!function_exists('mnem_render_sms_subscriber_edit_button')) {
                     <a href="<?php echo esc_url(network_admin_url('admin.php?page=mnem-invalid-phone-numbers&list_id=' . (int) $active_list['id'])); ?>" class="button" style="margin-left: 8px;">
                         <?php esc_html_e('Review Invalid Numbers', 'multisite-network-email-manager'); ?>
                     </a>
+                    <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>" style="display:inline-block; margin-left: 8px;" onsubmit="return confirm('This will search network users for phone number matches and convert standalone subscribers to user-based subscribers. Continue?');">
+                        <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
+                        <input type="hidden" name="mnem_action" value="sms_subscriber_convert_standalone" />
+                        <input type="hidden" name="list_id" value="<?php echo esc_attr((string) $active_list['id']); ?>" />
+                        <?php submit_button(__('Standalone to User', 'multisite-network-email-manager'), 'secondary', 'submit', false); ?>
+                    </form>
                 </div>
+
                 <form method="post" action="<?php echo esc_url(network_admin_url('admin.php?page=mnem-sms-subscriber-lists&list_id=' . (int) $active_list['id'])); ?>">
                     <?php wp_nonce_field('mnem_sms_subscriber_lists'); ?>
                     <input type="hidden" name="mnem_action" value="sms_subscriber_add_user" />
