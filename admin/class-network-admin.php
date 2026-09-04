@@ -793,7 +793,7 @@ class NetworkAdmin
 
             $result = \MNEM\SmsSubscriberLists::update_subscriber($subscriber_id, $phone_number, $subscriber_name);
             if (empty($result['success'])) {
-                $redirect_args['mnem_alert'] = isset($result['phone_error']) && $result['phone_error'] !== '' ? $result['phone_error'] : (isset($result['message']) ? $result['message'] : 'Failed to update subscriber.');
+                $redirect_args['mnem_alert'] = isset($result['message']) && $result['message'] !== '' ? $result['message'] : 'Failed to update subscriber.';
                 $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
                 return;
             }

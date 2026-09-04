@@ -865,7 +865,7 @@ class SmsSubscriberLists
         }
 
         $existing = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $subscriber_id),
+            $wpdb->prepare("SELECT id, list_id, user_id, subscriber_name FROM {$table} WHERE id = %d", $subscriber_id),
             ARRAY_A
         );
 
