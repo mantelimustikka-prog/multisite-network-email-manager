@@ -9,6 +9,16 @@ class SmsSubscriberLists
     private const ORPHANED_SMS_LOG_SCAN_LIMIT = 1000;
     private const PHONE_MATCH_FALLBACK_LIMIT = 5000;
 
+    /**
+     * Minimum number of significant digits required before a normalized
+     * (digits-only) phone number comparison is considered a valid match.
+     * Guards against short/placeholder values matching each other and, more
+     * importantly, requires both sides to have an equal digit count so that
+     * a number with a leading country-code digit (e.g. "1 234 567 8901")
+     * cannot be confused with the same number missing it ("234 567 8901").
+     */
+    private const MIN_PHONE_MATCH_DIGITS = 7;
+
     public static function create(string $name, string $description = '')
     {
         global $wpdb;
@@ -759,7 +769,16 @@ class SmsSubscriberLists
                 ? (string) $row['subscriber_name']
                 : 'Standalone Subscriber';
 
+            // Wrap the remove/add (and any restore) sequence in a DB transaction so
+            // that, if the storage engine supports it (e.g. InnoDB), a fatal error or
+            // timeout between the two calls cannot leave the subscriber in a
+            // half-converted, orphaned state. The explicit restore-on-failure logic
+            // below is kept as a defense-in-depth measure for non-transactional
+            // storage engines and for orderly (non-crash) failures.
+            $wpdb->query('START TRANSACTION');
+
             if (!self::remove_standalone_subscriber($list_id, $phone)) {
+                $wpdb->query('ROLLBACK');
                 $errors++;
                 continue;
             }
@@ -781,6 +800,7 @@ class SmsSubscriberLists
                         'user_id' => $user_id,
                     ));
                 }
+                $wpdb->query('COMMIT');
                 continue;
             }
 
@@ -798,6 +818,8 @@ class SmsSubscriberLists
             if ($status === 'unsubscribed') {
                 self::unsubscribe_user($list_id, $user_id, $reason);
             }
+
+            $wpdb->query('COMMIT');
 
             $converted++;
             $details[] = array(
@@ -1618,7 +1640,7 @@ class SmsSubscriberLists
         }
 
         $normalized_target = self::normalize_phone_digits($phone_number);
-        if ($normalized_target === '') {
+        if ($normalized_target === '' || strlen($normalized_target) < self::MIN_PHONE_MATCH_DIGITS) {
             return 0;
         }
 
@@ -1656,7 +1678,11 @@ class SmsSubscriberLists
             if ($candidate_value === '') {
                 continue;
             }
-            if (self::normalize_phone_digits($candidate_value) === $normalized_target) {
+            $normalized_candidate = self::normalize_phone_digits($candidate_value);
+            // Require an exact, equal-length digit match so a number with a
+            // leading country-code digit (e.g. "12345678901") cannot be
+            // confused with the same digits missing it ("2345678901").
+            if ($normalized_candidate !== '' && $normalized_candidate === $normalized_target) {
                 return isset($candidate['user_id']) ? (int) $candidate['user_id'] : 0;
             }
         }
