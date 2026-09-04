@@ -1,6 +1,30 @@
 <?php
 
 defined('ABSPATH') || exit;
+
+if (!function_exists('mnem_render_sms_subscriber_edit_button')) {
+    /**
+     * Render the "Edit" button used to open the SMS subscriber edit modal.
+     *
+     * @param array<string,mixed> $subscriber    Subscriber row (from search/list queries).
+     * @param bool                $is_standalone Whether the subscriber is a standalone (non-user) subscriber.
+     */
+    function mnem_render_sms_subscriber_edit_button(array $subscriber, bool $is_standalone): void
+    {
+        ?>
+        <button
+            type="button"
+            class="button"
+            style="margin-left:6px;"
+            data-subscriber-id="<?php echo esc_attr((string) (isset($subscriber['id']) ? $subscriber['id'] : '')); ?>"
+            data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
+            data-subscriber-name="<?php echo esc_attr((string) (isset($subscriber['subscriber_name']) ? $subscriber['subscriber_name'] : '')); ?>"
+            data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
+            onclick="mnemOpenSmsEditModal(this);"
+        >Edit</button>
+        <?php
+    }
+}
 ?>
 <div class="wrap mnem-dashboard">
     <h1>SMS Subscriber Lists</h1>
@@ -267,16 +291,7 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                                     data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
                                     onclick="mnemOpenSmsUnsubscribeModal(this);"
                                 >Unsubscribe</button>
-                                <button
-                                    type="button"
-                                    class="button"
-                                    style="margin-left:6px;"
-                                    data-subscriber-id="<?php echo esc_attr((string) (isset($subscriber['id']) ? $subscriber['id'] : '')); ?>"
-                                    data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
-                                    data-subscriber-name="<?php echo esc_attr((string) (isset($subscriber['subscriber_name']) ? $subscriber['subscriber_name'] : '')); ?>"
-                                    data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
-                                    onclick="mnemOpenSmsEditModal(this);"
-                                >Edit</button>
+                                <?php mnem_render_sms_subscriber_edit_button($subscriber, $is_standalone); ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -346,16 +361,7 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                                     <?php endif; ?>
                                     <?php submit_button('Restore', 'secondary', 'submit', false); ?>
                                 </form>
-                                <button
-                                    type="button"
-                                    class="button"
-                                    style="margin-left:6px;"
-                                    data-subscriber-id="<?php echo esc_attr((string) (isset($subscriber['id']) ? $subscriber['id'] : '')); ?>"
-                                    data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
-                                    data-subscriber-name="<?php echo esc_attr((string) (isset($subscriber['subscriber_name']) ? $subscriber['subscriber_name'] : '')); ?>"
-                                    data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
-                                    onclick="mnemOpenSmsEditModal(this);"
-                                >Edit</button>
+                                <?php mnem_render_sms_subscriber_edit_button($subscriber, $is_standalone); ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

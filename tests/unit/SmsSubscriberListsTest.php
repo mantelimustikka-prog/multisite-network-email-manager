@@ -912,6 +912,43 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function test_update_subscriber_normalises_to_e164_with_country_hint()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'id <>') !== false) {
+                    return null;
+                }
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        // Finnish local number with FI hint should be stored as E.164.
+        $result = SmsSubscriberLists::update_subscriber(5, '0401234567', '', 'FI');
+
+        $this->assertTrue($result['success']);
+        // The stored number should start with +358 (Finnish dial code).
+        $this->assertStringContainsString('+358', $GLOBALS['wpdb']->lastQuery);
+    }
+
     public function test_update_subscriber_updates_user_phone_number()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
