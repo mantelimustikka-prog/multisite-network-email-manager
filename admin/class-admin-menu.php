@@ -1178,6 +1178,9 @@ class AdminMenu
         $deleted_total = isset($_GET['deleted_total']) ? (int) sanitize_text_field(wp_unslash($_GET['deleted_total'])) : 0;
         $new_campaign_id = isset($_GET['mnem_new_campaign_id']) ? (int) sanitize_text_field(wp_unslash($_GET['mnem_new_campaign_id'])) : 0;
         $failed = isset($_GET['failed']) ? (int) $_GET['failed'] : 0;
+        $converted_count = isset($_GET['converted']) ? (int) $_GET['converted'] : 0;
+        $not_found_count = isset($_GET['not_found']) ? (int) $_GET['not_found'] : 0;
+        $conv_error_count = isset($_GET['converted_errors']) ? (int) $_GET['converted_errors'] : 0;
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
@@ -1243,6 +1246,14 @@ class AdminMenu
             'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
             'sms_subscriber_updated' => 'SMS subscriber updated successfully.',
             'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
+            'sms_subscriber_converted' => sprintf(
+                'Converted %1$d standalone subscriber%2$s to network users. %3$d not found, %4$d error%5$s.',
+                $converted_count,
+                $converted_count === 1 ? '' : 's',
+                $not_found_count,
+                $conv_error_count,
+                $conv_error_count === 1 ? '' : 's'
+            ),
             'sms_subscriber_delete_confirmation_required' => sprintf('This SMS list delete will remove %d related record%s. Please confirm the cascade delete and submit again.', max(0, $deleted_total), $deleted_total === 1 ? '' : 's'),
             'invalid_phone_updated' => 'Invalid phone number records updated successfully.',
             'invalid_phone_removed' => 'Invalid phone number entry removed successfully.',

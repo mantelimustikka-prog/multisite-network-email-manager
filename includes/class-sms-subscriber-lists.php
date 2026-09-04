@@ -7,6 +7,25 @@ defined('ABSPATH') || exit;
 class SmsSubscriberLists
 {
     private const ORPHANED_SMS_LOG_SCAN_LIMIT = 1000;
+    private const PHONE_MATCH_FALLBACK_LIMIT = 5000;
+
+    /**
+     * Minimum number of significant digits required before a normalized
+     * (digits-only) phone number comparison is considered a valid match.
+     * Guards against short/placeholder values matching each other and, more
+     * importantly, requires both sides to have an equal digit count so that
+     * a number with a leading country-code digit (e.g. "1 234 567 8901")
+     * cannot be confused with the same number missing it ("234 567 8901").
+     */
+    private const MIN_PHONE_MATCH_DIGITS = 7;
+
+    /**
+     * User meta keys checked when searching for a network user with a
+     * matching phone number. Defined once and reused to build the IN()
+     * clause for all phone-lookup queries so the list only needs updating
+     * in one place.
+     */
+    private const PHONE_META_KEYS = array('phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone');
 
     public static function create(string $name, string $description = '')
     {
@@ -701,6 +720,147 @@ class SmsSubscriberLists
         }
 
         return $result !== false;
+    }
+
+    /**
+     * Bulk-convert standalone subscribers in a list to network user subscribers
+     * whenever a matching phone number is found in the network users table.
+     *
+     * @return array<string,mixed> Summary with 'converted', 'not_found', 'errors' counts and 'details'.
+     */
+    public static function convert_standalone_to_users(int $list_id): array
+    {
+        global $wpdb;
+
+        $table = $wpdb->base_prefix . 'mnem_sms_list_subscribers';
+        $rows = (array) $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE list_id = %d AND user_id = %d AND subscription_status IN ('subscribed', 'unsubscribed')",
+                $list_id,
+                0
+            ),
+            ARRAY_A
+        );
+
+        $converted = 0;
+        $not_found = 0;
+        $errors = 0;
+        $details = array();
+        $fallback_candidates = null;
+
+        foreach ($rows as $row) {
+            $phone = isset($row['phone_number']) ? trim((string) $row['phone_number']) : '';
+            if ($phone === '') {
+                $not_found++;
+                continue;
+            }
+
+            $user_id = self::find_user_id_by_phone($phone, $fallback_candidates);
+            if ($user_id <= 0) {
+                $not_found++;
+                continue;
+            }
+
+            $user = function_exists('get_userdata') ? get_userdata($user_id) : null;
+            $display_name = '';
+            if (is_object($user)) {
+                if (!empty($user->display_name)) {
+                    $display_name = (string) $user->display_name;
+                } elseif (!empty($user->user_login)) {
+                    $display_name = (string) $user->user_login;
+                }
+            }
+
+            $status = isset($row['subscription_status']) ? (string) $row['subscription_status'] : 'subscribed';
+            $reason = isset($row['unsubscribed_reason']) ? (string) $row['unsubscribed_reason'] : '';
+            $original_name = isset($row['subscriber_name']) && $row['subscriber_name'] !== ''
+                ? (string) $row['subscriber_name']
+                : 'Standalone Subscriber';
+
+            // Wrap the remove/add (and any restore) sequence in a DB transaction so
+            // that, if the storage engine supports it (e.g. InnoDB), a fatal error or
+            // timeout between the two calls cannot leave the subscriber in a
+            // half-converted, orphaned state. The explicit restore-on-failure logic
+            // below is kept as a defense-in-depth measure for non-transactional
+            // storage engines and for orderly (non-crash) failures.
+            $in_transaction = $wpdb->query('START TRANSACTION') !== false;
+            if (!$in_transaction) {
+                Logger::error('Unable to start SMS subscriber conversion transaction.', array(
+                    'list_id' => $list_id,
+                    'phone' => $phone,
+                ));
+            }
+
+            if (!self::remove_standalone_subscriber($list_id, $phone)) {
+                if ($in_transaction) {
+                    $wpdb->query('ROLLBACK');
+                }
+                $errors++;
+                continue;
+            }
+
+            $add_result = self::add_subscriber($list_id, $user_id, $phone);
+            if (empty($add_result['success'])) {
+                $errors++;
+                // Restore the standalone record so the subscriber is not lost,
+                // preserving its original subscription status.
+                $restore_result = self::add_standalone_subscriber($list_id, $original_name, $phone);
+                if (!empty($restore_result['success'])) {
+                    if ($status === 'unsubscribed') {
+                        self::unsubscribe_standalone($list_id, $phone, $reason);
+                    }
+                } else {
+                    Logger::error('Failed to restore standalone SMS subscriber after failed conversion; subscriber data may be lost.', array(
+                        'list_id' => $list_id,
+                        'phone' => $phone,
+                        'user_id' => $user_id,
+                    ));
+                }
+                if ($in_transaction) {
+                    $wpdb->query('COMMIT');
+                }
+                continue;
+            }
+
+            if ($display_name !== '') {
+                $wpdb->query(
+                    $wpdb->prepare(
+                        "UPDATE {$table} SET subscriber_name = %s WHERE list_id = %d AND user_id = %d",
+                        $display_name,
+                        $list_id,
+                        $user_id
+                    )
+                );
+            }
+
+            if ($status === 'unsubscribed') {
+                self::unsubscribe_user($list_id, $user_id, $reason);
+            }
+
+            if ($in_transaction) {
+                $wpdb->query('COMMIT');
+            }
+
+            $converted++;
+            $details[] = array(
+                'phone_number' => $phone,
+                'user_id'      => $user_id,
+                'display_name' => $display_name,
+            );
+
+            Logger::info('Standalone SMS subscriber converted to network user.', array(
+                'list_id'      => $list_id,
+                'user_id'      => $user_id,
+                'phone_number' => $phone,
+            ));
+        }
+
+        return array(
+            'converted' => $converted,
+            'not_found' => $not_found,
+            'errors'    => $errors,
+            'details'   => $details,
+        );
     }
 
     public static function unsubscribe_standalone(int $list_id, string $phone_number, string $reason = ''): bool
@@ -1462,6 +1622,97 @@ class SmsSubscriberLists
         }
 
         return '';
+    }
+
+    /**
+     * Search the network users table for a user whose phone-related user meta
+     * matches the given phone number. Falls back to a digits-only comparison
+     * so differently formatted numbers (spaces, dashes, missing '+') can still
+     * be matched.
+     *
+     * @param array<int,array<string,mixed>>|null $fallback_candidates Reference to a
+     *        cache of usermeta rows used by the last-resort fallback below. Pass the
+     *        same variable across repeated calls within one operation (e.g. a bulk
+     *        conversion loop) so the fallback query only runs once per operation
+     *        instead of once per phone number.
+     */
+    private static function find_user_id_by_phone(string $phone_number, ?array &$fallback_candidates = null): int
+    {
+        global $wpdb;
+
+        $phone_number = trim($phone_number);
+        if ($phone_number === '') {
+            return 0;
+        }
+
+        $usermeta_table = isset($wpdb->usermeta) ? $wpdb->usermeta : $wpdb->base_prefix . 'usermeta';
+        $meta_keys_placeholders = implode(', ', array_fill(0, count(self::PHONE_META_KEYS), '%s'));
+
+        $user_id = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders}) AND meta_value = %s LIMIT 1",
+                ...array_merge(self::PHONE_META_KEYS, array($phone_number))
+            )
+        );
+
+        if ($user_id > 0) {
+            return $user_id;
+        }
+
+        $normalized_target = self::normalize_phone_digits($phone_number);
+        if ($normalized_target === '' || strlen($normalized_target) < self::MIN_PHONE_MATCH_DIGITS) {
+            return 0;
+        }
+
+        // Normalize common formatting (spaces, dashes, parentheses, '+') in SQL first
+        // so most differently-formatted matches are found without loading rows into PHP.
+        $user_id = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders})"
+                    . " AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(meta_value, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = %s LIMIT 1",
+                ...array_merge(self::PHONE_META_KEYS, array($normalized_target))
+            )
+        );
+
+        if ($user_id > 0) {
+            return $user_id;
+        }
+
+        // Last-resort fallback for unusual formatting (dots, leading zeros, etc).
+        // Bounded by PHONE_MATCH_FALLBACK_LIMIT to avoid loading the entire
+        // network usermeta table into memory on large multisite installs. The
+        // candidate set is cached in $fallback_candidates by the caller so it is
+        // only fetched once per bulk operation rather than once per phone number.
+        if ($fallback_candidates === null) {
+            $fallback_candidates = (array) $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders}) LIMIT %d",
+                    ...array_merge(self::PHONE_META_KEYS, array(self::PHONE_MATCH_FALLBACK_LIMIT))
+                ),
+                ARRAY_A
+            );
+        }
+
+        foreach ($fallback_candidates as $candidate) {
+            $candidate_value = isset($candidate['meta_value']) ? (string) $candidate['meta_value'] : '';
+            if ($candidate_value === '') {
+                continue;
+            }
+            $normalized_candidate = self::normalize_phone_digits($candidate_value);
+            // Require an exact, equal-length digit match so a number with a
+            // leading country-code digit (e.g. "12345678901") cannot be
+            // confused with the same digits missing it ("2345678901").
+            if ($normalized_candidate !== '' && $normalized_candidate === $normalized_target) {
+                return isset($candidate['user_id']) ? (int) $candidate['user_id'] : 0;
+            }
+        }
+
+        return 0;
+    }
+
+    private static function normalize_phone_digits(string $phone_number): string
+    {
+        return (string) preg_replace('/\D+/', '', $phone_number);
     }
 
     private static function csv_escape(string $value)

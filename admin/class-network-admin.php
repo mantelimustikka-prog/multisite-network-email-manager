@@ -753,6 +753,24 @@ class NetworkAdmin
             $this->redirect_with_notice('mnem-sms-subscriber-lists', $notice, $redirect_args);
         }
 
+        if ($action === 'sms_subscriber_convert_standalone') {
+            if ($list_id <= 0) {
+                $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_operation_failed', $redirect_args);
+                return;
+            }
+
+            $result = \MNEM\SmsSubscriberLists::convert_standalone_to_users($list_id);
+            \MNEM\Logger::info('Bulk standalone-to-user SMS subscriber conversion completed.', array(
+                'list_id' => $list_id,
+                'result' => $result,
+            ));
+            $redirect_args['converted'] = isset($result['converted']) ? (int) $result['converted'] : 0;
+            $redirect_args['not_found'] = isset($result['not_found']) ? (int) $result['not_found'] : 0;
+            $redirect_args['converted_errors'] = isset($result['errors']) ? (int) $result['errors'] : 0;
+            $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_converted', $redirect_args);
+            return;
+        }
+
         if ($action === 'sms_subscriber_remove_user') {
             $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
             $result = \MNEM\SmsSubscriberLists::remove_subscriber($list_id, $user_id);
