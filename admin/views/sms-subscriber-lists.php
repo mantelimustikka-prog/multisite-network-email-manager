@@ -261,12 +261,19 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                     ?>
                 </p>
                 <table class="widefat striped">
-                    <thead><tr><th>Login/Name</th><th>Type</th><th>Phone Number</th><th>Subscribed At</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Login</th><th>Display Name</th><th>Type</th><th>Phone Number</th><th>Subscribed At</th><th>Actions</th></tr></thead>
                     <tbody>
                     <?php foreach ((array) $subscribers as $subscriber) : ?>
-                        <?php $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone'; ?>
+                        <?php
+                        $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone';
+                        $login_display = $is_standalone
+                            ? (isset($subscriber['subscriber_name']) && $subscriber['subscriber_name'] !== '' ? (string) $subscriber['subscriber_name'] : 'Standalone Subscriber')
+                            : (isset($subscriber['user_login']) && $subscriber['user_login'] !== '' ? (string) $subscriber['user_login'] : ('user_id:' . (string) (isset($subscriber['user_id']) ? $subscriber['user_id'] : '')));
+                        $display_name  = !$is_standalone && isset($subscriber['display_name']) && $subscriber['display_name'] !== '' ? (string) $subscriber['display_name'] : '';
+                        ?>
                         <tr>
-                            <td><?php echo esc_html(isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : (string) $subscriber['user_login']); ?></td>
+                            <td><?php echo esc_html($login_display); ?></td>
+                            <td><?php echo esc_html($display_name !== '' ? $display_name : '-'); ?></td>
                             <td>
                                 <?php if ($is_standalone) : ?>
                                     <span class="tag">Standalone</span>
@@ -294,7 +301,7 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                                     style="margin-left:6px;"
                                     data-subscriber-type="<?php echo esc_attr($is_standalone ? 'standalone' : 'user'); ?>"
                                     data-user-id="<?php echo esc_attr((string) $subscriber['user_id']); ?>"
-                                    data-user-login="<?php echo esc_attr((string) (isset($subscriber['display_name']) ? $subscriber['display_name'] : $subscriber['user_login'])); ?>"
+                                    data-user-login="<?php echo esc_attr($login_display); ?>"
                                     data-phone-number="<?php echo esc_attr((string) $subscriber['phone_number']); ?>"
                                     onclick="mnemOpenSmsUnsubscribeModal(this);"
                                 >Unsubscribe</button>
@@ -340,12 +347,19 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                     ?>
                 </p>
                 <table class="widefat striped">
-                    <thead><tr><th>Login/Name</th><th>Type</th><th>Phone Number</th><th>Unsubscribed At</th><th>Reason</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Login</th><th>Display Name</th><th>Type</th><th>Phone Number</th><th>Unsubscribed At</th><th>Reason</th><th>Actions</th></tr></thead>
                     <tbody>
                     <?php foreach ((array) $unsubscribed as $subscriber) : ?>
-                        <?php $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone'; ?>
+                        <?php
+                        $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone';
+                        $login_display = $is_standalone
+                            ? (isset($subscriber['subscriber_name']) && $subscriber['subscriber_name'] !== '' ? (string) $subscriber['subscriber_name'] : 'Standalone Subscriber')
+                            : (isset($subscriber['user_login']) && $subscriber['user_login'] !== '' ? (string) $subscriber['user_login'] : ('user_id:' . (string) (isset($subscriber['user_id']) ? $subscriber['user_id'] : '')));
+                        $display_name  = !$is_standalone && isset($subscriber['display_name']) && $subscriber['display_name'] !== '' ? (string) $subscriber['display_name'] : '';
+                        ?>
                         <tr>
-                            <td><?php echo esc_html(isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : (string) $subscriber['user_login']); ?></td>
+                            <td><?php echo esc_html($login_display); ?></td>
+                            <td><?php echo esc_html($display_name !== '' ? $display_name : '-'); ?></td>
                             <td>
                                 <?php if ($is_standalone) : ?>
                                     <span class="tag">Standalone</span>

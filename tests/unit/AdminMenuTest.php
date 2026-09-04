@@ -549,6 +549,8 @@ class AdminMenuTest extends TestCase
 
         $this->assertStringContainsString('mnem-sms-subscriber-lists-bulk-add', $output);
         $this->assertStringContainsString('mnem-invalid-phone-numbers', $output);
+        $this->assertStringContainsString('<th>Login</th>', $output);
+        $this->assertStringContainsString('<th>Display Name</th>', $output);
     }
 
     public function test_render_logs_sms_tab_populates_provider_status_dropdown()

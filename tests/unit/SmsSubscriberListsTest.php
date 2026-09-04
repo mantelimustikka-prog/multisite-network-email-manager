@@ -417,6 +417,47 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertSame(1, $result['total_pages']);
     }
 
+    public function test_search_subscribers_includes_display_name_for_user_subscribers()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    array(
+                        'id'                  => 12,
+                        'list_id'             => 1,
+                        'user_id'             => 7,
+                        'subscriber_name'     => '',
+                        'phone_number'        => '+1234567890',
+                        'subscribed_at'       => '2025-01-01 00:00:00',
+                        'unsubscribed_at'     => null,
+                        'unsubscribed_reason' => '',
+                        'user_login'          => 'alice_user',
+                        'display_name'        => 'Alice Wonder',
+                    ),
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::search_subscribers(1, 'Alice');
+
+        $this->assertSame(1, $result['total']);
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame('user', $result['rows'][0]['subscriber_type']);
+        $this->assertSame('alice_user', $result['rows'][0]['user_login']);
+        $this->assertSame('Alice Wonder', $result['rows'][0]['display_name']);
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('LOWER(u.display_name) LIKE', $queries);
+    }
+
     public function test_search_subscribers_filters_by_status()
     {
         $queries_made = array();
