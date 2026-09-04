@@ -76,7 +76,7 @@ class StatusSyncCron
 
         $table = $wpdb->base_prefix . 'mnem_queue';
         $status_placeholders = implode(', ', array_fill(0, count(self::SYNCABLE_STATUSES), '%s'));
-        $threshold = gmdate('Y-m-d H:i:s', time() - (self::SYNC_WINDOW_DAYS * (defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400)));
+        $threshold = self::get_sync_window_threshold();
         $rows = (array) $wpdb->get_results(
             call_user_func_array(
                 array($wpdb, 'prepare'),
@@ -161,7 +161,7 @@ class StatusSyncCron
 
         $table = $wpdb->base_prefix . 'mnem_sms_queue';
         $status_placeholders = implode(', ', array_fill(0, count(self::SMS_SYNCABLE_STATUSES), '%s'));
-        $threshold = gmdate('Y-m-d H:i:s', time() - (self::SYNC_WINDOW_DAYS * (defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400)));
+        $threshold = self::get_sync_window_threshold();
         $rows = (array) $wpdb->get_results(
             call_user_func_array(
                 array($wpdb, 'prepare'),
@@ -235,5 +235,11 @@ class StatusSyncCron
         }
 
         return 'mnem_status_sync_' . $minutes . '_minutes';
+    }
+
+    private static function get_sync_window_threshold(): string
+    {
+        $day_in_seconds = defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400;
+        return gmdate('Y-m-d H:i:s', time() - (self::SYNC_WINDOW_DAYS * $day_in_seconds));
     }
 }
