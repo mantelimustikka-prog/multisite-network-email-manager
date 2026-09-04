@@ -891,13 +891,94 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertStringContainsString('5', $GLOBALS['wpdb']->lastQuery);
     }
 
-    public function test_unsubscribe_by_phone_and_list_returns_false_when_subscriber_missing()
+    public function test_update_subscriber_updates_user_phone_number()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'id <>') !== false) {
+                    return null;
+                }
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(5, '+1987654321');
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('updated', $result['action']);
+        $this->assertStringContainsString('+1987654321', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringNotContainsString('subscriber_name', $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_update_subscriber_updates_standalone_name_and_phone()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public string $lastQuery = '';
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'id <>') !== false) {
+                    return null;
+                }
+                return array(
+                    'id' => 9,
+                    'list_id' => 1,
+                    'user_id' => 0,
+                    'subscriber_name' => 'Old Name',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->lastQuery = $query;
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(9, '+1987654321', 'New Name');
+
+        $this->assertTrue($result['success']);
+        $this->assertSame('updated', $result['action']);
+        $this->assertStringContainsString('+1987654321', $GLOBALS['wpdb']->lastQuery);
+        $this->assertStringContainsString('New Name', $GLOBALS['wpdb']->lastQuery);
+    }
+
+    public function test_update_subscriber_rejects_invalid_phone_number()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
             public function get_row($query, $output = OBJECT)
             {
                 $this->queries[] = $query;
-                return null;
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
             }
 
             public function query($query)
@@ -907,8 +988,75 @@ class SmsSubscriberListsTest extends TestCase
             }
         };
 
-        $result = SmsSubscriberLists::unsubscribe_by_phone_and_list(2, '+1234567890');
+        $result = SmsSubscriberLists::update_subscriber(5, 'not-a-phone-number');
 
-        $this->assertFalse($result);
+        $this->assertFalse($result['success']);
+        $this->assertSame('error', $result['action']);
+    }
+
+    public function test_update_subscriber_rejects_duplicate_phone_number()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'id <>') !== false) {
+                    return array('id' => 3, 'user_id' => 8, 'phone_number' => '+1987654321', 'subscription_status' => 'subscribed');
+                }
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(5, '+1987654321');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('already subscribed', strtolower($result['message']));
+    }
+
+    public function test_update_subscriber_returns_error_when_not_found()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(999, '+1987654321');
+
+        $this->assertFalse($result['success']);
+        $this->assertSame('error', $result['action']);
+        $this->assertStringContainsString('not found', strtolower($result['message']));
+    }
+
+    public function test_update_subscriber_requires_name_for_standalone()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 9,
+                    'list_id' => 1,
+                    'user_id' => 0,
+                    'subscriber_name' => 'Old Name',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(9, '+1987654321', '');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('name is required', strtolower($result['message']));
     }
 }

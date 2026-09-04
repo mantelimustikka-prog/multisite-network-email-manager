@@ -1178,6 +1178,65 @@ class NetworkAdminTest extends TestCase
         $this->assertStringContainsString('list_id=4', $GLOBALS['mnem_last_redirect']);
     }
 
+    public function test_handle_sms_subscriber_list_action_edits_subscriber()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'id <>') !== false) {
+                    return null;
+                }
+                return array(
+                    'id' => 12,
+                    'list_id' => 4,
+                    'user_id' => 9,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $_POST = array(
+            'mnem_action' => 'sms_subscriber_edit',
+            '_wpnonce' => 'test-nonce',
+            'list_id' => 4,
+            'subscriber_id' => 12,
+            'phone_number' => '+1987654321',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_subscriber_list_action();
+
+        $queries = implode("\n", $GLOBALS['wpdb']->queries);
+        $this->assertStringContainsString('+1987654321', $queries);
+        $this->assertStringContainsString('mnem_notice=sms_subscriber_updated', $GLOBALS['mnem_last_redirect']);
+        $this->assertStringContainsString('list_id=4', $GLOBALS['mnem_last_redirect']);
+    }
+
+    public function test_handle_sms_subscriber_list_action_edit_fails_with_missing_subscriber_id()
+    {
+        $_POST = array(
+            'mnem_action' => 'sms_subscriber_edit',
+            '_wpnonce' => 'test-nonce',
+            'list_id' => 4,
+            'subscriber_id' => 0,
+            'phone_number' => '+1987654321',
+        );
+
+        $admin = new TestableNetworkAdmin();
+        $admin->handle_sms_subscriber_list_action();
+
+        $this->assertStringContainsString('mnem_notice=sms_subscriber_operation_failed', $GLOBALS['mnem_last_redirect']);
+    }
+
     public function test_handle_sms_subscriber_list_action_unsubscribes_user_with_default_reason()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {

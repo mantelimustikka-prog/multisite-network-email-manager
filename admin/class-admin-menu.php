@@ -1143,7 +1143,7 @@ class AdminMenu
             array($wpdb, 'prepare'),
             array_merge(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                array("SELECT s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                array("SELECT s.id, s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
                 $where_args,
                 array($per_page, $offset)
             )
@@ -1241,6 +1241,7 @@ class AdminMenu
             'sms_subscriber_removed' => 'SMS subscriber removed successfully.',
             'sms_subscriber_unsubscribed' => 'SMS subscriber unsubscribed successfully.',
             'sms_subscriber_restored' => 'SMS subscriber restored successfully.',
+            'sms_subscriber_updated' => 'SMS subscriber updated successfully.',
             'sms_subscriber_csv_imported' => 'SMS subscriber CSV import processed.',
             'sms_subscriber_delete_confirmation_required' => sprintf('This SMS list delete will remove %d related record%s. Please confirm the cascade delete and submit again.', max(0, $deleted_total), $deleted_total === 1 ? '' : 's'),
             'invalid_phone_updated' => 'Invalid phone number records updated successfully.',
