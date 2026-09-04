@@ -19,6 +19,14 @@ class SmsSubscriberLists
      */
     private const MIN_PHONE_MATCH_DIGITS = 7;
 
+    /**
+     * User meta keys checked when searching for a network user with a
+     * matching phone number. Defined once and reused to build the IN()
+     * clause for all phone-lookup queries so the list only needs updating
+     * in one place.
+     */
+    private const PHONE_META_KEYS = array('phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone');
+
     public static function create(string $name, string $description = '')
     {
         global $wpdb;
@@ -775,10 +783,18 @@ class SmsSubscriberLists
             // half-converted, orphaned state. The explicit restore-on-failure logic
             // below is kept as a defense-in-depth measure for non-transactional
             // storage engines and for orderly (non-crash) failures.
-            $wpdb->query('START TRANSACTION');
+            $in_transaction = $wpdb->query('START TRANSACTION') !== false;
+            if (!$in_transaction) {
+                Logger::error('Unable to start SMS subscriber conversion transaction.', array(
+                    'list_id' => $list_id,
+                    'phone' => $phone,
+                ));
+            }
 
             if (!self::remove_standalone_subscriber($list_id, $phone)) {
-                $wpdb->query('ROLLBACK');
+                if ($in_transaction) {
+                    $wpdb->query('ROLLBACK');
+                }
                 $errors++;
                 continue;
             }
@@ -800,7 +816,9 @@ class SmsSubscriberLists
                         'user_id' => $user_id,
                     ));
                 }
-                $wpdb->query('COMMIT');
+                if ($in_transaction) {
+                    $wpdb->query('COMMIT');
+                }
                 continue;
             }
 
@@ -819,7 +837,9 @@ class SmsSubscriberLists
                 self::unsubscribe_user($list_id, $user_id, $reason);
             }
 
-            $wpdb->query('COMMIT');
+            if ($in_transaction) {
+                $wpdb->query('COMMIT');
+            }
 
             $converted++;
             $details[] = array(
@@ -1626,12 +1646,12 @@ class SmsSubscriberLists
         }
 
         $usermeta_table = isset($wpdb->usermeta) ? $wpdb->usermeta : $wpdb->base_prefix . 'usermeta';
-        $meta_keys_sql = "'phone_number', 'phone', 'mobile', 'billing_phone', 'shipping_phone'";
+        $meta_keys_placeholders = implode(', ', array_fill(0, count(self::PHONE_META_KEYS), '%s'));
 
         $user_id = (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) AND meta_value = %s LIMIT 1",
-                $phone_number
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders}) AND meta_value = %s LIMIT 1",
+                ...array_merge(self::PHONE_META_KEYS, array($phone_number))
             )
         );
 
@@ -1648,9 +1668,9 @@ class SmsSubscriberLists
         // so most differently-formatted matches are found without loading rows into PHP.
         $user_id = (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql})"
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders})"
                     . " AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(meta_value, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = %s LIMIT 1",
-                $normalized_target
+                ...array_merge(self::PHONE_META_KEYS, array($normalized_target))
             )
         );
 
@@ -1666,8 +1686,8 @@ class SmsSubscriberLists
         if ($fallback_candidates === null) {
             $fallback_candidates = (array) $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) LIMIT %d",
-                    self::PHONE_MATCH_FALLBACK_LIMIT
+                    "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_placeholders}) LIMIT %d",
+                    ...array_merge(self::PHONE_META_KEYS, array(self::PHONE_MATCH_FALLBACK_LIMIT))
                 ),
                 ARRAY_A
             );

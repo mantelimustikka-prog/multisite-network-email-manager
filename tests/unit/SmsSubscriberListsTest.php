@@ -1513,4 +1513,125 @@ class SmsSubscriberListsTest extends TestCase
         // have tried to INSERT, even though both failed.
         $this->assertSame(2, $GLOBALS['wpdb']->insert_call_count);
     }
+
+    public function test_convert_standalone_to_users_matches_via_php_fallback_scan()
+    {
+        $GLOBALS['mnem_user_data'][7]->display_name = 'Fiona Fallback';
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 10,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Fiona',
+                        // Phone stored in valid E.164 format; the candidate usermeta
+                        // value below uses dots, which the SQL-side REPLACE()
+                        // normalization does not strip, forcing the PHP fallback.
+                        'phone_number' => '+12345678901',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                if (strpos($query, 'FROM wp_usermeta') !== false) {
+                    // Candidate rows for the last-resort PHP fallback scan; the
+                    // meta value uses different formatting (dashes) than the
+                    // subscriber's stored phone number.
+                    return array(
+                        array('user_id' => 7, 'meta_value' => '1.234.567.8901'),
+                        array('user_id' => 12, 'meta_value' => '999-999-9999'),
+                    );
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                // Both the exact-match and SQL-side normalized queries miss,
+                // forcing the code to fall back to the PHP candidate scan.
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                $this->insert_id = 99;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(1, $result['converted']);
+        $this->assertSame(0, $result['not_found']);
+        $this->assertSame(0, $result['errors']);
+        $this->assertCount(1, $result['details']);
+        $this->assertSame(7, $result['details'][0]['user_id']);
+    }
+
+    public function test_convert_standalone_to_users_rejects_short_phone_numbers_in_fallback()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $fallback_query_run = false;
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 11,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Gina',
+                        // Too short to satisfy MIN_PHONE_MATCH_DIGITS once normalized.
+                        'phone_number' => '12345',
+                        'subscription_status' => 'subscribed',
+                        'unsubscribed_reason' => '',
+                    ));
+                }
+                if (strpos($query, 'FROM wp_usermeta') !== false) {
+                    $this->fallback_query_run = true;
+                    return array(array('user_id' => 7, 'meta_value' => '12345'));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(0, $result['converted']);
+        $this->assertSame(1, $result['not_found']);
+        $this->assertSame(0, $result['errors']);
+        // The short phone number should be rejected before the fallback
+        // usermeta scan even runs.
+        $this->assertFalse($GLOBALS['wpdb']->fallback_query_run);
+    }
 }
