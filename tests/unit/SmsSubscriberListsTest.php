@@ -1020,6 +1020,60 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertStringContainsString('already subscribed', strtolower($result['message']));
     }
 
+    public function test_update_subscriber_rejects_blocked_phone_number()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(5, '+1987654321');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('blocked', strtolower($result['message']));
+    }
+
+    public function test_update_subscriber_rejects_country_not_in_allowed_list()
+    {
+        $GLOBALS['mnem_site_options']['mnem_allowed_countries'] = wp_json_encode(array('GB'));
+
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return array(
+                    'id' => 5,
+                    'list_id' => 1,
+                    'user_id' => 7,
+                    'subscriber_name' => '',
+                    'phone_number' => '+1234567890',
+                    'subscription_status' => 'subscribed',
+                );
+            }
+        };
+
+        $result = SmsSubscriberLists::update_subscriber(5, '+1987654321');
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('not in the allowed countries list', $result['message']);
+    }
+
     public function test_update_subscriber_returns_error_when_not_found()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
