@@ -891,6 +891,27 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertStringContainsString('5', $GLOBALS['wpdb']->lastQuery);
     }
 
+    public function test_unsubscribe_by_phone_and_list_returns_false_when_subscriber_missing()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::unsubscribe_by_phone_and_list(2, '+1234567890');
+
+        $this->assertFalse($result);
+    }
+
     public function test_update_subscriber_updates_user_phone_number()
     {
         $GLOBALS['wpdb'] = new class extends wpdb {
