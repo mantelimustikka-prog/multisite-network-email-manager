@@ -1117,7 +1117,8 @@ class AdminMenu
 
         if ($search !== '') {
             $search_like = '%' . strtolower($wpdb->esc_like((string) $search)) . '%';
-            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s OR LOWER(s.subscriber_name) LIKE %s)';
+            $where_clauses[] = '(LOWER(u.user_login) LIKE %s OR LOWER(s.phone_number) LIKE %s OR LOWER(s.subscriber_name) LIKE %s OR LOWER(u.display_name) LIKE %s)';
+            $where_args[] = $search_like;
             $where_args[] = $search_like;
             $where_args[] = $search_like;
             $where_args[] = $search_like;
@@ -1143,7 +1144,7 @@ class AdminMenu
             array($wpdb, 'prepare'),
             array_merge(
                 // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-                array("SELECT s.id, s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
+                array("SELECT s.id, s.user_id, s.subscriber_name, s.phone_number, s.subscribed_at, s.unsubscribed_at, s.unsubscribed_reason, COALESCE(u.user_login, '') AS user_login, COALESCE(u.display_name, '') AS display_name FROM {$table} s LEFT JOIN {$users_table} u ON s.user_id = u.ID {$where_sql} ORDER BY s.id DESC LIMIT %d OFFSET %d"),
                 $where_args,
                 array($per_page, $offset)
             )
@@ -1154,12 +1155,14 @@ class AdminMenu
             $row['subscriber_name'] = isset($row['subscriber_name']) ? (string) $row['subscriber_name'] : '';
             if ((int) $row['user_id'] > 0) {
                 $row['subscriber_type'] = 'user';
-                $row['display_name'] = isset($row['user_login']) && $row['user_login'] !== ''
+                $row['user_login'] = isset($row['user_login']) && $row['user_login'] !== ''
                     ? (string) $row['user_login']
                     : ('user_id:' . (int) $row['user_id']);
+                $row['display_name'] = isset($row['display_name']) ? (string) $row['display_name'] : '';
             } else {
                 $row['subscriber_type'] = 'standalone';
-                $row['display_name'] = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+                $row['user_login'] = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+                $row['display_name'] = '';
             }
         }
         unset($row);
