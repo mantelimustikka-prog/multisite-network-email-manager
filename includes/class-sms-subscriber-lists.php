@@ -648,8 +648,8 @@ class SmsSubscriberLists
                 $row['display_name']    = isset($row['display_name']) ? (string) $row['display_name'] : '';
             } else {
                 $row['subscriber_type'] = 'standalone';
-                $row['user_login']      = '';
-                $row['display_name']    = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+                $row['user_login']      = $row['subscriber_name'] !== '' ? $row['subscriber_name'] : 'Standalone Subscriber';
+                $row['display_name']    = '';
             }
         }
         unset($row);
