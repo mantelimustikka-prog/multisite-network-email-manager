@@ -266,14 +266,12 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                     <?php foreach ((array) $subscribers as $subscriber) : ?>
                         <?php
                         $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone';
-                        $login_display = isset($subscriber['user_login']) && $subscriber['user_login'] !== ''
-                            ? (string) $subscriber['user_login']
-                            : ($is_standalone && isset($subscriber['subscriber_name']) && $subscriber['subscriber_name'] !== '' ? (string) $subscriber['subscriber_name'] : 'Standalone Subscriber');
-                        $display_name  = !$is_standalone && isset($subscriber['display_name']) && $subscriber['display_name'] !== '' ? (string) $subscriber['display_name'] : '';
+                        $login_display = isset($subscriber['user_login']) ? (string) $subscriber['user_login'] : '';
+                        $display_name  = isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : '';
                         ?>
                         <tr>
-                            <td><?php echo esc_html($login_display); ?></td>
-                            <td><?php echo esc_html($display_name !== '' ? $display_name : '-'); ?></td>
+                            <td><?php echo esc_html($login_display !== '' ? $login_display : '-'); ?></td>
+                            <td><?php echo esc_html(!$is_standalone && $display_name !== '' ? $display_name : '-'); ?></td>
                             <td>
                                 <?php if ($is_standalone) : ?>
                                     <span class="tag">Standalone</span>
@@ -352,14 +350,12 @@ name:phone_number (standalone subscriber, e.g., John Doe:+1234567890)"></textare
                     <?php foreach ((array) $unsubscribed as $subscriber) : ?>
                         <?php
                         $is_standalone = isset($subscriber['subscriber_type']) && $subscriber['subscriber_type'] === 'standalone';
-                        $login_display = isset($subscriber['user_login']) && $subscriber['user_login'] !== ''
-                            ? (string) $subscriber['user_login']
-                            : ($is_standalone && isset($subscriber['subscriber_name']) && $subscriber['subscriber_name'] !== '' ? (string) $subscriber['subscriber_name'] : 'Standalone Subscriber');
-                        $display_name  = !$is_standalone && isset($subscriber['display_name']) && $subscriber['display_name'] !== '' ? (string) $subscriber['display_name'] : '';
+                        $login_display = isset($subscriber['user_login']) ? (string) $subscriber['user_login'] : '';
+                        $display_name  = isset($subscriber['display_name']) ? (string) $subscriber['display_name'] : '';
                         ?>
                         <tr>
-                            <td><?php echo esc_html($login_display); ?></td>
-                            <td><?php echo esc_html($display_name !== '' ? $display_name : '-'); ?></td>
+                            <td><?php echo esc_html($login_display !== '' ? $login_display : '-'); ?></td>
+                            <td><?php echo esc_html(!$is_standalone && $display_name !== '' ? $display_name : '-'); ?></td>
                             <td>
                                 <?php if ($is_standalone) : ?>
                                     <span class="tag">Standalone</span>
