@@ -1388,4 +1388,69 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertCount(2, $GLOBALS['wpdb']->insert_queries);
         $this->assertStringContainsString('Standalone Carl', $GLOBALS['wpdb']->insert_queries[1]);
     }
+
+    public function test_convert_standalone_to_users_restores_unsubscribed_status_on_add_failure()
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            public $insert_call_count = 0;
+            public $queries_seen = array();
+
+            public function get_results($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, "subscription_status IN ('subscribed', 'unsubscribed')") !== false) {
+                    return array(array(
+                        'id' => 6,
+                        'list_id' => 5,
+                        'user_id' => 0,
+                        'subscriber_name' => 'Standalone Dana',
+                        'phone_number' => '+15678901234',
+                        'subscription_status' => 'unsubscribed',
+                        'unsubscribed_reason' => 'Opted out',
+                    ));
+                }
+                return array();
+            }
+
+            public function get_row($query, $output = OBJECT)
+            {
+                $this->queries[] = $query;
+                return null;
+            }
+
+            public function get_var($query)
+            {
+                $this->queries[] = $query;
+                if (strpos($query, 'usermeta') !== false) {
+                    return 10;
+                }
+                return 0;
+            }
+
+            public function query($query)
+            {
+                $this->queries[] = $query;
+                $this->queries_seen[] = $query;
+                if (strpos($query, 'INSERT INTO') !== false) {
+                    $this->insert_call_count++;
+                    if ($this->insert_call_count === 1) {
+                        // Simulate the first INSERT (add_subscriber) failing.
+                        return false;
+                    }
+                    $this->insert_id = 77;
+                }
+                return 1;
+            }
+        };
+
+        $result = SmsSubscriberLists::convert_standalone_to_users(5);
+
+        $this->assertSame(0, $result['converted']);
+        $this->assertSame(1, $result['errors']);
+
+        $unsubscribed_queries = array_filter($GLOBALS['wpdb']->queries_seen, static function ($query) {
+            return strpos($query, "'unsubscribed'") !== false;
+        });
+        $this->assertNotEmpty($unsubscribed_queries, 'Restored standalone subscriber should preserve unsubscribed status.');
+    }
 }

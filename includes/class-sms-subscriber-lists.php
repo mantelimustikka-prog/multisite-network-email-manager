@@ -7,6 +7,7 @@ defined('ABSPATH') || exit;
 class SmsSubscriberLists
 {
     private const ORPHANED_SMS_LOG_SCAN_LIMIT = 1000;
+    private const PHONE_MATCH_FALLBACK_LIMIT = 5000;
 
     public static function create(string $name, string $description = '')
     {
@@ -765,8 +766,12 @@ class SmsSubscriberLists
             $add_result = self::add_subscriber($list_id, $user_id, $phone);
             if (empty($add_result['success'])) {
                 $errors++;
-                // Restore the standalone record so the subscriber is not lost.
-                self::add_standalone_subscriber($list_id, $original_name, $phone);
+                // Restore the standalone record so the subscriber is not lost,
+                // preserving its original subscription status.
+                $restore_result = self::add_standalone_subscriber($list_id, $original_name, $phone);
+                if (!empty($restore_result['success']) && $status === 'unsubscribed') {
+                    self::unsubscribe_standalone($list_id, $phone, $reason);
+                }
                 continue;
             }
 
@@ -1602,8 +1607,28 @@ class SmsSubscriberLists
             return 0;
         }
 
+        // Normalize common formatting (spaces, dashes, parentheses, '+') in SQL first
+        // so most differently-formatted matches are found without loading rows into PHP.
+        $user_id = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT user_id FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql})"
+                    . " AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(meta_value, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = %s LIMIT 1",
+                $normalized_target
+            )
+        );
+
+        if ($user_id > 0) {
+            return $user_id;
+        }
+
+        // Last-resort fallback for unusual formatting (dots, leading zeros, etc).
+        // Bounded by PHONE_MATCH_FALLBACK_LIMIT to avoid loading the entire
+        // network usermeta table into memory on large multisite installs.
         $candidates = (array) $wpdb->get_results(
-            "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql})",
+            $wpdb->prepare(
+                "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) LIMIT %d",
+                self::PHONE_MATCH_FALLBACK_LIMIT
+            ),
             ARRAY_A
         );
 
