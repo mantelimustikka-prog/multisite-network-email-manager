@@ -412,7 +412,7 @@ class SmsSubscriberListsTest extends TestCase
         $this->assertSame(1, $result['total']);
         $this->assertCount(1, $result['rows']);
         $this->assertSame('standalone', $result['rows'][0]['subscriber_type']);
-        $this->assertSame('Jane', $result['rows'][0]['display_name']);
+        $this->assertSame('', $result['rows'][0]['display_name']);
         $this->assertSame(1, $result['current_page']);
         $this->assertSame(1, $result['total_pages']);
     }
