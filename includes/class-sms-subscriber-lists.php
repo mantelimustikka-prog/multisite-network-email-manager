@@ -728,6 +728,7 @@ class SmsSubscriberLists
         $not_found = 0;
         $errors = 0;
         $details = array();
+        $fallback_candidates = null;
 
         foreach ($rows as $row) {
             $phone = isset($row['phone_number']) ? trim((string) $row['phone_number']) : '';
@@ -736,7 +737,7 @@ class SmsSubscriberLists
                 continue;
             }
 
-            $user_id = self::find_user_id_by_phone($phone);
+            $user_id = self::find_user_id_by_phone($phone, $fallback_candidates);
             if ($user_id <= 0) {
                 $not_found++;
                 continue;
@@ -1578,8 +1579,14 @@ class SmsSubscriberLists
      * matches the given phone number. Falls back to a digits-only comparison
      * so differently formatted numbers (spaces, dashes, missing '+') can still
      * be matched.
+     *
+     * @param array<int,array<string,mixed>>|null $fallback_candidates Reference to a
+     *        cache of usermeta rows used by the last-resort fallback below. Pass the
+     *        same variable across repeated calls within one operation (e.g. a bulk
+     *        conversion loop) so the fallback query only runs once per operation
+     *        instead of once per phone number.
      */
-    private static function find_user_id_by_phone(string $phone_number): int
+    private static function find_user_id_by_phone(string $phone_number, ?array &$fallback_candidates = null): int
     {
         global $wpdb;
 
@@ -1623,16 +1630,20 @@ class SmsSubscriberLists
 
         // Last-resort fallback for unusual formatting (dots, leading zeros, etc).
         // Bounded by PHONE_MATCH_FALLBACK_LIMIT to avoid loading the entire
-        // network usermeta table into memory on large multisite installs.
-        $candidates = (array) $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) LIMIT %d",
-                self::PHONE_MATCH_FALLBACK_LIMIT
-            ),
-            ARRAY_A
-        );
+        // network usermeta table into memory on large multisite installs. The
+        // candidate set is cached in $fallback_candidates by the caller so it is
+        // only fetched once per bulk operation rather than once per phone number.
+        if ($fallback_candidates === null) {
+            $fallback_candidates = (array) $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT user_id, meta_value FROM {$usermeta_table} WHERE meta_key IN ({$meta_keys_sql}) LIMIT %d",
+                    self::PHONE_MATCH_FALLBACK_LIMIT
+                ),
+                ARRAY_A
+            );
+        }
 
-        foreach ($candidates as $candidate) {
+        foreach ($fallback_candidates as $candidate) {
             $candidate_value = isset($candidate['meta_value']) ? (string) $candidate['meta_value'] : '';
             if ($candidate_value === '') {
                 continue;

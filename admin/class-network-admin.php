@@ -766,7 +766,7 @@ class NetworkAdmin
             ));
             $redirect_args['converted'] = isset($result['converted']) ? (int) $result['converted'] : 0;
             $redirect_args['not_found'] = isset($result['not_found']) ? (int) $result['not_found'] : 0;
-            $redirect_args['conv_errors'] = isset($result['errors']) ? (int) $result['errors'] : 0;
+            $redirect_args['converted_errors'] = isset($result['errors']) ? (int) $result['errors'] : 0;
             $this->redirect_with_notice('mnem-sms-subscriber-lists', 'sms_subscriber_converted', $redirect_args);
             return;
         }

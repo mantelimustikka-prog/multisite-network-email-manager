@@ -1180,7 +1180,7 @@ class AdminMenu
         $failed = isset($_GET['failed']) ? (int) $_GET['failed'] : 0;
         $converted_count = isset($_GET['converted']) ? (int) $_GET['converted'] : 0;
         $not_found_count = isset($_GET['not_found']) ? (int) $_GET['not_found'] : 0;
-        $conv_error_count = isset($_GET['conv_errors']) ? (int) $_GET['conv_errors'] : 0;
+        $conv_error_count = isset($_GET['converted_errors']) ? (int) $_GET['converted_errors'] : 0;
         if (!in_array($status, \MNEM\Queue::DELETABLE_STATUSES, true)) {
             $status = 'queue';
         }
